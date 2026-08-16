@@ -1,10 +1,10 @@
-import { withAuth } from "@/server/api";
+import { withCronOrStaff } from "@/server/cron";
 import { jsonOk } from "@/server/http";
-import { requireRole } from "@/server/auth";
 import { runAudioRetention } from "@/modules/compliance/retention";
 
-export const POST = withAuth(async (_req, ctx) => {
-  requireRole(ctx, ["OWNER"]);
-  const result = await runAudioRetention(ctx.clinicId);
+/** Cron runs all clinics; staff owner runs their clinic only. */
+export const POST = withCronOrStaff(["OWNER"], async (_req, ctx) => {
+  const clinicId = ctx.mode === "staff" ? ctx.auth.clinicId : undefined;
+  const result = await runAudioRetention(clinicId);
   return jsonOk(result);
 });

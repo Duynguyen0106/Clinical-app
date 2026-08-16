@@ -68,12 +68,16 @@ For a real clinic: create the clinic + owner via seed variant or admin SQL; neve
 
 ## 4. Jobs (cron)
 
-Call with a staff/owner Bearer token (or add a cron secret later):
+Set `CRON_SECRET` (≥24 chars) and call with `Authorization: Bearer $CRON_SECRET`.
+Staff sessions still work from Settings for manual runs.
 
 | Schedule | Endpoint |
 |----------|----------|
 | Every hour | `POST /api/v1/jobs/reminders` |
-| Daily | `POST /api/v1/jobs/retention` |
+| Every 2–5 min | `POST /api/v1/jobs/organise` (drain AI note jobs) |
+| Daily | `POST /api/v1/jobs/retention` (all clinics when using cron secret) |
+
+Audio: set `S3_BUCKET` + `S3_REGION=eu-west-2` + keys for durable UK object storage; otherwise files stay under `web/storage/`.
 
 ## 5. Smoke after deploy
 
