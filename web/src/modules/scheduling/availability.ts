@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import type { AuthContext } from "@/server/auth";
-import { badRequest, conflict, notFound } from "@/server/errors";
+import { badRequest, conflict, forbidden, notFound } from "@/server/errors";
 
 export const createBlockSchema = z.object({
   practitionerId: z.string().min(1),
@@ -80,6 +80,13 @@ export async function createBlock(
   });
   if (!practitioner) throw notFound("Practitioner not found");
 
+  if (
+    ctx.role === "PRACTITIONER" &&
+    ctx.practitionerProfileId !== practitioner.id
+  ) {
+    throw forbidden("Practitioners can only block their own diary");
+  }
+
   const date = parseDateOnly(input.date);
   const startMinute = input.startMinute ?? null;
   const endMinute = input.endMinute ?? null;
@@ -139,6 +146,12 @@ export async function deleteBlock(ctx: AuthContext, id: string) {
     },
   });
   if (!block) throw notFound("Block not found");
+  if (
+    ctx.role === "PRACTITIONER" &&
+    ctx.practitionerProfileId !== block.practitionerId
+  ) {
+    throw forbidden("Practitioners can only remove their own leave blocks");
+  }
   await prisma.availabilityException.delete({ where: { id: block.id } });
   return { ok: true };
 }

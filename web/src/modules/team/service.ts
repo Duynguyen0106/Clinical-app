@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MembershipRole } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import type { AuthContext } from "@/server/auth";
-import { badRequest, conflict, notFound } from "@/server/errors";
+import { badRequest, conflict, forbidden, notFound } from "@/server/errors";
 import { hashPassword } from "@/modules/auth/service";
 
 const daySchema = z.object({
@@ -51,6 +51,27 @@ function assertValidRules(
       throw badRequest("Each day end must be after start");
     }
   }
+}
+
+/** Owners manage anyone; practitioners manage their own profile/hours only. */
+export function assertCanEditPractitioner(
+  ctx: AuthContext,
+  practitionerId: string,
+  opts: { changingActive?: boolean } = {},
+) {
+  if (ctx.role === MembershipRole.OWNER) return;
+  if (opts.changingActive) {
+    throw forbidden(
+      "Only clinic owners can activate or deactivate practitioners",
+    );
+  }
+  if (
+    ctx.role === MembershipRole.PRACTITIONER &&
+    ctx.practitionerProfileId === practitionerId
+  ) {
+    return;
+  }
+  throw forbidden("You can only edit your own practitioner profile");
 }
 
 export async function listTeam(ctx: AuthContext) {
@@ -162,6 +183,10 @@ export async function updatePractitioner(
   });
   if (!profile) throw notFound("Practitioner not found");
 
+  assertCanEditPractitioner(ctx, profile.id, {
+    changingActive: input.active !== undefined,
+  });
+
   return prisma.practitionerProfile.update({
     where: { id: profile.id },
     data: {
@@ -202,6 +227,8 @@ export async function replaceAvailability(
     where: { id: practitionerId, membership: { clinicId: ctx.clinicId } },
   });
   if (!profile) throw notFound("Practitioner not found");
+
+  assertCanEditPractitioner(ctx, profile.id);
 
   await prisma.$transaction([
     prisma.availabilityRule.deleteMany({
