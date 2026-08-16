@@ -1,21 +1,23 @@
-# Technical Architecture
+# Technical Architecture — Treow Clinic
+
+**Launch defaults:** UK · `Europe/London` · `GBP` · PWA recording · mark-paid billing only
 
 ## Stack (recommended)
 
 | Layer | Choice | Why |
 |-------|--------|-----|
-| App | **Next.js** (App Router) + TypeScript | One codebase for clinic app + booking pages; server actions / API routes |
+| App | **Next.js** (App Router) + TypeScript + PWA | Clinic app + booking + installable phone recording |
 | UI | Tailwind + accessible primitives (e.g. Radix) | Fast, calm UI without heavy design system debt |
 | Auth | Clerk or Auth.js + org memberships | Multi-tenant clinics, roles |
 | DB | **PostgreSQL** + Prisma | Relational clinical data, strong constraints |
-| Object storage | S3-compatible (R2 / S3) | Audio blobs, attachments |
+| Object storage | S3-compatible with **UK/EU region** (e.g. R2 EU, AWS london) | Audio blobs, attachments; residency |
 | Queue / jobs | Inngest or BullMQ | Transcription + note generation async |
-| STT | Deepgram / AssemblyAI / Whisper API | Streaming + batch; medical vocab where available |
-| LLM | OpenAI / Anthropic (structured outputs) | Note structuring from transcript + template |
+| STT | Deepgram / AssemblyAI / Whisper API (UK/EU-capable) | Streaming + batch; medical vocab where available |
+| LLM | OpenAI / Anthropic (structured outputs) with DPA | Note structuring from transcript + template |
 | Email | Resend / Postmark | Confirmations, reminders |
-| Hosting | Vercel + managed Postgres (or Fly + Neon) | Fast iteration |
+| Hosting | Prefer UK/EU region (Vercel + Neon EU, or Fly `lhr`/`ams`) | UK GDPR posture |
 
-> Compliance note: final STT/LLM vendors must support BAA / DPA and data residency for your launch region. Architecture assumes a **vendor adapter** so providers can be swapped.
+> Compliance note: STT/LLM/storage vendors must support a **UK GDPR DPA** and acceptable data residency. Architecture uses a **vendor adapter** so providers can be swapped.
 
 ---
 
@@ -130,17 +132,30 @@ See `prisma/schema.prisma` for the living schema. Conceptual entities:
 
 ---
 
-## Security & compliance checklist
+## Billing (MVP)
+
+- Invoices in **GBP**; staff **mark paid / unpaid** (cash, card terminal, bank transfer — method noted, not processed in-app).
+- No Stripe/GoCardless in MVP.
+- `Payment` rows record manual settlements only.
+
+## PWA recording
+
+- `MediaRecorder` in Visit mode on desktop and mobile Safari/Chrome.
+- Service worker caches app shell; audio chunks queue locally then upload.
+- Mic permission copy and consent gate before any capture.
+
+## Security & compliance checklist (UK)
 
 - [ ] TLS everywhere; encrypt audio at rest (KMS)
-- [ ] Separate storage paths per clinic; signed URLs short-lived
-- [ ] RBAC on every PHI endpoint
+- [ ] UK/EU storage paths per clinic; short-lived signed URLs
+- [ ] RBAC on every patient-data endpoint
 - [ ] Audit: who viewed/edited/signed notes and recordings
 - [ ] Retention jobs (delete audio after N days if configured)
 - [ ] Consent artefacts stored with timestamp + method
-- [ ] Vendor BAAs; no training on customer data without opt-in
-- [ ] Export / delete patient (right of access / erasure where applicable)
-- [ ] Penetration test before paid launch
+- [ ] Vendor **DPAs**; no training on customer data without opt-in
+- [ ] SAR / erasure support (UK GDPR rights)
+- [ ] Privacy notice + record of processing for Treow Clinic
+- [ ] Penetration test before paid UK launch
 
 ---
 
@@ -148,12 +163,12 @@ See `prisma/schema.prisma` for the living schema. Conceptual entities:
 
 | Area | Examples |
 |------|----------|
-| Auth / clinic | session, members, settings |
+| Auth / clinic | session, members, settings (timezone London, GBP) |
 | Patients | CRUD, search, timeline |
 | Scheduling | calendar feed, create/reschedule, availability, public book |
 | Visits | start, consent, upload URL, stop, status |
 | Notes | get draft, patch, sign, list needing signature |
-| Billing | create invoice, mark paid |
+| Billing | create invoice, **mark paid**, PDF receipt |
 
 Prefer Server Actions for clinic UI; public booking via Route Handlers.
 
@@ -161,6 +176,6 @@ Prefer Server Actions for clinic UI; public booking via Route Handlers.
 
 ## Local / cloud agent development
 
-- `pnpm install && pnpm dev`
-- Postgres via Docker or Neon
+- `npm install && npm run dev` (from `web/`)
+- Postgres via Docker or Neon (EU region when cloud)
 - Mock STT/LLM adapters for UI work without API keys (`AI_PROVIDER=mock`)

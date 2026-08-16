@@ -3,6 +3,8 @@
  * Replace with Prisma queries in module repositories.
  */
 
+import { DEMO_CLINIC } from "@/modules/config/brand";
+
 export type DemoAppointment = {
   id: string;
   patientName: string;
@@ -22,11 +24,7 @@ export type DemoPatient = {
   alerts?: string;
 };
 
-export const DEMO_CLINIC = {
-  name: "Harbour Physio",
-  slug: "harbour-physio",
-  practitioner: "Alex Nguyen",
-};
+export { DEMO_CLINIC };
 
 export const DEMO_PATIENTS: DemoPatient[] = [
   {
@@ -34,7 +32,7 @@ export const DEMO_PATIENTS: DemoPatient[] = [
     firstName: "Sarah",
     lastName: "Chen",
     email: "sarah.chen@example.com",
-    phone: "+61 400 111 222",
+    phone: "+44 7700 900111",
     alerts: "Recording consent on file",
   },
   {
@@ -42,14 +40,14 @@ export const DEMO_PATIENTS: DemoPatient[] = [
     firstName: "James",
     lastName: "Okafor",
     email: "james.o@example.com",
-    phone: "+61 400 333 444",
+    phone: "+44 7700 900222",
   },
   {
     id: "pat_mina",
     firstName: "Mina",
     lastName: "Patel",
     email: "mina.patel@example.com",
-    phone: "+61 400 555 666",
+    phone: "+44 7700 900333",
   },
 ];
 
@@ -67,7 +65,7 @@ export const DEMO_APPOINTMENTS: DemoAppointment[] = [
   {
     id: "apt_1",
     patientName: "Sarah Chen",
-    type: "Initial assessment",
+    type: "Physio · Initial assessment",
     startsAt: todayAt(9, 0),
     endsAt: addMinutes(todayAt(9, 0), 45),
     status: "checked_in",
@@ -76,7 +74,7 @@ export const DEMO_APPOINTMENTS: DemoAppointment[] = [
   {
     id: "apt_2",
     patientName: "James Okafor",
-    type: "Follow-up",
+    type: "Osteopathy · Follow-up",
     startsAt: todayAt(10, 0),
     endsAt: addMinutes(todayAt(10, 0), 30),
     status: "booked",
@@ -85,7 +83,7 @@ export const DEMO_APPOINTMENTS: DemoAppointment[] = [
   {
     id: "apt_3",
     patientName: "Mina Patel",
-    type: "Follow-up",
+    type: "Manual therapy",
     startsAt: todayAt(11, 0),
     endsAt: addMinutes(todayAt(11, 0), 30),
     status: "booked",
@@ -94,7 +92,7 @@ export const DEMO_APPOINTMENTS: DemoAppointment[] = [
   {
     id: "apt_4",
     patientName: "Sarah Chen",
-    type: "Review",
+    type: "Physio · Review",
     startsAt: todayAt(14, 30),
     endsAt: addMinutes(todayAt(14, 30), 30),
     status: "booked",

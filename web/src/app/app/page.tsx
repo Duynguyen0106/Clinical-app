@@ -46,7 +46,7 @@ export default function TodayPage() {
           <section className="panel tip-panel">
             <h2>AI scribe</h2>
             <p>
-              Record the consultation. Aether organises a structured note. You
+              Record the consultation. Treow organises a structured note. You
               review and sign — nothing enters the record without you.
             </p>
             <Link href="/app/visits/apt_1" className="btn-secondary">
@@ -56,7 +56,7 @@ export default function TodayPage() {
           <section className="panel">
             <h2>Waitlist</h2>
             <p className="muted">1 patient flexible this afternoon</p>
-            <p className="waitlist-name">Mina Patel · Follow-up</p>
+            <p className="waitlist-name">Mina Patel · Manual therapy</p>
           </section>
         </aside>
       </div>

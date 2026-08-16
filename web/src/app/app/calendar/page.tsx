@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/AppShell";
+import { DEMO_CLINIC } from "@/modules/config/brand";
 import { DEMO_APPOINTMENTS } from "@/modules/demo/data";
 import { format, setHours, setMinutes } from "date-fns";
 import Link from "next/link";
@@ -16,7 +17,7 @@ export default function CalendarPage() {
       <div className="panel calendar-panel">
         <div className="panel-head">
           <h2>{dayLabel}</h2>
-          <Link href="/book/harbour-physio" className="btn-ghost">
+          <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-ghost">
             Online booking link
           </Link>
         </div>

@@ -187,7 +187,7 @@ export function VisitRecorder({
         {!note && phase !== "review" && phase !== "signed" && (
           <div className="note-placeholder">
             <p>
-              After you stop recording, Aether organises a SOAP note from the
+              After you stop recording, Treow organises a SOAP note from the
               conversation. You review and sign — the blank page is gone.
             </p>
           </div>

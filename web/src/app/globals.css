@@ -183,6 +183,20 @@ h3,
   font-size: clamp(1.4rem, 3vw, 2rem);
 }
 
+.status-paid {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.status-unpaid {
+  background: #fff4ce;
+  color: #7a5b00;
+}
+
+.money-row {
+  grid-template-columns: 1fr auto;
+}
+
 @keyframes hero-rise {
   from {
     opacity: 0;

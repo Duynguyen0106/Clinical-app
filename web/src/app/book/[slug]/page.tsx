@@ -2,11 +2,13 @@
 
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
+import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
 
 const SERVICES = [
-  { id: "initial", name: "Initial assessment", minutes: 45 },
-  { id: "followup", name: "Follow-up", minutes: 30 },
-  { id: "review", name: "Review", minutes: 30 },
+  { id: "physio-initial", name: "Physio · Initial assessment", minutes: 45 },
+  { id: "physio-followup", name: "Physio · Follow-up", minutes: 30 },
+  { id: "osteo", name: "Osteopathy session", minutes: 40 },
+  { id: "manual", name: "Manual therapy", minutes: 30 },
 ];
 
 type Props = { params: Promise<{ slug: string }> };
@@ -14,7 +16,9 @@ type Props = { params: Promise<{ slug: string }> };
 export default function BookingPage({ params }: Props) {
   const { slug } = use(params);
   const clinicLabel =
-    slug === "harbour-physio" ? "Harbour Physio" : slug.replace(/-/g, " ");
+    slug === DEMO_CLINIC.slug
+      ? DEMO_CLINIC.name
+      : slug.replace(/-/g, " ");
 
   const [serviceId, setServiceId] = useState(SERVICES[1].id);
   const [step, setStep] = useState<"pick" | "details" | "done">("pick");
@@ -31,7 +35,7 @@ export default function BookingPage({ params }: Props) {
     return (
       <div className="book-page">
         <div className="book-card">
-          <p className="brand-mark">Aether</p>
+          <p className="brand-mark">{BRAND.shortName}</p>
           <h1>You&apos;re booked</h1>
           <p className="muted">
             {name || "Patient"} · {SERVICES.find((s) => s.id === serviceId)?.name}{" "}
@@ -52,7 +56,7 @@ export default function BookingPage({ params }: Props) {
         <p className="brand-mark">{clinicLabel}</p>
         <h1>Book online</h1>
         <p className="muted">
-          Pick a service and time. Intake and consents stay short.
+          Physio, osteopathy, and manual therapy — pick a service and time.
         </p>
 
         {step === "pick" && (

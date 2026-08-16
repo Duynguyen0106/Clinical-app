@@ -1,5 +1,6 @@
-// Prisma schema — Aether Clinic MVP domain model
+// Prisma schema — Treow Clinic MVP domain model
 // Docs: docs/ARCHITECTURE.md
+// Defaults: UK · Europe/London · GBP
 
 generator client {
   provider = "prisma-client"
@@ -63,7 +64,7 @@ model Clinic {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
-  timezone  String   @default("Australia/Sydney")
+  timezone  String   @default("Europe/London")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -338,7 +339,7 @@ model Invoice {
   patientId     String
   appointmentId String?
   amountCents   Int
-  currency      String        @default("AUD")
+  currency      String        @default("GBP")
   status        InvoiceStatus @default(DRAFT)
   issuedAt      DateTime?
   paidAt        DateTime?

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CalendarDays, ClipboardList, LayoutDashboard, Users, Wallet } from "lucide-react";
+import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
 
 const nav = [
   { href: "/app", label: "Today", icon: LayoutDashboard },
@@ -22,7 +23,7 @@ export function AppShell({
     <div className="app-shell min-h-screen">
       <aside className="app-nav">
         <div className="brand-block">
-          <p className="brand-mark">Aether</p>
+          <p className="brand-mark">{BRAND.shortName}</p>
           <p className="brand-sub">Clinic</p>
         </div>
         <nav className="nav-list" aria-label="Clinic">
@@ -34,8 +35,8 @@ export function AppShell({
           ))}
         </nav>
         <div className="nav-footer">
-          <p className="nav-clinic">Harbour Physio</p>
-          <p className="nav-user">Alex Nguyen</p>
+          <p className="nav-clinic">{DEMO_CLINIC.name}</p>
+          <p className="nav-user">{DEMO_CLINIC.practitioner}</p>
         </div>
       </aside>
       <div className="app-main">
@@ -44,7 +45,7 @@ export function AppShell({
             <h1>{title}</h1>
             {subtitle ? <p className="app-subtitle">{subtitle}</p> : null}
           </div>
-          <Link href="/book/harbour-physio" className="btn-ghost">
+          <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-ghost">
             Patient booking →
           </Link>
         </header>
