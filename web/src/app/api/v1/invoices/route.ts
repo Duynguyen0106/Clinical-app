@@ -6,8 +6,10 @@ import {
   createInvoiceSchema,
   listInvoices,
 } from "@/modules/billing/service";
+import { requireOwnerOrReception, requireStaff } from "@/server/rbac";
 
 export const GET = withAuth(async (req, ctx) => {
+  requireStaff(ctx);
   const statusParam = new URL(req.url).searchParams.get("status");
   const status =
     statusParam &&
@@ -19,6 +21,7 @@ export const GET = withAuth(async (req, ctx) => {
 });
 
 export const POST = withAuth(async (req, ctx) => {
+  requireOwnerOrReception(ctx);
   const body = createInvoiceSchema.parse(await req.json());
   const invoice = await createInvoice(ctx, body);
   return jsonCreated({ invoice });

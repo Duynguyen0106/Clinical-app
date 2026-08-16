@@ -1,5 +1,6 @@
 import { withAuth } from "@/server/api";
 import { jsonOk } from "@/server/http";
+import { assertCanMutateClinical } from "@/server/rbac";
 import {
   getAppointment,
   rescheduleAppointment,
@@ -14,6 +15,7 @@ export const GET = withAuth(async (_req, ctx, params) => {
 });
 
 export const PATCH = withAuth(async (req, ctx, params) => {
+  assertCanMutateClinical(ctx);
   const body = await req.json();
   if ("startsAt" in body) {
     const parsed = rescheduleSchema.parse(body);

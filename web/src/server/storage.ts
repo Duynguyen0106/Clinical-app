@@ -1,9 +1,50 @@
-import { mkdir, writeFile, readFile, access } from "node:fs/promises";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { mkdir, writeFile, readFile, access, unlink, rm } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.join(process.cwd(), "storage", "audio");
+const ENC_SUFFIX = ".enc";
 
-export function audioPath(clinicId: string, visitId: string, filename = "audio.webm") {
+function encryptionKey() {
+  const secret =
+    process.env.AUDIO_ENCRYPTION_KEY ??
+    process.env.AUTH_SECRET ??
+    "treow-dev-secret-change-me";
+  return createHash("sha256").update(secret).digest();
+}
+
+export function encryptBytes(plain: Buffer) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(plain), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  // iv (12) + tag (16) + ciphertext
+  return Buffer.concat([iv, tag, encrypted]);
+}
+
+export function decryptBytes(payload: Buffer) {
+  if (payload.length < 28) {
+    // legacy plaintext fallback
+    return payload;
+  }
+  const iv = payload.subarray(0, 12);
+  const tag = payload.subarray(12, 28);
+  const data = payload.subarray(28);
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(data), decipher.final()]);
+  } catch {
+    // Not encrypted with current key — return as plaintext legacy
+    return payload;
+  }
+}
+
+export function audioPath(
+  clinicId: string,
+  visitId: string,
+  filename = `audio.webm${ENC_SUFFIX}`,
+) {
   return path.join(ROOT, clinicId, visitId, filename);
 }
 
@@ -11,38 +52,63 @@ export async function saveAudioUpload(
   clinicId: string,
   visitId: string,
   bytes: Buffer,
-  filename = "audio.webm",
 ) {
   const dir = path.join(ROOT, clinicId, visitId);
   await mkdir(dir, { recursive: true });
+  const filename = `audio.webm${ENC_SUFFIX}`;
   const full = path.join(dir, filename);
-  await writeFile(full, bytes);
+  await writeFile(full, encryptBytes(bytes));
   return `clinics/${clinicId}/visits/${visitId}/${filename}`;
 }
 
 export async function readAudioFile(storageKey: string) {
-  // storageKey: clinics/{clinicId}/visits/{visitId}/audio.webm
   const parts = storageKey.split("/");
   if (parts.length < 5 || parts[0] !== "clinics") {
     throw new Error("Invalid storage key");
   }
   const clinicId = parts[1];
   const visitId = parts[3];
-  const filename = parts.slice(4).join("/") || "audio.webm";
+  const filename = parts.slice(4).join("/") || `audio.webm${ENC_SUFFIX}`;
   const full = audioPath(clinicId, visitId, filename);
-  await access(full);
-  return readFile(full);
+  try {
+    await access(full);
+    const raw = await readFile(full);
+    return filename.endsWith(ENC_SUFFIX) ? decryptBytes(raw) : raw;
+  } catch {
+    // try legacy unencrypted path
+    const legacy = audioPath(clinicId, visitId, "audio.webm");
+    await access(legacy);
+    return readFile(legacy);
+  }
 }
 
-export async function appendAudioChunk(
-  clinicId: string,
-  visitId: string,
-  chunk: Buffer,
-) {
+export async function deleteAudioForVisit(clinicId: string, visitId: string) {
   const dir = path.join(ROOT, clinicId, visitId);
-  await mkdir(dir, { recursive: true });
-  const full = path.join(dir, "audio.webm");
-  const { appendFile } = await import("node:fs/promises");
-  await appendFile(full, chunk);
-  return `clinics/${clinicId}/visits/${visitId}/audio.webm`;
+  try {
+    await rm(dir, { recursive: true, force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteAudioByStorageKey(storageKey: string) {
+  const parts = storageKey.split("/");
+  if (parts.length < 5 || parts[0] !== "clinics") return false;
+  const clinicId = parts[1];
+  const visitId = parts[3];
+  const filename = parts.slice(4).join("/");
+  const full = audioPath(clinicId, visitId, filename);
+  try {
+    await unlink(full);
+  } catch {
+    /* ignore */
+  }
+  // also try removing directory if empty
+  try {
+    await rm(path.join(ROOT, clinicId, visitId), { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
+  return true;
 }

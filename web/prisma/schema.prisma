@@ -79,6 +79,10 @@ model Clinic {
   name      String
   slug      String   @unique
   timezone  String   @default("Europe/London")
+  /// Days to retain encrypted visit audio (0 = delete after note signed / organise)
+  audioRetentionDays Int @default(14)
+  privacyNoticeVersion String @default("2026-08-uk-v1")
+  dataRegion String @default("uk-eu")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

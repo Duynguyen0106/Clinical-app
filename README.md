@@ -10,6 +10,7 @@ AI-first practice management for UK allied health (physio, osteopathy, manual th
 - [Architecture](docs/ARCHITECTURE.md)
 - [Cliniko research](docs/COMPETITIVE_CLINIKO.md)
 - [API reference](docs/API.md)
+- [UK compliance](docs/UK_COMPLIANCE.md)
 - [Next steps](docs/NEXT_STEPS.md)
 
 ## Quick start

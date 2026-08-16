@@ -43,6 +43,19 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | GET | `/visits/:id/rebook` | Suggest follow-up slots from Plan |
 | POST | `/visits/:id/rebook` | Book follow-up `{ startsAt }` |
 | POST | `/jobs/reminders` | Send due email reminders (staff) |
+| POST | `/jobs/retention` | Purge expired encrypted audio (owner) |
+
+## Compliance (UK)
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/clinic/compliance` | Retention days, privacy notice version, data region |
+| GET | `/clinic/compliance?audits=1&from=&to=&patientId=` | Note audit export (JSON) |
+| PATCH | `/clinic/compliance` | `{ audioRetentionDays }` — owner only |
+
+Public privacy notice: `/privacy`. Booking intake links to it.
+
+Roles (enforced on routes): **OWNER** / **PRACTITIONER** for clinical mutate; **OWNER** / **RECEPTION** for invoice pay; staff for patients & diary.
 
 ## Public booking
 
@@ -76,3 +89,5 @@ npm run dev
 ```
 
 `AI_PROVIDER=mock` (default) or `openai` with `OPENAI_API_KEY` for Whisper + structured notes.
+
+Audio at rest is AES-256-GCM encrypted; set `AUDIO_ENCRYPTION_KEY` (or rely on `AUTH_SECRET`). See `docs/UK_COMPLIANCE.md`.

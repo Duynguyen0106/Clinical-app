@@ -223,8 +223,12 @@ export default function BookingPage({ params }: Props) {
                 onChange={(e) => setPrivacy(e.target.checked)}
               />
               <span>
-                I agree to the clinic privacy notice and processing of my
-                health information for this appointment (UK GDPR).
+                I agree to the{" "}
+                <Link href="/privacy" target="_blank" rel="noreferrer">
+                  clinic privacy notice
+                </Link>{" "}
+                and processing of my health information for this appointment
+                (UK GDPR).
               </span>
             </label>
             <label className="consent-label">

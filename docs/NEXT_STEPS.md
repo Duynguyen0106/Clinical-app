@@ -15,7 +15,7 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 | Template-aware organise | Done |
 | PWA shell | Done (manifest + SW) |
 
-**Next product focus:** P2 UK compliance (privacy notice, retention, DPAs) and P3 ops (waitlist, tasks, practice pulse).
+**Next product focus:** P3 ops (waitlist, tasks, practice pulse). P2 UK compliance baseline is in product — see `docs/UK_COMPLIANCE.md`.
 
 ### P1 status
 - Week calendar + drag reschedule — done
@@ -23,6 +23,12 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 - Online intake — done
 - Suggest rebook from Plan — done
 
+### P2 status
+- Privacy notice (`/privacy`) + booking link — done
+- Encrypted audio at rest + retention job — done
+- Audit export + Settings UI — done
+- RBAC polish on clinical / money / diary routes — done
+- Vendor DPA checklist (docs) — done; signed DPAs remain an ops gate before live AI
 ---
 
 ## Product goal for the next milestone
@@ -69,13 +75,13 @@ Diary API exists; booking product does not yet feel finished.
 
 ### P2 — Trust & UK launch readiness (parallel to P0 late / P1)
 
-| # | Step | Why |
-|---|------|-----|
-| 11 | UK/EU hosting + encryption at rest for audio | Locked market |
-| 12 | Privacy notice, retention policy, audio delete job | UK GDPR |
-| 13 | Vendor DPAs (STT/LLM/storage) | Cannot beta with PHI otherwise |
-| 14 | Audit export for note access/sign | Clinical + ICO posture |
-| 15 | Role enforcement polish (reception vs practitioner) | Schema has roles; harden routes |
+| # | Step | Why | Status |
+|---|------|-----|--------|
+| 11 | UK/EU hosting + encryption at rest for audio | Locked market | Done (local AES-GCM; UK/EU hosting ops) |
+| 12 | Privacy notice, retention policy, audio delete job | UK GDPR | Done |
+| 13 | Vendor DPAs (STT/LLM/storage) | Cannot beta with PHI otherwise | Checklist in `UK_COMPLIANCE.md` |
+| 14 | Audit export for note access/sign | Clinical + ICO posture | Done |
+| 15 | Role enforcement polish (reception vs practitioner) | Schema has roles; harden routes | Done |
 
 **Exit criteria:** Legal/privacy review passes for unpaid UK beta (not full ISO yet).
 
@@ -142,4 +148,4 @@ Reuse product plan targets, measured on design partners:
 
 ## Immediate recommendation
 
-**Next build:** wire the existing UI to `/api/v1` and replace Visit mock recording with real MediaRecorder + upload — that unlocks everything else and is the shortest path to a demo that sells against Cliniko.
+**Next build:** P3 ops that partners ask for first — waitlist auto-offer, task inbox (unsigned notes / unpaid), and a small practice pulse. Keep AI vendor DPA as the gate before real STT/LLM on live patients.

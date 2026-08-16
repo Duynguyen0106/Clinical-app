@@ -52,6 +52,9 @@ async function main() {
       name: "Northbank Manual Therapy",
       slug: "northbank-manual",
       timezone: "Europe/London",
+      audioRetentionDays: 14,
+      privacyNoticeVersion: "2026-08-uk-v1",
+      dataRegion: "uk-eu",
     },
   });
 

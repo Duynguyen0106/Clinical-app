@@ -7,6 +7,7 @@ import {
   ClipboardList,
   LayoutDashboard,
   LogOut,
+  Settings,
   Users,
   Wallet,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const nav = [
   { href: "/app/patients", label: "Patients", icon: Users },
   { href: "/app/notes", label: "Notes", icon: ClipboardList },
   { href: "/app/money", label: "Money", icon: Wallet },
+  { href: "/app/settings", label: "Settings", icon: Settings },
 ];
 
 export function AppShell({

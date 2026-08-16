@@ -1,5 +1,6 @@
 import { withAuth } from "@/server/api";
 import { jsonCreated, jsonOk } from "@/server/http";
+import { requireStaff } from "@/server/rbac";
 import {
   createAppointment,
   createAppointmentSchema,
@@ -7,6 +8,7 @@ import {
 } from "@/modules/scheduling/service";
 
 export const GET = withAuth(async (req, ctx) => {
+  requireStaff(ctx);
   const url = new URL(req.url);
   const appointments = await listAppointments(ctx, {
     from: url.searchParams.get("from") ?? undefined,
@@ -17,6 +19,7 @@ export const GET = withAuth(async (req, ctx) => {
 });
 
 export const POST = withAuth(async (req, ctx) => {
+  requireStaff(ctx);
   const body = createAppointmentSchema.parse(await req.json());
   const appointment = await createAppointment(ctx, body);
   return jsonCreated({ appointment });
