@@ -37,16 +37,36 @@ const profileSelect = {
   dataRegion: true,
 } as const;
 
+function toPublicProfile(clinic: {
+  id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  brandColour: string | null;
+  logoStorageKey: string | null;
+  logoMimeType: string | null;
+  audioRetentionDays: number;
+  privacyNoticeVersion: string;
+  dataRegion: string;
+}) {
+  const { logoStorageKey, logoMimeType, ...rest } = clinic;
+  return {
+    ...rest,
+    hasLogo: Boolean(logoStorageKey),
+    logoUrl: logoStorageKey ? "/api/v1/clinic/logo" : null,
+    logoMimeType: logoStorageKey ? logoMimeType : null,
+  };
+}
+
 export async function getClinicProfile(ctx: AuthContext) {
   const clinic = await prisma.clinic.findUniqueOrThrow({
     where: { id: ctx.clinicId },
     select: profileSelect,
   });
-  return {
-    ...clinic,
-    hasLogo: Boolean(clinic.logoStorageKey),
-    logoUrl: clinic.logoStorageKey ? "/api/v1/clinic/logo" : null,
-  };
+  return toPublicProfile(clinic);
 }
 
 export async function updateClinicProfile(
@@ -78,11 +98,7 @@ export async function updateClinicProfile(
     },
     select: profileSelect,
   });
-  return {
-    ...clinic,
-    hasLogo: Boolean(clinic.logoStorageKey),
-    logoUrl: clinic.logoStorageKey ? "/api/v1/clinic/logo" : null,
-  };
+  return toPublicProfile(clinic);
 }
 
 const ALLOWED_LOGO = new Set([
@@ -123,11 +139,7 @@ export async function uploadClinicLogo(
     },
     select: profileSelect,
   });
-  return {
-    ...clinic,
-    hasLogo: true,
-    logoUrl: "/api/v1/clinic/logo",
-  };
+  return toPublicProfile(clinic);
 }
 
 export async function clearClinicLogo(ctx: AuthContext) {
@@ -144,11 +156,7 @@ export async function clearClinicLogo(ctx: AuthContext) {
     data: { logoStorageKey: null, logoMimeType: null },
     select: profileSelect,
   });
-  return {
-    ...clinic,
-    hasLogo: false,
-    logoUrl: null,
-  };
+  return toPublicProfile(clinic);
 }
 
 export async function getClinicLogoBytes(clinicId: string) {
