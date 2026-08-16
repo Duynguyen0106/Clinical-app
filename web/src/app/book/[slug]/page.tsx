@@ -32,6 +32,7 @@ export default function BookingPage({ params }: Props) {
   const [privacy, setPrivacy] = useState(false);
   const [recordingPref, setRecordingPref] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [manageHref, setManageHref] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -63,7 +64,10 @@ export default function BookingPage({ params }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await api(`/public/clinics/${slug}`, {
+      const booked = await api<{
+        appointment: { id: string };
+        manageUrl?: string;
+      }>(`/public/clinics/${slug}`, {
         method: "POST",
         auth: false,
         body: JSON.stringify({
@@ -78,6 +82,7 @@ export default function BookingPage({ params }: Props) {
           },
         }),
       });
+      if (booked.manageUrl) setManageHref(booked.manageUrl);
       setStep("done");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Booking failed");
@@ -96,9 +101,14 @@ export default function BookingPage({ params }: Props) {
             {name} · {format(new Date(slot), "EEE d MMM HH:mm")}
           </p>
           <p>
-            A confirmation email is on its way to {email}. We&apos;ll also send
-            a reminder before your visit.
+            A confirmation email is on its way to {email} with a link to cancel
+            or reschedule. We&apos;ll also send a reminder before your visit.
           </p>
+          {manageHref ? (
+            <Link href={manageHref} className="btn-secondary">
+              Manage this booking
+            </Link>
+          ) : null}
           <Link href="/login" className="btn-primary">
             Clinic sign in
           </Link>
