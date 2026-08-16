@@ -201,6 +201,9 @@ async function main() {
         email: "sarah.chen@example.com",
         phone: "+44 7700 900111",
         alerts: "Recording consent on file",
+        gpName: "Dr Aisha Rahman",
+        gpPractice: "Quayside Medical Centre",
+        gpEmail: "aisha.rahman@quayside-medical.example",
       },
     }),
     prisma.patient.create({

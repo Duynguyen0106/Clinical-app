@@ -17,7 +17,8 @@ Working checklist for unpaid UK design-partner beta. Not a substitute for legal 
 | Recording consent | Visit consent before MediaRecorder; optional preference at booking |
 | Encryption at rest (audio) | AES-256-GCM local files (`.enc`); key from `AUDIO_ENCRYPTION_KEY` or `AUTH_SECRET` |
 | Audio retention | Clinic setting `audioRetentionDays` (default 14); `POST /api/v1/jobs/retention` |
-| Audit export | Note view/edit/sign + patient prep access via `GET /api/v1/clinic/compliance?audits=1` |
+| Audit export | Note view/edit/sign/print/letter + patient prep access via Settings |
+| Clinical correspondence | Print signed note (browser PDF) and editable GP letter drafted from signed sections |
 | RBAC | Reception vs practitioner vs owner: clinical **read and write** (notes, transcripts, prep history, visits) are OWNER/PRACTITIONER only; reception keeps diary, patients directory, waitlist, and money |
 | Clinical note confidentiality | Note list/detail omit or gate bodies; prep opens metadata only and loads note text on audited expand; appointment detail has no transcript/note content |
 | Region preference | Clinic `dataRegion` default `uk-eu`; prefer UK/EU vendors |

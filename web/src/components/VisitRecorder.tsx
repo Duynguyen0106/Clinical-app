@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Mic, Square, Check, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
 import { PatientPrepPanel } from "@/components/PatientPrepPanel";
+import { NotePrintActions } from "@/components/NotePrintActions";
 
 type Phase =
   | "loading"
@@ -313,6 +314,8 @@ export function VisitRecorder({ visitId }: Props) {
               Locked in the clinical record with an audit event.
             </p>
 
+            {noteId ? <NotePrintActions noteId={noteId} /> : null}
+
             {rebook && !rebookDone ? (
               <div className="rebook-box">
                 <h4>Suggest follow-up</h4>
@@ -413,6 +416,9 @@ export function VisitRecorder({ visitId }: Props) {
                 Sign note
               </button>
             )}
+            {phase === "signed" && noteId ? (
+              <NotePrintActions noteId={noteId} />
+            ) : null}
           </div>
         )}
       </section>
