@@ -14,19 +14,30 @@ type ClinicCompliance = {
   dataRegion: string;
 };
 
+type SupportInfo = {
+  email: string;
+  appBaseUrl: string;
+  privacyPath: string;
+};
+
 export default function SettingsPage() {
   const { me } = useAuth();
   const [clinic, setClinic] = useState<ClinicCompliance | null>(null);
+  const [support, setSupport] = useState<SupportInfo | null>(null);
   const [days, setDays] = useState(14);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [auditCount, setAuditCount] = useState<number | null>(null);
 
   useEffect(() => {
-    void api<{ clinic: ClinicCompliance }>("/clinic/compliance")
-      .then((d) => {
-        setClinic(d.clinic);
-        setDays(d.clinic.audioRetentionDays);
+    void Promise.all([
+      api<{ clinic: ClinicCompliance }>("/clinic/compliance"),
+      api<{ support: SupportInfo }>("/ops/support"),
+    ])
+      .then(([c, s]) => {
+        setClinic(c.clinic);
+        setDays(c.clinic.audioRetentionDays);
+        setSupport(s.support);
       })
       .catch((e: Error) => setError(e.message));
   }, []);
@@ -58,6 +69,18 @@ export default function SettingsPage() {
     }
   }
 
+  async function runReminders() {
+    setError(null);
+    try {
+      const d = await api<{ sent: number }>("/jobs/reminders", {
+        method: "POST",
+      });
+      setMessage(`Sent ${d.sent} reminder email(s).`);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Reminders failed");
+    }
+  }
+
   async function exportAudits() {
     setError(null);
     try {
@@ -85,7 +108,7 @@ export default function SettingsPage() {
   return (
     <AppShell
       title="Settings"
-      subtitle="UK compliance controls — retention, privacy notice, audit export."
+      subtitle="Compliance, audits, and launch support for this clinic."
     >
       <div className="settings-grid">
         <section className="panel">
@@ -113,8 +136,7 @@ export default function SettingsPage() {
           </label>
           <p className="muted">
             Encrypted consultation audio is deleted after this many days. Signed
-            notes and transcripts are kept. 0 = purge as soon as the retention
-            job runs after organise.
+            notes and transcripts are kept.
           </p>
           {isOwner ? (
             <div className="home-cta">
@@ -149,6 +171,35 @@ export default function SettingsPage() {
           {auditCount !== null ? (
             <p className="muted">{auditCount} events in last export</p>
           ) : null}
+        </section>
+
+        <section className="panel">
+          <h2>Launch support</h2>
+          <p className="muted">
+            For pilot incidents and privacy assistance. The clinic remains the
+            data controller; Treow assists as processor.
+          </p>
+          <p>
+            <strong>Support:</strong>{" "}
+            <a href={`mailto:${support?.email ?? "support@treow.example"}`}>
+              {support?.email ?? "…"}
+            </a>
+          </p>
+          <p className="muted">
+            App URL: {support?.appBaseUrl ?? "…"}
+          </p>
+          <div className="home-cta">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => void runReminders()}
+            >
+              Send due reminders
+            </button>
+            <Link href="/privacy" className="btn-ghost">
+              Privacy notice
+            </Link>
+          </div>
         </section>
       </div>
     </AppShell>
