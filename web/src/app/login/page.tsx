@@ -39,6 +39,29 @@ export default function LoginPage() {
       <form className="auth-form" onSubmit={onSubmit}>
         <h1>Sign in</h1>
         <p className="muted">Clinic staff — UK demo ready.</p>
+        <div className="demo-role-chips" role="group" aria-label="Demo accounts">
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            onClick={() => setEmail("alex@northbank.example")}
+          >
+            Owner
+          </button>
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            onClick={() => setEmail("jordan@northbank.example")}
+          >
+            Practitioner
+          </button>
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            onClick={() => setEmail("reception@northbank.example")}
+          >
+            Reception
+          </button>
+        </div>
         <label className="field">
           <span>Email</span>
           <input

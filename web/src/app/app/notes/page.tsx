@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
 import { api } from "@/lib/api";
 
 type Note = {
@@ -15,22 +16,31 @@ type Note = {
 };
 
 export default function NotesPage() {
+  const { me } = useAuth();
   const [notes, setNotes] = useState<Note[]>([]);
+  const scoped = me?.role === "PRACTITIONER";
 
   useEffect(() => {
-    void api<{ notes: Note[] }>("/notes?status=DRAFT").then((d) =>
-      setNotes(d.notes),
-    );
-  }, []);
+    if (!me) return;
+    const qs = new URLSearchParams({ status: "DRAFT" });
+    if (scoped && me.practitionerProfileId) {
+      qs.set("practitionerId", me.practitionerProfileId);
+    }
+    void api<{ notes: Note[] }>(`/notes?${qs}`).then((d) => setNotes(d.notes));
+  }, [me, scoped]);
 
   return (
     <AppShell
       title="Notes"
-      subtitle="Drafts waiting for signature appear here."
+      subtitle={
+        scoped
+          ? "Your drafts waiting for signature."
+          : "Drafts waiting for signature appear here."
+      }
     >
       <div className="panel">
         <div className="panel-head">
-          <h2>Unsigned drafts</h2>
+          <h2>{scoped ? "My unsigned drafts" : "Unsigned drafts"}</h2>
           <span className="count">{notes.length}</span>
         </div>
         {notes.length === 0 ? (
@@ -51,7 +61,10 @@ export default function NotesPage() {
                   </p>
                 </div>
                 {n.visit ? (
-                  <Link href={`/app/visits/${n.visit.id}`} className="btn-primary btn-sm">
+                  <Link
+                    href={`/app/visits/${n.visit.id}`}
+                    className="btn-primary btn-sm"
+                  >
                     Open visit
                   </Link>
                 ) : null}

@@ -12,7 +12,7 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | DELETE | `/auth/login` | — | Logout (Bearer required) |
 | GET | `/auth/me` | — | Current user + clinic |
 
-**Demo:** `alex@northbank.example` / `treow-demo`
+**Demo:** `alex@northbank.example` (owner) · `jordan@northbank.example` (practitioner) · `reception@northbank.example` — password `treow-demo`
 
 | GET | `/clinic/booking` | Online booking policy (notice, deposits) |
 | PATCH | `/clinic/booking` | Owner: update booking policy |
@@ -117,7 +117,7 @@ Roles (enforced on routes): **OWNER** / **PRACTITIONER** for clinical **read and
 
 ## Notes
 
-| GET | `/notes?status=DRAFT` | List metadata only (clinician; **no content**) |
+| GET | `/notes?status=DRAFT&practitionerId=` | List metadata only (clinician; **no content**). Practitioners default to their own visit notes |
 | GET | `/notes?templates=1` | Templates (clinician) |
 | GET | `/notes/:id` | Full note + audit `viewed` (clinician) |
 | PATCH | `/notes/:id` | Update draft `{ content }` (clinician) |
