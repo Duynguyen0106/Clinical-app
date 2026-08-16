@@ -103,9 +103,12 @@ export async function createBlock(
   });
 
   for (const apt of appointments) {
+    // Compare in UTC minutes — block dates are stored as UTC @db.Date and the
+    // diary slot engine runs in server-local time (UTC in production containers).
     const aptStart =
-      apt.startsAt.getHours() * 60 + apt.startsAt.getMinutes();
-    const aptEnd = apt.endsAt.getHours() * 60 + apt.endsAt.getMinutes();
+      apt.startsAt.getUTCHours() * 60 + apt.startsAt.getUTCMinutes();
+    const aptEnd =
+      apt.endsAt.getUTCHours() * 60 + apt.endsAt.getUTCMinutes();
     const blockStart = startMinute ?? 0;
     const blockEnd = endMinute ?? 24 * 60;
     if (aptStart < blockEnd && aptEnd > blockStart) {
@@ -223,8 +226,9 @@ export async function assertWithinAvailability(args: {
   );
 
   const startMinute =
-    args.startsAt.getHours() * 60 + args.startsAt.getMinutes();
-  const endMinute = args.endsAt.getHours() * 60 + args.endsAt.getMinutes();
+    args.startsAt.getUTCHours() * 60 + args.startsAt.getUTCMinutes();
+  const endMinute =
+    args.endsAt.getUTCHours() * 60 + args.endsAt.getUTCMinutes();
 
   const key = localDateKey(args.startsAt);
   for (const b of exceptions.filter((e) => !e.isAvailable)) {

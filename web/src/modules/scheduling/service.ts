@@ -738,7 +738,22 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     }
   }
 
-  return { appointment, deposit: depositCheckout, policyText: policy.bookingPolicyText };
+  const fresh = await prisma.appointment.findUniqueOrThrow({
+    where: { id: appointment.id },
+    include: {
+      patient: true,
+      practitioner: true,
+      appointmentType: true,
+      room: true,
+      clinic: true,
+    },
+  });
+
+  return {
+    appointment: fresh,
+    deposit: depositCheckout,
+    policyText: policy.bookingPolicyText,
+  };
 }
 
 export async function assertNoConflict(args: {
