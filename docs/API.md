@@ -14,9 +14,9 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 
 **Demo:** `alex@northbank.example` / `treow-demo`
 
-## Clinic catalog
-
-| GET | `/clinic/catalog` | Appointment types, practitioners, locations |
+| GET | `/clinic/booking` | Online booking policy (notice, deposits) |
+| PATCH | `/clinic/booking` | Owner: update booking policy |
+| POST | `/public/deposits` | `{ appointmentId }` start deposit checkout (console pays immediately; stripe returns URL) |
 
 ## Patients
 

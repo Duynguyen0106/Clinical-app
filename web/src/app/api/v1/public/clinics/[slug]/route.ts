@@ -14,9 +14,12 @@ export const GET = withPublic(async (_req, params) => {
 
 export const POST = withPublic(async (req, params) => {
   const body = publicBookSchema.parse(await req.json());
-  const appointment = await publicBook(params.slug, body);
+  const result = await publicBook(params.slug, body);
+  const appointment = result.appointment;
   return jsonCreated({
     appointment,
     manageUrl: manageUrl(appointment.id),
+    deposit: result.deposit,
+    policyText: result.policyText,
   });
 });

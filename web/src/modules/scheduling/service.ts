@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   AppointmentStatus,
+  DepositStatus,
   InvoiceStatus,
 } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
@@ -504,7 +505,19 @@ export async function getPublicClinicBySlug(slug: string) {
     name: clinic.name,
     slug: clinic.slug,
     timezone: clinic.timezone,
-    appointmentTypes: clinic.appointmentTypes,
+    booking: {
+      minNoticeHours: clinic.bookingMinNoticeHours,
+      maxAdvanceDays: clinic.bookingMaxAdvanceDays,
+      cancelMinNoticeHours: clinic.cancelMinNoticeHours,
+      depositMode: clinic.depositMode,
+      depositDefaultCents: clinic.depositDefaultCents,
+      policyText: clinic.bookingPolicyText,
+    },
+    appointmentTypes: clinic.appointmentTypes.map((t) => ({
+      ...t,
+      effectiveDepositCents:
+        t.depositCents ?? clinic.depositDefaultCents,
+    })),
     practitioners: clinic.memberships
       .map((m) => m.practitionerProfile)
       .filter((p): p is NonNullable<typeof p> => Boolean(p)),
@@ -622,11 +635,18 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     startsAt.getTime() + type.durationMinutes * 60_000,
   );
 
+  const { assertSlotWithinBookingWindow } = await import("./policy");
+  const { resolveDepositRequirement } = await import("./policy");
+  const policy = await (
+    await import("./policy")
+  ).getClinicBookingPolicy(clinic.id);
+  assertSlotWithinBookingWindow(policy, startsAt);
+
   const openSlots = await listClinicSlots({
     clinicId: clinic.id,
     appointmentTypeId: type.id,
     practitionerId: input.practitionerId,
-    days: 21,
+    days: Math.max(policy.bookingMaxAdvanceDays, 21),
     onlineBookableOnly: true,
     limit: 200,
   });
@@ -660,6 +680,13 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     endsAt,
   });
 
+  const deposit = await resolveDepositRequirement({
+    clinicId: clinic.id,
+    appointmentTypeId: type.id,
+    patientId: patient.id,
+    isOnline: true,
+  });
+
   const appointment = await prisma.appointment.create({
     data: {
       clinicId: clinic.id,
@@ -671,6 +698,10 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
       endsAt,
       status: AppointmentStatus.BOOKED,
       notes: intakeNote || null,
+      depositCents: deposit.required ? deposit.cents : 0,
+      depositStatus: deposit.required
+        ? DepositStatus.REQUIRED
+        : DepositStatus.NONE,
     },
     include: {
       patient: true,
@@ -690,7 +721,24 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     console.error("Booking confirmation email failed", err);
   }
 
-  return appointment;
+  let depositCheckout: {
+    status: string;
+    depositCents: number;
+    checkoutUrl: string | null;
+    provider?: string;
+  } | null = null;
+  if (deposit.required) {
+    try {
+      const { createDepositCheckout } = await import(
+        "@/modules/billing/deposits"
+      );
+      depositCheckout = await createDepositCheckout(appointment.id);
+    } catch (err) {
+      console.error("Deposit checkout failed", err);
+    }
+  }
+
+  return { appointment, deposit: depositCheckout, policyText: policy.bookingPolicyText };
 }
 
 export async function assertNoConflict(args: {

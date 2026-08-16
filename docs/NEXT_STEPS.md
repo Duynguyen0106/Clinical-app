@@ -39,6 +39,7 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 - Team practitioners + weekly hours — done (`/app/team`, `/api/v1/team`)
 - Booking scenarios — staff book/block/fees/duration; patient manage links — done
 - Patient prep context — calendar/visit history + prior notes — done
+- Booking policies + deposits + day calendar — done
 - Webhooks — not started
 
 ### Launch readiness

@@ -101,12 +101,12 @@ export async function cancelManagedAppointment(token: string) {
     throw badRequest("This appointment can no longer be cancelled online");
   }
 
-  // Patients may cancel until 2 hours before start
-  if (appointment.startsAt.getTime() - Date.now() < 2 * 60 * 60_000) {
-    throw badRequest(
-      "Online cancel closes within 2 hours of the appointment — please call the clinic",
-    );
-  }
+  // Patients may cancel until clinic cancel window
+  const { getClinicBookingPolicy, assertWithinCancelWindow } = await import(
+    "./policy"
+  );
+  const policy = await getClinicBookingPolicy(appointment.clinicId);
+  assertWithinCancelWindow(policy, appointment.startsAt);
 
   const updated = await prisma.appointment.update({
     where: { id: appointment.id },
@@ -150,11 +150,11 @@ export async function rescheduleManagedAppointment(
     throw badRequest("This appointment can no longer be rescheduled online");
   }
 
-  if (appointment.startsAt.getTime() - Date.now() < 2 * 60 * 60_000) {
-    throw badRequest(
-      "Online reschedule closes within 2 hours of the appointment — please call the clinic",
-    );
-  }
+  const { getClinicBookingPolicy, assertWithinCancelWindow } = await import(
+    "./policy"
+  );
+  const policy = await getClinicBookingPolicy(appointment.clinicId);
+  assertWithinCancelWindow(policy, appointment.startsAt);
 
   const startsAt = new Date(startsAtIso);
   const durationMs =
