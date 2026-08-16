@@ -57,6 +57,15 @@ Manage links are emailed/SMS’d on confirmation and reminders. UI: `/book/manag
 
 Bookings conflict-check **practitioner and room**. Online book auto-picks the first free room.
 
+## Team (practitioners)
+
+| GET | `/team` | Practitioners + weekly availability |
+| POST | `/team` | Owner: add practitioner `{ email, name, password, displayName, colour?, availability? }` |
+| PATCH | `/team/:id` | Owner: `{ displayName?, colour?, active? }` |
+| PUT | `/team/:id/availability` | Owner: replace weekly rules `{ rules: [{ dayOfWeek, startMinute, endMinute }] }` |
+
+Default new clinician hours: Mon–Fri 09:00–17:00. UI: `/app/team`.
+
 ## Visits (AI note pipeline)
 
 | POST | `/visits` | `{ appointmentId }` → start / resume visit |
