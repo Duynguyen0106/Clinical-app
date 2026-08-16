@@ -12,7 +12,7 @@ export default function VisitPage({ params }: Props) {
   return (
     <AppShell
       title="Visit"
-      subtitle="Consent → record on this device → AI organises → you sign."
+      subtitle="Consent → record → organised note → sign."
     >
       <VisitRecorder visitId={id} />
     </AppShell>

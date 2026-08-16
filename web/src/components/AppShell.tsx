@@ -5,15 +5,16 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays,
   ClipboardList,
+  Hourglass,
   LayoutDashboard,
   ListTodo,
   LogOut,
   Settings,
   Users,
   Wallet,
-  Hourglass,
 } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
+import { BrandLogo } from "@/components/BrandLogo";
 import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
 
 const nav = [
@@ -46,10 +47,13 @@ export function AppShell({
   return (
     <div className="app-shell min-h-screen">
       <aside className="app-nav">
-        <div className="brand-block">
-          <p className="brand-mark">{BRAND.shortName}</p>
-          <p className="brand-sub">Clinic</p>
-        </div>
+        <Link href="/app" className="brand-block brand-block-logo">
+          <BrandLogo variant="mark" className="nav-mark" />
+          <div>
+            <p className="brand-word">{BRAND.shortName}</p>
+            <p className="brand-sub">Clinic</p>
+          </div>
+        </Link>
         <nav className="nav-list" aria-label="Clinic">
           {nav.map(({ href, label, icon: Icon }) => {
             const active =

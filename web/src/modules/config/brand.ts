@@ -2,8 +2,24 @@
 export const BRAND = {
   name: "Treow Clinic",
   shortName: "Treow",
+  /** Primary brand line from the mark */
+  motto: "Rooted in Osteopathy, Growing in Health",
   tagline:
-    "Practice management that writes the note for you. Record the visit — AI organises the clinical record.",
+    "Record the visit — Treow organises the clinical note so you can sign and move on.",
+  logo: {
+    full: "/brand/treow-logo.png",
+    mark: "/brand/treow-mark.png",
+    trim: "/brand/treow-logo-trim.png",
+  },
+  colours: {
+    forest: "#1E3F37",
+    pine: "#16352E",
+    sage: "#A3B18A",
+    olive: "#5D7A5D",
+    mist: "#EEF2EC",
+    mistDeep: "#E2E9E3",
+    ink: "#14241F",
+  },
 } as const;
 
 export const LAUNCH = {

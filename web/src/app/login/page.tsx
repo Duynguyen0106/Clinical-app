@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import { BRAND } from "@/modules/config/brand";
+import { BrandLogo } from "@/components/BrandLogo";
 import { ApiError } from "@/lib/api";
 
 export default function LoginPage() {
@@ -30,11 +31,14 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="book-page">
-      <form className="book-card" onSubmit={onSubmit}>
-        <p className="brand-mark">{BRAND.shortName}</p>
+    <div className="auth-page">
+      <div className="auth-brand">
+        <BrandLogo variant="full" className="auth-logo" priority />
+        <p className="brand-motto">{BRAND.motto}</p>
+      </div>
+      <form className="auth-form" onSubmit={onSubmit}>
         <h1>Sign in</h1>
-        <p className="muted">Clinic staff — UK demo clinic ready to go.</p>
+        <p className="muted">Clinic staff — UK demo ready.</p>
         <label className="field">
           <span>Email</span>
           <input

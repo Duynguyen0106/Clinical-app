@@ -1,14 +1,12 @@
 import Link from "next/link";
 import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export default function HomePage() {
   return (
     <div className="home">
       <nav className="home-nav">
-        <div className="brand-block">
-          <p className="brand-mark">{BRAND.shortName}</p>
-          <p className="brand-sub">Clinic</p>
-        </div>
+        <BrandLogo variant="mark" className="nav-mark" priority />
         <div className="home-cta">
           <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-ghost">
             Book as patient
@@ -18,22 +16,25 @@ export default function HomePage() {
           </Link>
         </div>
       </nav>
-      <section className="home-hero">
-        <h1>{BRAND.shortName}</h1>
-        <p className="lede">{BRAND.tagline}</p>
-        <div className="home-cta">
-          <Link href="/login" className="btn-primary">
-            Open clinic
-          </Link>
-          <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-secondary">
-            Online booking
-          </Link>
+
+      <section className="home-hero home-hero-brand">
+        <div className="home-hero-copy">
+          <BrandLogo variant="full" className="home-logo" priority />
+          <p className="brand-motto">{BRAND.motto}</p>
+          <p className="lede">{BRAND.tagline}</p>
+          <div className="home-cta">
+            <Link href="/login" className="btn-primary">
+              Open clinic
+            </Link>
+            <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-secondary">
+              Online booking
+            </Link>
+          </div>
         </div>
-        <div
-          className="home-visual"
-          role="img"
-          aria-label="Consultation recording visual"
-        />
+        <div className="home-hero-plane" aria-hidden>
+          <div className="home-hero-glow" />
+          <p className="home-hero-flow">Consent → Record → Sign</p>
+        </div>
       </section>
     </div>
   );

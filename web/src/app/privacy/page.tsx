@@ -1,4 +1,5 @@
 import { BRAND } from "@/modules/config/brand";
+import { BrandLogo } from "@/components/BrandLogo";
 import Link from "next/link";
 
 export const metadata = {
@@ -9,7 +10,8 @@ export default function PrivacyPage() {
   return (
     <div className="book-page">
       <article className="book-card privacy-doc">
-        <p className="brand-mark">{BRAND.shortName}</p>
+        <BrandLogo variant="mark" className="book-mark" />
+        <p className="brand-word">{BRAND.shortName}</p>
         <h1>Privacy notice</h1>
         <p className="muted">UK · Version 2026-08-uk-v1 · Effective August 2026</p>
 

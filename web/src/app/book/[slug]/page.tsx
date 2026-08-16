@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { BRAND } from "@/modules/config/brand";
+import { BrandLogo } from "@/components/BrandLogo";
 import { api, ApiError } from "@/lib/api";
 
 type Clinic = {
@@ -113,8 +114,14 @@ export default function BookingPage({ params }: Props) {
 
   return (
     <div className="book-page">
-      <div className="book-card">
-        <p className="brand-mark">{clinic?.name ?? slug}</p>
+      <div className="book-shell">
+        <div className="book-brand">
+          <BrandLogo variant="mark" className="book-mark" priority />
+          <p className="brand-word">{BRAND.shortName}</p>
+          <p className="brand-motto">{BRAND.motto}</p>
+        </div>
+        <div className="book-card">
+        <p className="eyebrow">{clinic?.name ?? slug}</p>
         <h1>Book online</h1>
         <p className="muted">
           Physio, osteopathy, and manual therapy — short intake, then confirm.
@@ -259,6 +266,7 @@ export default function BookingPage({ params }: Props) {
             </button>
           </>
         )}
+      </div>
       </div>
     </div>
   );
