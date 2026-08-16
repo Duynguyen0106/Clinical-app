@@ -1203,8 +1203,8 @@ h3 {
 }
 
 .sheet-card {
-  width: min(520px, 100%);
-  max-height: min(90vh, 820px);
+  width: min(560px, 100%);
+  max-height: min(92vh, 900px);
   overflow: auto;
   background: var(--surface-solid);
   border: 1px solid var(--line);
@@ -1415,4 +1415,124 @@ h3 {
     grid-column: 1 / -1;
     justify-content: space-between;
   }
+
+  .patients-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.visit-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.patients-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.prep-panel {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-solid) 92%, var(--accent-soft));
+}
+
+.visit-prep,
+.sheet-card .prep-panel {
+  margin-top: 0.35rem;
+}
+
+.prep-head h3,
+.prep-section h4 {
+  margin: 0;
+  font-family: var(--font-display);
+}
+
+.prep-head h3 {
+  font-size: 1.15rem;
+}
+
+.prep-section h4 {
+  font-size: 0.95rem;
+  margin-bottom: 0.35rem;
+}
+
+.prep-meta {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.prep-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.prep-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: var(--surface-solid);
+  border: 1px solid var(--line);
+}
+
+.prep-note {
+  flex-direction: column;
+}
+
+.prep-note-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+}
+
+.prep-excerpt {
+  margin: 0.3rem 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.prep-note-body {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+}
+
+.prep-section-block strong {
+  display: block;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+.prep-section-block p {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.92rem;
+}
+
+.prep-compact .prep-item {
+  padding: 0.45rem 0.55rem;
 }

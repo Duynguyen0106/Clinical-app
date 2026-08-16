@@ -47,19 +47,30 @@ export async function getPatient(ctx: AuthContext, id: string) {
       consents: { orderBy: { capturedAt: "desc" }, take: 20 },
       appointments: {
         orderBy: { startsAt: "desc" },
-        take: 20,
-        include: { appointmentType: true, practitioner: true },
+        take: 25,
+        include: {
+          appointmentType: { select: { id: true, name: true, durationMinutes: true } },
+          practitioner: { select: { id: true, displayName: true } },
+          visit: { select: { id: true } },
+        },
       },
       notes: {
         orderBy: { createdAt: "desc" },
-        take: 20,
-        select: {
-          id: true,
-          status: true,
-          source: true,
-          signedAt: true,
-          createdAt: true,
-          templateId: true,
+        take: 15,
+        include: {
+          template: { select: { id: true, name: true } },
+          visit: {
+            select: {
+              id: true,
+              appointment: {
+                select: {
+                  startsAt: true,
+                  appointmentType: { select: { name: true } },
+                  practitioner: { select: { displayName: true } },
+                },
+              },
+            },
+          },
         },
       },
       invoices: {
@@ -70,6 +81,86 @@ export async function getPatient(ctx: AuthContext, id: string) {
   });
   if (!patient) throw notFound("Patient not found");
   return patient;
+}
+
+/** Compact prep payload for diary / visit — history + readable prior notes */
+export async function getPatientPrep(ctx: AuthContext, id: string) {
+  const patient = await getPatient(ctx, id);
+  const notes = patient.notes.map((n) => ({
+    id: n.id,
+    status: n.status,
+    source: n.source,
+    signedAt: n.signedAt,
+    createdAt: n.createdAt,
+    templateName: n.template?.name ?? null,
+    visitId: n.visitId,
+    appointmentStartsAt: n.visit?.appointment?.startsAt ?? null,
+    serviceName: n.visit?.appointment?.appointmentType?.name ?? null,
+    practitionerName: n.visit?.appointment?.practitioner?.displayName ?? null,
+    summary: summariseNoteContent(n.content),
+    sections: flattenNoteSections(n.content),
+  }));
+
+  return {
+    id: patient.id,
+    firstName: patient.firstName,
+    lastName: patient.lastName,
+    email: patient.email,
+    phone: patient.phone,
+    dateOfBirth: patient.dateOfBirth,
+    alerts: patient.alerts,
+    appointments: patient.appointments.map((a) => ({
+      id: a.id,
+      startsAt: a.startsAt,
+      endsAt: a.endsAt,
+      status: a.status,
+      notes: a.notes,
+      serviceName: a.appointmentType.name,
+      practitionerName: a.practitioner.displayName,
+      visitId: a.visit?.id ?? null,
+    })),
+    notes,
+  };
+}
+
+function asRecord(content: unknown): Record<string, unknown> {
+  if (content && typeof content === "object" && !Array.isArray(content)) {
+    return content as Record<string, unknown>;
+  }
+  return {};
+}
+
+function flattenNoteSections(content: unknown): { key: string; value: string }[] {
+  const raw = asRecord(content);
+  const sections =
+    raw.sections && typeof raw.sections === "object" && !Array.isArray(raw.sections)
+      ? (raw.sections as Record<string, unknown>)
+      : raw;
+  const out: { key: string; value: string }[] = [];
+  for (const [key, val] of Object.entries(sections)) {
+    if (key === "flags" || key === "sections") continue;
+    if (typeof val === "string" && val.trim()) {
+      out.push({ key, value: val.trim() });
+    } else if (val && typeof val === "object" && "text" in (val as object)) {
+      const text = String((val as { text?: unknown }).text ?? "").trim();
+      if (text) out.push({ key, value: text });
+    }
+  }
+  return out;
+}
+
+function summariseNoteContent(content: unknown): string {
+  const sections = flattenNoteSections(content);
+  if (sections.length === 0) return "";
+  const prefer = ["plan", "assessment", "subjective", "objective", "hpc", "presenting"];
+  const ranked = [...sections].sort((a, b) => {
+    const ai = prefer.findIndex((p) => a.key.toLowerCase().includes(p));
+    const bi = prefer.findIndex((p) => b.key.toLowerCase().includes(p));
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  const first = ranked[0];
+  const text = first.value.replace(/\s+/g, " ");
+  return text.length > 180 ? `${text.slice(0, 177)}…` : text;
 }
 
 export async function createPatient(

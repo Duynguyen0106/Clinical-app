@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
+import { PatientPrepPanel } from "@/components/PatientPrepPanel";
 
 type Patient = {
   id: string;
@@ -16,7 +17,7 @@ type Patient = {
 export default function PatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [q, setQ] = useState("");
-  const [selected, setSelected] = useState<Patient | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -27,49 +28,59 @@ export default function PatientsPage() {
     return () => clearTimeout(t);
   }, [q]);
 
+  const selected = patients.find((p) => p.id === selectedId) ?? null;
+
   return (
-    <AppShell title="Patients" subtitle="Search directory and open timelines.">
-      <div className="panel">
-        <div className="panel-head">
-          <h2>Directory</h2>
-          <input
-            className="search-input"
-            placeholder="Search name, email, phone"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
-        <ul className="patient-list">
-          {patients.map((p) => (
-            <li key={p.id} className="patient-row">
-              <div>
-                <p className="apt-name">
-                  {p.firstName} {p.lastName}
-                </p>
-                <p className="muted">
-                  {[p.email, p.phone].filter(Boolean).join(" · ")}
-                </p>
-                {p.alerts ? <p className="alert-line">{p.alerts}</p> : null}
-              </div>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setSelected(p)}
-              >
-                View
-              </button>
-            </li>
-          ))}
-        </ul>
-        {selected ? (
-          <div className="detail-box">
-            <h3>
-              {selected.firstName} {selected.lastName}
-            </h3>
-            <p className="muted">{selected.email}</p>
-            <p className="muted">{selected.phone}</p>
+    <AppShell
+      title="Patients"
+      subtitle="Search the directory and review booking history plus prior notes before a visit."
+    >
+      <div className="patients-layout">
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Directory</h2>
+            <input
+              className="search-input"
+              placeholder="Search name, email, phone"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
           </div>
-        ) : null}
+          <ul className="patient-list">
+            {patients.map((p) => (
+              <li key={p.id} className="patient-row">
+                <div>
+                  <p className="apt-name">
+                    {p.firstName} {p.lastName}
+                  </p>
+                  <p className="muted">
+                    {[p.email, p.phone].filter(Boolean).join(" · ")}
+                  </p>
+                  {p.alerts ? <p className="alert-line">{p.alerts}</p> : null}
+                </div>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => setSelectedId(p.id)}
+                >
+                  Prep
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {selected ? (
+          <div className="panel">
+            <PatientPrepPanel patientId={selected.id} />
+          </div>
+        ) : (
+          <div className="panel empty-panel">
+            <p className="muted">
+              Select a patient to see their booking history and previous clinical
+              notes.
+            </p>
+          </div>
+        )}
       </div>
     </AppShell>
   );

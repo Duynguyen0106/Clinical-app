@@ -13,6 +13,7 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
+import { PatientPrepPanel } from "@/components/PatientPrepPanel";
 
 type Appointment = {
   id: string;
@@ -546,6 +547,12 @@ export default function CalendarPage() {
             {selected.notes ? (
               <p className="muted sheet-notes">{selected.notes}</p>
             ) : null}
+
+            <PatientPrepPanel
+              patientId={selected.patient.id}
+              excludeAppointmentId={selected.id}
+              compact
+            />
 
             {blocks.some((b) => b.practitioner.id === selected.practitioner.id) ? (
               <div className="block-list">
