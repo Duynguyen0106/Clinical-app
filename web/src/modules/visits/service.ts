@@ -6,8 +6,10 @@ import {
 import { prisma } from "@/server/db";
 import type { AuthContext } from "@/server/auth";
 import { badRequest, notFound } from "@/server/errors";
-import { mockOrganiseNote, mockTranscribe } from "@/modules/ai/mock-pipeline";
+import { organiseNote, transcribeAudio } from "@/modules/ai/providers";
 import { createDraftFromAi } from "@/modules/notes/service";
+import type { NoteSection } from "@/modules/notes/templates";
+import { saveAudioUpload, readAudioFile } from "@/server/storage";
 
 export async function startVisit(ctx: AuthContext, appointmentId: string) {
   const appointment = await prisma.appointment.findFirst({
@@ -24,12 +26,12 @@ export async function startVisit(ctx: AuthContext, appointmentId: string) {
           include: { patient: true, appointmentType: true, practitioner: true },
         },
         recording: { include: { transcript: true } },
-        notes: true,
+        notes: { orderBy: { createdAt: "desc" } },
       },
     });
   }
 
-  const visit = await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     await tx.appointment.update({
       where: { id: appointment.id },
       data: { status: AppointmentStatus.IN_PROGRESS },
@@ -45,8 +47,6 @@ export async function startVisit(ctx: AuthContext, appointmentId: string) {
       },
     });
   });
-
-  return visit;
 }
 
 export async function getVisit(ctx: AuthContext, visitId: string) {
@@ -120,15 +120,36 @@ export async function startRecording(ctx: AuthContext, visitId: string) {
   });
 }
 
+export async function uploadRecordingAudio(
+  ctx: AuthContext,
+  visitId: string,
+  bytes: Buffer,
+) {
+  const visit = await getVisit(ctx, visitId);
+  if (!visit.recording) throw badRequest("Start recording first");
+  if (!visit.recordingConsentAt) {
+    throw badRequest("Recording consent required");
+  }
+
+  const storageKey = await saveAudioUpload(ctx.clinicId, visit.id, bytes);
+
+  return prisma.recording.update({
+    where: { id: visit.recording.id },
+    data: {
+      storageKey,
+      status: RecordingStatus.UPLOADING,
+    },
+  });
+}
+
 export const stopRecordingSchema = z.object({
   durationSec: z.number().int().positive().optional(),
-  /** Optional raw transcript override for tests; otherwise mock STT runs */
   transcriptText: z.string().optional(),
+  templateId: z.string().optional(),
 });
 
 /**
- * Stop recording and run mock organise pipeline synchronously for MVP.
- * Later: enqueue jobs (UPLOADING → TRANSCRIBING → ORGANISING → READY).
+ * Stop recording → STT → template-aware organise → draft note.
  */
 export async function stopRecordingAndOrganise(
   ctx: AuthContext,
@@ -149,9 +170,33 @@ export async function stopRecordingAndOrganise(
     },
   });
 
-  const transcriptText =
-    input.transcriptText ??
-    (await mockTranscribe(visit.recording.storageKey ?? visit.id));
+  let audioBytes: Buffer | undefined;
+  try {
+    if (visit.recording.storageKey) {
+      audioBytes = await readAudioFile(visit.recording.storageKey);
+    }
+  } catch {
+    audioBytes = undefined;
+  }
+
+  let transcriptText = input.transcriptText;
+  try {
+    transcriptText =
+      transcriptText ??
+      (await transcribeAudio({
+        storageKey: visit.recording.storageKey ?? visit.id,
+        audioBytes,
+      }));
+  } catch (err) {
+    await prisma.recording.update({
+      where: { id: visit.recording.id },
+      data: {
+        status: RecordingStatus.FAILED,
+        error: err instanceof Error ? err.message : "Transcription failed",
+      },
+    });
+    throw err;
+  }
 
   await prisma.recording.update({
     where: { id: visit.recording.id },
@@ -167,22 +212,44 @@ export async function stopRecordingAndOrganise(
     update: { text: transcriptText },
   });
 
+  const template = await resolveTemplate(
+    ctx.clinicId,
+    visit.appointment.appointmentType.name,
+    input.templateId,
+  );
+
+  const sections = extractSections(template?.schema);
   const patientName = `${visit.appointment.patient.firstName} ${visit.appointment.patient.lastName}`;
-  const organised = await mockOrganiseNote({
-    transcript: transcriptText,
-    patientName,
-    appointmentType: visit.appointment.appointmentType.name,
-  });
+
+  let organised;
+  try {
+    organised = await organiseNote({
+      transcript: transcriptText,
+      patientName,
+      appointmentType: visit.appointment.appointmentType.name,
+      sections,
+    });
+  } catch (err) {
+    await prisma.recording.update({
+      where: { id: visit.recording.id },
+      data: {
+        status: RecordingStatus.FAILED,
+        error: err instanceof Error ? err.message : "Organise failed",
+      },
+    });
+    throw err;
+  }
 
   const note = await createDraftFromAi(ctx, {
     patientId: visit.appointment.patientId,
     visitId: visit.id,
     content: organised,
+    templateId: template?.id,
   });
 
   await prisma.recording.update({
     where: { id: visit.recording.id },
-    data: { status: RecordingStatus.READY },
+    data: { status: RecordingStatus.READY, error: null },
   });
 
   await prisma.visit.update({
@@ -199,5 +266,55 @@ export async function stopRecordingAndOrganise(
     visit: await getVisit(ctx, visitId),
     transcript,
     note,
+    template,
   };
+}
+
+async function resolveTemplate(
+  clinicId: string,
+  appointmentTypeName: string,
+  templateId?: string,
+) {
+  if (templateId) {
+    return prisma.noteTemplate.findFirst({
+      where: { id: templateId, clinicId },
+    });
+  }
+
+  const all = await prisma.noteTemplate.findMany({ where: { clinicId } });
+  const lower = appointmentTypeName.toLowerCase();
+  const matched =
+    all.find((t) => lower.includes("osteo") && t.name.toLowerCase().includes("osteo")) ??
+    all.find(
+      (t) =>
+        lower.includes("manual") && t.name.toLowerCase().includes("manual"),
+    ) ??
+    all.find(
+      (t) =>
+        lower.includes("initial") && t.name.toLowerCase().includes("initial"),
+    ) ??
+    all.find(
+      (t) =>
+        lower.includes("review") && t.name.toLowerCase().includes("review"),
+    ) ??
+    all.find((t) => t.isDefault) ??
+    all[0];
+
+  return matched ?? null;
+}
+
+function extractSections(schema: unknown): NoteSection[] {
+  if (
+    schema &&
+    typeof schema === "object" &&
+    Array.isArray((schema as { sections?: unknown }).sections)
+  ) {
+    return (schema as { sections: NoteSection[] }).sections;
+  }
+  return [
+    { id: "subjective", title: "Subjective", type: "markdown" },
+    { id: "objective", title: "Objective", type: "markdown" },
+    { id: "assessment", title: "Assessment", type: "markdown" },
+    { id: "plan", title: "Plan", type: "markdown" },
+  ];
 }

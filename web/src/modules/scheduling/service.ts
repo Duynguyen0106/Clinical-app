@@ -231,7 +231,7 @@ export async function getPublicClinicBySlug(slug: string) {
     appointmentTypes: clinic.appointmentTypes,
     practitioners: clinic.memberships
       .map((m) => m.practitionerProfile)
-      .filter(Boolean),
+      .filter((p): p is NonNullable<typeof p> => Boolean(p)),
     locations: clinic.locations,
   };
 }

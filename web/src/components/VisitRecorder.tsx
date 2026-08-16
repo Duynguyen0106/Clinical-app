@@ -3,88 +3,182 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Mic, Square, Check, AlertTriangle } from "lucide-react";
-import type { SoapNoteContent } from "@/modules/ai/mock-pipeline";
+import { api } from "@/lib/api";
 
 type Phase =
+  | "loading"
   | "consent"
   | "ready"
   | "recording"
   | "processing"
   | "review"
-  | "signed";
+  | "signed"
+  | "error";
 
-type Props = {
-  appointmentId: string;
-  patientName: string;
-  appointmentType: string;
+type VisitPayload = {
+  id: string;
+  recordingConsentAt: string | null;
+  appointment: {
+    patient: { firstName: string; lastName: string };
+    appointmentType: { name: string };
+  };
+  notes: Array<{
+    id: string;
+    status: string;
+    content: Record<string, unknown>;
+  }>;
 };
 
-export function VisitRecorder({
-  appointmentId,
-  patientName,
-  appointmentType,
-}: Props) {
-  const [phase, setPhase] = useState<Phase>("consent");
+type Props = { visitId: string };
+
+export function VisitRecorder({ visitId }: Props) {
+  const [phase, setPhase] = useState<Phase>("loading");
   const [consentChecked, setConsentChecked] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [note, setNote] = useState<SoapNoteContent | null>(null);
+  const [visit, setVisit] = useState<VisitPayload | null>(null);
+  const [noteId, setNoteId] = useState<string | null>(null);
+  const [content, setContent] = useState<Record<string, string>>({});
+  const [flags, setFlags] = useState<string[]>([]);
   const [statusLine, setStatusLine] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [micHint, setMicHint] = useState<string | null>(null);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
+    void api<{ visit: VisitPayload }>(`/visits/${visitId}`)
+      .then(({ visit: v }) => {
+        setVisit(v);
+        const draft = v.notes.find((n) => n.status === "DRAFT");
+        const signed = v.notes.find((n) => n.status === "SIGNED");
+        if (signed) {
+          setNoteId(signed.id);
+          setContent(stringifyContent(signed.content));
+          setPhase("signed");
+        } else if (draft) {
+          setNoteId(draft.id);
+          setContent(stringifyContent(draft.content));
+          setFlags(asFlags(draft.content));
+          setPhase("review");
+        } else if (v.recordingConsentAt) {
+          setPhase("ready");
+        } else {
+          setPhase("consent");
+        }
+      })
+      .catch((e: Error) => {
+        setError(e.message);
+        setPhase("error");
+      });
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, []);
+  }, [visitId]);
 
-  function startRecording() {
-    setPhase("recording");
-    setElapsed(0);
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
+  async function continueAfterConsent() {
+    await api(`/visits/${visitId}/consent`, {
+      method: "POST",
+      body: JSON.stringify({ granted: true, method: "in_person" }),
+    });
+    setPhase("ready");
+  }
+
+  async function startRecording() {
+    setError(null);
+    setMicHint(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (ev) => {
+        if (ev.data.size > 0) chunksRef.current.push(ev.data);
+      };
+
+      await api(`/visits/${visitId}/recording`, { method: "POST" });
+      recorder.start(1000);
+      setPhase("recording");
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
+    } catch {
+      setMicHint(
+        "Microphone permission is required. Allow mic access and try again — Treow works as a PWA on your phone too.",
+      );
+    }
   }
 
   async function stopAndOrganise() {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+
+    setPhase("processing");
+    setStatusLine("Finalising audio…");
+
+    const blob: Blob = await new Promise((resolve) => {
+      recorder.onstop = () => {
+        resolve(new Blob(chunksRef.current, { type: recorder.mimeType }));
+      };
+      recorder.stop();
+    });
+
+    streamRef.current?.getTracks().forEach((t) => t.stop());
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    setPhase("processing");
-    setStatusLine("Uploading recording…");
 
-    const res = await fetch("/api/ai/organise-note", {
+    setStatusLine("Uploading recording…");
+    const form = new FormData();
+    form.append("audio", blob, "visit.webm");
+    await api(`/visits/${visitId}/recording/upload`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        appointmentId,
-        patientName,
-        appointmentType,
-      }),
+      body: form,
     });
 
-    setStatusLine("Transcribing…");
-    await new Promise((r) => setTimeout(r, 400));
-    setStatusLine("Organising clinical note…");
+    setStatusLine("Transcribing & organising note…");
+    const result = await api<{
+      note: { id: string; content: Record<string, unknown> };
+    }>(`/visits/${visitId}/recording`, {
+      method: "PATCH",
+      body: JSON.stringify({ durationSec: elapsed || 1 }),
+    });
 
-    const data = (await res.json()) as {
-      note: SoapNoteContent;
-      transcriptPreview: string;
-    };
-    setNote(data.note);
+    setNoteId(result.note.id);
+    setContent(stringifyContent(result.note.content));
+    setFlags(asFlags(result.note.content));
     setPhase("review");
   }
 
-  function updateSection(key: keyof SoapNoteContent, value: string) {
-    if (!note || key === "clinician_review_flags") return;
-    setNote({ ...note, [key]: value });
-  }
-
-  function signNote() {
+  async function signNote() {
+    if (!noteId) return;
+    await api(`/notes/${noteId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    });
+    await api(`/notes/${noteId}/sign`, { method: "POST" });
     setPhase("signed");
   }
 
+  const patientName = visit
+    ? `${visit.appointment.patient.firstName} ${visit.appointment.patient.lastName}`
+    : "…";
+  const appointmentType = visit?.appointment.appointmentType.name ?? "";
+
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
+
+  const fields = Object.keys(content).filter((k) => k !== "clinician_review_flags");
 
   return (
     <div className="visit-layout">
@@ -92,6 +186,9 @@ export function VisitRecorder({
         <p className="eyebrow">Visit mode</p>
         <h2>{patientName}</h2>
         <p className="muted">{appointmentType}</p>
+
+        {phase === "loading" ? <p className="muted">Loading visit…</p> : null}
+        {phase === "error" ? <p className="form-error">{error}</p> : null}
 
         {phase === "consent" && (
           <div className="consent-box">
@@ -103,14 +200,14 @@ export function VisitRecorder({
               />
               <span>
                 Patient has consented to audio recording for clinical
-                documentation. Consent will be stored on the visit record.
+                documentation. Consent is stored on the visit record (UK GDPR).
               </span>
             </label>
             <button
               type="button"
               className="btn-primary"
               disabled={!consentChecked}
-              onClick={() => setPhase("ready")}
+              onClick={() => void continueAfterConsent()}
             >
               Continue to recording
             </button>
@@ -128,14 +225,15 @@ export function VisitRecorder({
             </p>
             <p className="muted">
               {phase === "ready"
-                ? "Tap start — you do not need to type during the visit."
+                ? "Uses this device’s microphone. Install Treow as an app for phone visits."
                 : "Listening… speak naturally with your patient."}
             </p>
+            {micHint ? <p className="form-error">{micHint}</p> : null}
             {phase === "ready" ? (
               <button
                 type="button"
                 className="btn-primary record-btn"
-                onClick={startRecording}
+                onClick={() => void startRecording()}
               >
                 <Mic size={18} aria-hidden /> Start recording
               </button>
@@ -143,7 +241,7 @@ export function VisitRecorder({
               <button
                 type="button"
                 className="btn-danger record-btn"
-                onClick={stopAndOrganise}
+                onClick={() => void stopAndOrganise()}
               >
                 <Square size={16} aria-hidden /> Stop & organise note
               </button>
@@ -169,6 +267,9 @@ export function VisitRecorder({
             <Link href="/app" className="btn-primary">
               Back to Today
             </Link>
+            <Link href="/app/money" className="btn-secondary">
+              Mark invoice paid
+            </Link>
           </div>
         )}
       </section>
@@ -179,41 +280,34 @@ export function VisitRecorder({
           {phase === "review" && (
             <span className="badge-draft">AI draft — review required</span>
           )}
-          {phase === "signed" && (
-            <span className="badge-signed">Signed</span>
-          )}
+          {phase === "signed" && <span className="badge-signed">Signed</span>}
         </div>
 
-        {!note && phase !== "review" && phase !== "signed" && (
+        {fields.length === 0 && phase !== "review" && phase !== "signed" ? (
           <div className="note-placeholder">
             <p>
-              After you stop recording, Treow organises a SOAP note from the
-              conversation. You review and sign — the blank page is gone.
+              After you stop recording, Treow organises a note from your clinic
+              template. You review and sign.
             </p>
           </div>
-        )}
+        ) : null}
 
-        {note && (
+        {fields.length > 0 && (
           <div className="note-editor">
-            {note.clinician_review_flags.length > 0 && (
+            {flags.length > 0 && (
               <div className="flag-banner" role="status">
                 <AlertTriangle size={16} aria-hidden />
-                {note.clinician_review_flags.join(" ")}
+                {flags.join(" ")}
               </div>
             )}
-            {(
-              [
-                ["subjective", "Subjective"],
-                ["objective", "Objective"],
-                ["assessment", "Assessment"],
-                ["plan", "Plan"],
-              ] as const
-            ).map(([key, label]) => (
+            {fields.map((key) => (
               <label key={key} className="note-field">
-                <span>{label}</span>
+                <span>{titleCase(key)}</span>
                 <textarea
-                  value={note[key]}
-                  onChange={(e) => updateSection(key, e.target.value)}
+                  value={content[key] ?? ""}
+                  onChange={(e) =>
+                    setContent((c) => ({ ...c, [key]: e.target.value }))
+                  }
                   readOnly={phase === "signed"}
                   rows={4}
                 />
@@ -223,7 +317,7 @@ export function VisitRecorder({
               <button
                 type="button"
                 className="btn-primary"
-                onClick={signNote}
+                onClick={() => void signNote()}
               >
                 Sign note
               </button>
@@ -233,4 +327,22 @@ export function VisitRecorder({
       </section>
     </div>
   );
+}
+
+function stringifyContent(raw: Record<string, unknown>) {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k === "clinician_review_flags") continue;
+    out[k] = typeof v === "string" ? v : JSON.stringify(v);
+  }
+  return out;
+}
+
+function asFlags(raw: Record<string, unknown>) {
+  const f = raw.clinician_review_flags;
+  return Array.isArray(f) ? f.map(String) : [];
+}
+
+function titleCase(key: string) {
+  return key.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

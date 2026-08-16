@@ -13,8 +13,8 @@ export default function HomePage() {
           <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-ghost">
             Book as patient
           </Link>
-          <Link href="/app" className="btn-primary">
-            Open clinic
+          <Link href="/login" className="btn-primary">
+            Clinic sign in
           </Link>
         </div>
       </nav>
@@ -22,11 +22,11 @@ export default function HomePage() {
         <h1>{BRAND.shortName}</h1>
         <p className="lede">{BRAND.tagline}</p>
         <div className="home-cta">
-          <Link href="/app/visits/apt_1" className="btn-primary">
-            Try AI visit demo
+          <Link href="/login" className="btn-primary">
+            Open clinic
           </Link>
-          <Link href="/app" className="btn-secondary">
-            Today&apos;s schedule
+          <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-secondary">
+            Online booking
           </Link>
         </div>
         <div

@@ -1,25 +1,20 @@
-import { notFound } from "next/navigation";
+"use client";
+
+import { use } from "react";
 import { AppShell } from "@/components/AppShell";
 import { VisitRecorder } from "@/components/VisitRecorder";
-import { getAppointment } from "@/modules/demo/data";
 
 type Props = { params: Promise<{ id: string }> };
 
-export default async function VisitPage({ params }: Props) {
-  const { id } = await params;
-  const apt = getAppointment(id);
-  if (!apt) notFound();
+export default function VisitPage({ params }: Props) {
+  const { id } = use(params);
 
   return (
     <AppShell
       title="Visit"
-      subtitle="Record → AI organises the note → you review and sign."
+      subtitle="Consent → record on this device → AI organises → you sign."
     >
-      <VisitRecorder
-        appointmentId={apt.id}
-        patientName={apt.patientName}
-        appointmentType={apt.type}
-      />
+      <VisitRecorder visitId={id} />
     </AppShell>
   );
 }

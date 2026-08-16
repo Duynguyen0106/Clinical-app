@@ -4,7 +4,7 @@ import { NoteStatus, Prisma } from "@/generated/prisma/client";
 import type { AuthContext } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
-import type { SoapNoteContent } from "@/modules/ai/mock-pipeline";
+import type { NoteContent } from "@/modules/ai/providers";
 
 export async function listNoteTemplates(ctx: AuthContext) {
   return prisma.noteTemplate.findMany({
@@ -25,6 +25,7 @@ export async function listNotes(
     include: {
       patient: { select: { id: true, firstName: true, lastName: true } },
       template: { select: { id: true, name: true } },
+      visit: { select: { id: true } },
     },
     orderBy: { updatedAt: "desc" },
     take: Math.min(opts.take ?? 50, 100),
@@ -59,7 +60,7 @@ export async function createDraftFromAi(
   args: {
     patientId: string;
     visitId: string;
-    content: SoapNoteContent;
+    content: NoteContent | Record<string, unknown>;
     templateId?: string;
   },
 ) {

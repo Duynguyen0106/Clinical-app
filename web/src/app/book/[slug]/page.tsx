@@ -1,35 +1,81 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
+import { format } from "date-fns";
+import { BRAND } from "@/modules/config/brand";
+import { api, ApiError } from "@/lib/api";
 
-const SERVICES = [
-  { id: "physio-initial", name: "Physio · Initial assessment", minutes: 45 },
-  { id: "physio-followup", name: "Physio · Follow-up", minutes: 30 },
-  { id: "osteo", name: "Osteopathy session", minutes: 40 },
-  { id: "manual", name: "Manual therapy", minutes: 30 },
-];
+type Clinic = {
+  id: string;
+  name: string;
+  slug: string;
+  appointmentTypes: { id: string; name: string; durationMinutes: number }[];
+  practitioners: ({ id: string; displayName: string } | null)[];
+};
 
 type Props = { params: Promise<{ slug: string }> };
 
 export default function BookingPage({ params }: Props) {
   const { slug } = use(params);
-  const clinicLabel =
-    slug === DEMO_CLINIC.slug
-      ? DEMO_CLINIC.name
-      : slug.replace(/-/g, " ");
-
-  const [serviceId, setServiceId] = useState(SERVICES[1].id);
+  const [clinic, setClinic] = useState<Clinic | null>(null);
+  const [serviceId, setServiceId] = useState("");
+  const [practitionerId, setPractitionerId] = useState("");
+  const [slots, setSlots] = useState<string[]>([]);
+  const [slot, setSlot] = useState("");
   const [step, setStep] = useState<"pick" | "details" | "done">("pick");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const slots = useMemo(
-    () => ["Tomorrow 09:00", "Tomorrow 10:30", "Thu 14:00", "Fri 11:30"],
-    [],
-  );
-  const [slot, setSlot] = useState(slots[0]);
+  useEffect(() => {
+    void api<{ clinic: Clinic }>(`/public/clinics/${slug}`, { auth: false })
+      .then((d) => {
+        setClinic(d.clinic);
+        setServiceId(d.clinic.appointmentTypes[0]?.id ?? "");
+        const prac = d.clinic.practitioners.filter(Boolean)[0];
+        setPractitionerId(prac?.id ?? "");
+      })
+      .catch((e: Error) => setError(e.message));
+  }, [slug]);
+
+  useEffect(() => {
+    if (!serviceId || !practitionerId) return;
+    void api<{ slots: string[] }>(
+      `/public/clinics/${slug}/slots?appointmentTypeId=${serviceId}&practitionerId=${practitionerId}`,
+      { auth: false },
+    ).then((d) => {
+      setSlots(d.slots);
+      setSlot(d.slots[0] ?? "");
+    });
+  }, [slug, serviceId, practitionerId]);
+
+  async function confirm() {
+    if (!clinic) return;
+    const [firstName, ...rest] = name.trim().split(/\s+/);
+    const lastName = rest.join(" ") || "Patient";
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/public/clinics/${slug}`, {
+        method: "POST",
+        auth: false,
+        body: JSON.stringify({
+          appointmentTypeId: serviceId,
+          practitionerId,
+          startsAt: slot,
+          patient: { firstName, lastName, email, phone },
+        }),
+      });
+      setStep("done");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Booking failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (step === "done") {
     return (
@@ -38,28 +84,33 @@ export default function BookingPage({ params }: Props) {
           <p className="brand-mark">{BRAND.shortName}</p>
           <h1>You&apos;re booked</h1>
           <p className="muted">
-            {name || "Patient"} · {SERVICES.find((s) => s.id === serviceId)?.name}{" "}
-            · {slot}
+            {name} · {format(new Date(slot), "EEE d MMM HH:mm")}
           </p>
-          <p>A confirmation email would go to {email || "your inbox"}.</p>
-          <Link href="/app" className="btn-primary">
-            Clinic view
+          <p>Confirmation would email {email}.</p>
+          <Link href="/login" className="btn-primary">
+            Clinic sign in
           </Link>
         </div>
       </div>
     );
   }
 
+  const practitioners = (clinic?.practitioners ?? []).filter(Boolean) as {
+    id: string;
+    displayName: string;
+  }[];
+
   return (
     <div className="book-page">
       <div className="book-card">
-        <p className="brand-mark">{clinicLabel}</p>
+        <p className="brand-mark">{clinic?.name ?? slug}</p>
         <h1>Book online</h1>
         <p className="muted">
           Physio, osteopathy, and manual therapy — pick a service and time.
         </p>
+        {error ? <p className="form-error">{error}</p> : null}
 
-        {step === "pick" && (
+        {step === "pick" && clinic && (
           <>
             <label className="field">
               <span>Service</span>
@@ -67,9 +118,22 @@ export default function BookingPage({ params }: Props) {
                 value={serviceId}
                 onChange={(e) => setServiceId(e.target.value)}
               >
-                {SERVICES.map((s) => (
+                {clinic.appointmentTypes.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.minutes} min)
+                    {s.name} ({s.durationMinutes} min)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Practitioner</span>
+              <select
+                value={practitionerId}
+                onChange={(e) => setPractitionerId(e.target.value)}
+              >
+                {practitioners.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.displayName}
                   </option>
                 ))}
               </select>
@@ -84,14 +148,18 @@ export default function BookingPage({ params }: Props) {
                     className={`slot ${slot === s ? "selected" : ""}`}
                     onClick={() => setSlot(s)}
                   >
-                    {s}
+                    {format(new Date(s), "EEE d MMM HH:mm")}
                   </button>
                 ))}
               </div>
+              {slots.length === 0 ? (
+                <p className="muted">No open slots in the next fortnight.</p>
+              ) : null}
             </fieldset>
             <button
               type="button"
               className="btn-primary"
+              disabled={!slot}
               onClick={() => setStep("details")}
             >
               Continue
@@ -107,6 +175,7 @@ export default function BookingPage({ params }: Props) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="name"
+                required
               />
             </label>
             <label className="field">
@@ -116,14 +185,24 @@ export default function BookingPage({ params }: Props) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
+                required
+              />
+            </label>
+            <label className="field">
+              <span>Phone</span>
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                autoComplete="tel"
               />
             </label>
             <button
               type="button"
               className="btn-primary"
-              onClick={() => setStep("done")}
+              disabled={busy || !name || !email}
+              onClick={() => void confirm()}
             >
-              Confirm booking
+              {busy ? "Booking…" : "Confirm booking"}
             </button>
           </>
         )}

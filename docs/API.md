@@ -39,7 +39,14 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | GET | `/visits/:id` | Visit detail |
 | POST | `/visits/:id/consent` | `{ granted: true, method }` |
 | POST | `/visits/:id/recording` | Start recording |
-| PATCH | `/visits/:id/recording` | Stop → mock STT → organise draft note |
+| POST | `/visits/:id/recording/upload` | multipart `audio` file |
+| PATCH | `/visits/:id/recording` | Stop → STT → template organise → draft |
+
+## Public booking
+
+| GET | `/public/clinics/:slug` | Clinic booking catalog |
+| GET | `/public/clinics/:slug/slots?appointmentTypeId=&practitionerId=` | Next available slots |
+| POST | `/public/clinics/:slug` | Book online |
 
 ## Notes
 
@@ -56,11 +63,6 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | POST | `/invoices/:id/pay` | Mark paid `{ method }` |
 | DELETE | `/invoices/:id/pay` | Mark unpaid |
 
-## Public booking
-
-| GET | `/public/clinics/:slug` | Clinic booking catalog |
-| POST | `/public/clinics/:slug` | Book online |
-
 ## Setup
 
 ```bash
@@ -70,3 +72,5 @@ npx prisma db push
 npm run db:seed
 npm run dev
 ```
+
+`AI_PROVIDER=mock` (default) or `openai` with `OPENAI_API_KEY` for Whisper + structured notes.

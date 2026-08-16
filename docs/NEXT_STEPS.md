@@ -4,19 +4,18 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 
 ---
 
-## Where we are
+## Where we are (updated)
 
-| Layer | Status | Gap to “usable clinic MVP” |
-|-------|--------|----------------------------|
-| Product decisions | Locked | — |
-| Domain model + seed | Done | — |
-| REST API (auth, patients, diary, visits, notes, invoices, public book) | Done | Availability slots, waitlist, email, real STT/LLM |
-| Clinic UI | Demo only (hardcoded) | **Not wired to API** |
-| Real mic → storage → STT | Mock organise only | **Hero feature incomplete** |
-| UK compliance pack | Checklist only | Privacy notice, DPAs, retention jobs, UK hosting |
-| Differentiator vs Cliniko/Zanda | Designed | Not yet demoable end-to-end on a real visit |
+| Layer | Status |
+|-------|--------|
+| REST API | Done |
+| UI wired to API | Done (login, Today, calendar, patients, notes, money, visit, booking) |
+| Real mic + upload | Done (MediaRecorder → local storage) |
+| AI adapters | Done (`mock` default, `openai` optional) |
+| Template-aware organise | Done |
+| PWA shell | Done (manifest + SW) |
 
-**Verdict:** Backend foundation is ahead of the product. The next product risk is not “more API” — it is **closing the loop so a physio can run a real UK visit on Treow and prefer it to Cliniko + Heidi**.
+**Next product focus:** P1 booking polish (email reminders, intake) and UK compliance (P2).
 
 ---
 
