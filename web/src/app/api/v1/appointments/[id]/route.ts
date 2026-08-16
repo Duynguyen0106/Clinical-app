@@ -3,10 +3,8 @@ import { jsonOk } from "@/server/http";
 import { assertCanMutateClinical, requireStaff } from "@/server/rbac";
 import {
   getAppointment,
-  rescheduleAppointment,
-  rescheduleSchema,
-  updateAppointmentStatus,
-  updateAppointmentStatusSchema,
+  updateAppointment,
+  updateAppointmentSchema,
 } from "@/modules/scheduling/service";
 
 export const GET = withAuth(async (_req, ctx, params) => {
@@ -17,22 +15,18 @@ export const GET = withAuth(async (_req, ctx, params) => {
 
 export const PATCH = withAuth(async (req, ctx, params) => {
   const body = await req.json();
-  if ("startsAt" in body) {
+  const parsed = updateAppointmentSchema.parse(body);
+  if (
+    parsed.startsAt !== undefined ||
+    parsed.durationMinutes !== undefined ||
+    parsed.appointmentTypeId !== undefined ||
+    parsed.status === "CANCELLED" ||
+    parsed.status === "NO_SHOW"
+  ) {
     assertCanMutateClinical(ctx);
-    const parsed = rescheduleSchema.parse(body);
-    const appointment = await rescheduleAppointment(
-      ctx,
-      params.id,
-      parsed.startsAt,
-    );
-    return jsonOk({ appointment });
+  } else {
+    requireStaff(ctx);
   }
-  requireStaff(ctx);
-  const parsed = updateAppointmentStatusSchema.parse(body);
-  const appointment = await updateAppointmentStatus(
-    ctx,
-    params.id,
-    parsed.status,
-  );
+  const appointment = await updateAppointment(ctx, params.id, parsed);
   return jsonOk({ appointment });
 });

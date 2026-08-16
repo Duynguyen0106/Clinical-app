@@ -128,21 +128,25 @@ async function main() {
         name: "Physio · Initial assessment",
         durationMinutes: 45,
         colour: "#0F6B5C",
+        defaultPriceCents: 7500,
       },
       {
         name: "Physio · Follow-up",
         durationMinutes: 30,
         colour: "#3D7A6E",
+        defaultPriceCents: 5500,
       },
       {
         name: "Osteopathy session",
         durationMinutes: 40,
         colour: "#1F5F78",
+        defaultPriceCents: 6500,
       },
       {
         name: "Manual therapy",
         durationMinutes: 30,
         colour: "#4A6B5C",
+        defaultPriceCents: 5000,
       },
     ].map((t) =>
       prisma.appointmentType.create({
