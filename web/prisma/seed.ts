@@ -75,6 +75,22 @@ async function main() {
     },
   });
 
+  const jordan = await prisma.user.create({
+    data: {
+      email: "jordan@northbank.example",
+      name: "Jordan Lee",
+      passwordHash,
+    },
+  });
+
+  const jordanMembership = await prisma.membership.create({
+    data: {
+      clinicId: clinic.id,
+      userId: jordan.id,
+      role: MembershipRole.PRACTITIONER,
+    },
+  });
+
   const practitioner = await prisma.practitionerProfile.create({
     data: {
       membershipId: ownerMembership.id,
@@ -83,16 +99,26 @@ async function main() {
     },
   });
 
-  // Mon–Fri 09:00–17:00
-  for (const dayOfWeek of [1, 2, 3, 4, 5]) {
-    await prisma.availabilityRule.create({
-      data: {
-        practitionerId: practitioner.id,
-        dayOfWeek,
-        startMinute: 9 * 60,
-        endMinute: 17 * 60,
-      },
-    });
+  const jordanProfile = await prisma.practitionerProfile.create({
+    data: {
+      membershipId: jordanMembership.id,
+      displayName: "Jordan Lee",
+      colour: "#1F5F78",
+    },
+  });
+
+  // Mon–Fri 09:00–17:00 for both clinicians
+  for (const profileId of [practitioner.id, jordanProfile.id]) {
+    for (const dayOfWeek of [1, 2, 3, 4, 5]) {
+      await prisma.availabilityRule.create({
+        data: {
+          practitionerId: profileId,
+          dayOfWeek,
+          startMinute: 9 * 60,
+          endMinute: 17 * 60,
+        },
+      });
+    }
   }
 
   const location = await prisma.location.create({
@@ -242,16 +268,30 @@ async function main() {
         status: "BOOKED",
       },
     }),
+    // Jordan's diary — so practitioner login shows a scoped day
     prisma.appointment.create({
       data: {
         clinicId: clinic.id,
         patientId: patients[2].id,
-        practitionerId: practitioner.id,
+        practitionerId: jordanProfile.id,
         appointmentTypeId: types[3].id,
         locationId: location.id,
         roomId: room1.id,
         startsAt: at(11),
         endsAt: at(11, 30),
+        status: "BOOKED",
+      },
+    }),
+    prisma.appointment.create({
+      data: {
+        clinicId: clinic.id,
+        patientId: patients[0].id,
+        practitionerId: jordanProfile.id,
+        appointmentTypeId: types[1].id,
+        locationId: location.id,
+        roomId: room2.id,
+        startsAt: at(14),
+        endsAt: at(14, 30),
         status: "BOOKED",
       },
     }),
@@ -319,7 +359,9 @@ async function main() {
   }
 
   console.log("Seed complete.");
-  console.log("Login: alex@northbank.example / treow-demo");
+  console.log("Owner:        alex@northbank.example / treow-demo");
+  console.log("Practitioner: jordan@northbank.example / treow-demo");
+  console.log("Reception:    reception@northbank.example / treow-demo");
   console.log("Clinic slug: northbank-manual");
   console.log(`First appointment id: ${appointments[0].id}`);
 }

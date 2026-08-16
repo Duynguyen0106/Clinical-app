@@ -75,6 +75,9 @@ export default function CalendarPage() {
   );
   const [viewMode, setViewMode] = useState<"week" | "day">("week");
   const [dayFocus, setDayFocus] = useState(() => new Date());
+  /** "" = all practitioners; otherwise filter diary to one profile */
+  const [filterPractitionerId, setFilterPractitionerId] = useState<string>("");
+  const [filterReady, setFilterReady] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -119,15 +122,18 @@ export default function CalendarPage() {
   const load = useCallback(() => {
     const from = viewMode === "day" ? dayFocus : weekStart;
     const to = viewMode === "day" ? addDays(dayFocus, 1) : addDays(weekStart, 7);
+    const pracQs = filterPractitionerId
+      ? `&practitionerId=${encodeURIComponent(filterPractitionerId)}`
+      : "";
     void Promise.all([
       api<{ appointments: Appointment[] }>(
-        `/appointments?from=${from.toISOString()}&to=${to.toISOString()}`,
+        `/appointments?from=${from.toISOString()}&to=${to.toISOString()}${pracQs}`,
       ),
       api<{ blocks: Block[] }>(
         `/blocks?from=${format(from, "yyyy-MM-dd")}&to=${format(
           viewMode === "day" ? dayFocus : addDays(weekStart, 6),
           "yyyy-MM-dd",
-        )}`,
+        )}${pracQs}`,
       ),
     ])
       .then(([a, b]) => {
@@ -135,19 +141,25 @@ export default function CalendarPage() {
         setBlocks(b.blocks);
       })
       .catch((e: Error) => setError(e.message));
-  }, [weekStart, viewMode, dayFocus]);
+  }, [weekStart, viewMode, dayFocus, filterPractitionerId]);
 
   useEffect(() => {
+    if (!filterReady) return;
     load();
-  }, [load]);
+  }, [load, filterReady]);
 
   useEffect(() => {
     void api<Catalog>("/clinic/catalog")
       .then((c) => {
         setCatalog(c);
         setBookTypeId(c.appointmentTypes[0]?.id ?? "");
-        setBookPractitionerId(c.practitioners[0]?.id ?? "");
-        setBlockPractitionerId(c.practitioners[0]?.id ?? "");
+        const myId = me?.practitionerProfileId;
+        const defaultPrac =
+          (myId && c.practitioners.some((p) => p.id === myId)
+            ? myId
+            : c.practitioners[0]?.id) ?? "";
+        setBookPractitionerId(defaultPrac);
+        setBlockPractitionerId(defaultPrac);
         setBookDuration(c.appointmentTypes[0]?.durationMinutes ?? 30);
         const fee = c.appointmentTypes[0]?.defaultPriceCents ?? 0;
         setBookFeePounds(fee ? (fee / 100).toFixed(2) : "");
@@ -159,7 +171,17 @@ export default function CalendarPage() {
         setBookPatientId(d.patients[0]?.id ?? "");
       })
       .catch(() => undefined);
-  }, []);
+  }, [me?.practitionerProfileId]);
+
+  useEffect(() => {
+    if (filterReady || !me) return;
+    if (me.role === "PRACTITIONER" && me.practitionerProfileId) {
+      setFilterPractitionerId(me.practitionerProfileId);
+    } else {
+      setFilterPractitionerId("");
+    }
+    setFilterReady(true);
+  }, [me, filterReady]);
 
   useEffect(() => {
     if (!bookOpen || !bookTypeId || !bookPractitionerId) return;
@@ -285,7 +307,11 @@ export default function CalendarPage() {
   return (
     <AppShell
       title="Calendar"
-      subtitle="Day or week view — book, block time, drag to reschedule, prepare from patient history."
+      subtitle={
+        me?.role === "PRACTITIONER"
+          ? "Your diary — switch to All to see the full clinic board."
+          : "Day or week view — book, block time, drag to reschedule, prepare from patient history."
+      }
     >
       <div className="panel calendar-panel">
         <div className="panel-head week-toolbar">
@@ -309,6 +335,35 @@ export default function CalendarPage() {
                 Week
               </button>
             </div>
+            {catalog && catalog.practitioners.length > 1 ? (
+              <div
+                className="view-toggle prac-filter"
+                role="group"
+                aria-label="Practitioner filter"
+              >
+                <button
+                  type="button"
+                  className={`btn-sm ${filterPractitionerId === "" ? "btn-secondary" : "btn-ghost"}`}
+                  onClick={() => setFilterPractitionerId("")}
+                >
+                  All
+                </button>
+                {catalog.practitioners.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`btn-sm ${
+                      filterPractitionerId === p.id ? "btn-secondary" : "btn-ghost"
+                    }`}
+                    onClick={() => setFilterPractitionerId(p.id)}
+                  >
+                    {p.id === me?.practitionerProfileId
+                      ? "Me"
+                      : p.displayName.split(" ")[0]}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <button
               type="button"
               className="btn-ghost btn-sm"

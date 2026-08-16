@@ -19,17 +19,27 @@ import { useAuth } from "@/components/AuthProvider";
 import { BrandLogo } from "@/components/BrandLogo";
 import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
 
-const nav = [
-  { href: "/app", label: "Today", icon: LayoutDashboard },
+type NavItem = {
+  href: string;
+  label: string;
+  myDayLabel?: string;
+  icon: typeof LayoutDashboard;
+  clinicianOnly?: boolean;
+  ownerOnly?: boolean;
+  staffOps?: boolean;
+};
+
+const nav: NavItem[] = [
+  { href: "/app", label: "Today", myDayLabel: "My day", icon: LayoutDashboard },
   { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/app/rooms", label: "Rooms", icon: DoorOpen },
-  { href: "/app/team", label: "Team", icon: UserRoundPlus },
+  { href: "/app/rooms", label: "Rooms", icon: DoorOpen, staffOps: true },
+  { href: "/app/team", label: "Team", icon: UserRoundPlus, ownerOnly: true },
   { href: "/app/patients", label: "Patients", icon: Users },
   { href: "/app/notes", label: "Notes", icon: ClipboardList, clinicianOnly: true },
   { href: "/app/tasks", label: "Tasks", icon: ListTodo },
   { href: "/app/waitlist", label: "Waitlist", icon: Hourglass },
-  { href: "/app/money", label: "Money", icon: Wallet },
-  { href: "/app/settings", label: "Settings", icon: Settings },
+  { href: "/app/money", label: "Money", icon: Wallet, staffOps: true },
+  { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];
 
 export function AppShell({
@@ -48,7 +58,17 @@ export function AppShell({
   const userName = me?.user.name ?? DEMO_CLINIC.practitioner;
   const bookHref = `/book/${me?.clinic.slug ?? DEMO_CLINIC.slug}`;
   const isClinician = me?.role === "OWNER" || me?.role === "PRACTITIONER";
-  const visibleNav = nav.filter((item) => !item.clinicianOnly || isClinician);
+  const isOwner = me?.role === "OWNER";
+  const isPractitioner = me?.role === "PRACTITIONER";
+  const hasDiary = Boolean(me?.practitionerProfileId);
+
+  const visibleNav = nav.filter((item) => {
+    if (item.clinicianOnly && !isClinician) return false;
+    if (item.ownerOnly && !isOwner) return false;
+    // Practitioners focus on clinical work — money/rooms stay with front desk / owners
+    if (item.staffOps && isPractitioner) return false;
+    return true;
+  });
 
   return (
     <div className="app-shell min-h-screen">
@@ -61,7 +81,12 @@ export function AppShell({
           </div>
         </Link>
         <nav className="nav-list" aria-label="Clinic">
-          {visibleNav.map(({ href, label, icon: Icon }) => {
+          {visibleNav.map((item) => {
+            const { href, icon: Icon } = item;
+            const label =
+              href === "/app" && hasDiary && item.myDayLabel
+                ? item.myDayLabel
+                : item.label;
             const active =
               href === "/app" ? pathname === "/app" : pathname.startsWith(href);
             return (

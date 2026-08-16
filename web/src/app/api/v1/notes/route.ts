@@ -16,6 +16,14 @@ export const GET = withAuth(async (req, ctx) => {
     statusParam && Object.values(NoteStatus).includes(statusParam as NoteStatus)
       ? (statusParam as NoteStatus)
       : undefined;
-  const notes = await listNotes(ctx, { status });
+  const practitionerId = url.searchParams.get("practitionerId") ?? undefined;
+  // Practitioners default to their own diary notes unless they ask for clinic-wide
+  const scopedPractitionerId =
+    practitionerId ??
+    (ctx.role === "PRACTITIONER" ? ctx.practitionerProfileId ?? undefined : undefined);
+  const notes = await listNotes(ctx, {
+    status,
+    practitionerId: scopedPractitionerId ?? undefined,
+  });
   return jsonOk({ notes });
 });

@@ -587,6 +587,24 @@ h3 {
   gap: 1rem;
 }
 
+.next-up-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.prac-filter {
+  flex-wrap: wrap;
+}
+
+.demo-role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.85rem;
+}
+
 .side-stack {
   display: grid;
   gap: 1rem;
