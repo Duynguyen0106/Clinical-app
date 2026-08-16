@@ -45,6 +45,19 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | POST | `/jobs/reminders` | Send due email reminders (staff) |
 | POST | `/jobs/retention` | Purge expired encrypted audio (owner) |
 
+## Waitlist & ops
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/waitlist?status=` | Queue (excludes cancelled by default) |
+| POST | `/waitlist` | Add `{ patientId, appointmentTypeId, practitionerId? }` |
+| POST | `/waitlist/:id` | `{ action: "accept" \| "decline" }` for offers |
+| DELETE | `/waitlist/:id` | Remove from waitlist |
+| GET | `/ops/tasks` | Unsigned notes, unpaid invoices, missing intake |
+| GET | `/ops/pulse` | Week utilisation, rebook %, unsigned, unpaid, new/return |
+
+Cancelling an appointment (`PATCH /appointments/:id` with `status: CANCELLED`) auto-offers the freed slot to the next matching waitlist entry (email + `OFFERED` status).
+
 ## Compliance (UK)
 
 | Method | Path | Notes |

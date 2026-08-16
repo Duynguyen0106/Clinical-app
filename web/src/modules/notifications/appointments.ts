@@ -100,3 +100,37 @@ export async function sendUpcomingReminders(withinHours = 24) {
 
   return { sent: results.length, appointmentIds: results };
 }
+
+export async function sendWaitlistOfferEmail(opts: {
+  entryId: string;
+  clinicName: string;
+  timezone: string;
+  patientEmail: string | null | undefined;
+  patientFirstName: string;
+  serviceName: string;
+  startsAt: Date;
+  expiresAt: Date;
+}) {
+  if (!opts.patientEmail) return { sent: false };
+
+  const when = formatWhen(opts.startsAt, opts.timezone);
+  const expires = formatWhen(opts.expiresAt, opts.timezone);
+  await sendEmail({
+    to: opts.patientEmail,
+    subject: `Slot available — ${opts.clinicName}`,
+    text: [
+      `Hi ${opts.patientFirstName},`,
+      "",
+      `A ${opts.serviceName} slot has opened at ${opts.clinicName}.`,
+      "",
+      `Offered time: ${when}`,
+      `Please reply to the clinic soon — this offer expires around ${expires}.`,
+      "",
+      `(Waitlist ref: ${opts.entryId})`,
+      "",
+      "— Treow Clinic",
+    ].join("\n"),
+  });
+  return { sent: true };
+}
+

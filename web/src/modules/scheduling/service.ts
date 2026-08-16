@@ -152,7 +152,7 @@ export async function updateAppointmentStatus(
   status: AppointmentStatus,
 ) {
   const appointment = await getAppointment(ctx, id);
-  return prisma.appointment.update({
+  const updated = await prisma.appointment.update({
     where: { id: appointment.id },
     data: { status },
     include: {
@@ -161,6 +161,24 @@ export async function updateAppointmentStatus(
       appointmentType: true,
     },
   });
+
+  if (
+    status === AppointmentStatus.CANCELLED &&
+    appointment.status !== AppointmentStatus.CANCELLED
+  ) {
+    const { offerSlotToWaitlist } = await import("./waitlist");
+    const offer = await offerSlotToWaitlist({
+      clinicId: ctx.clinicId,
+      appointmentTypeId: appointment.appointmentTypeId,
+      practitionerId: appointment.practitionerId,
+      startsAt: appointment.startsAt,
+      endsAt: appointment.endsAt,
+      sourceAppointmentId: appointment.id,
+    });
+    return { ...updated, waitlistOffer: offer };
+  }
+
+  return updated;
 }
 
 export async function rescheduleAppointment(

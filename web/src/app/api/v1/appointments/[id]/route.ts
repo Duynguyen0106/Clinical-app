@@ -1,6 +1,6 @@
 import { withAuth } from "@/server/api";
 import { jsonOk } from "@/server/http";
-import { assertCanMutateClinical } from "@/server/rbac";
+import { assertCanMutateClinical, requireStaff } from "@/server/rbac";
 import {
   getAppointment,
   rescheduleAppointment,
@@ -10,14 +10,15 @@ import {
 } from "@/modules/scheduling/service";
 
 export const GET = withAuth(async (_req, ctx, params) => {
+  requireStaff(ctx);
   const appointment = await getAppointment(ctx, params.id);
   return jsonOk({ appointment });
 });
 
 export const PATCH = withAuth(async (req, ctx, params) => {
-  assertCanMutateClinical(ctx);
   const body = await req.json();
   if ("startsAt" in body) {
+    assertCanMutateClinical(ctx);
     const parsed = rescheduleSchema.parse(body);
     const appointment = await rescheduleAppointment(
       ctx,
@@ -26,6 +27,7 @@ export const PATCH = withAuth(async (req, ctx, params) => {
     );
     return jsonOk({ appointment });
   }
+  requireStaff(ctx);
   const parsed = updateAppointmentStatusSchema.parse(body);
   const appointment = await updateAppointmentStatus(
     ctx,

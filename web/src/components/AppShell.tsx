@@ -6,10 +6,12 @@ import {
   CalendarDays,
   ClipboardList,
   LayoutDashboard,
+  ListTodo,
   LogOut,
   Settings,
   Users,
   Wallet,
+  Hourglass,
 } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
@@ -19,6 +21,8 @@ const nav = [
   { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/app/patients", label: "Patients", icon: Users },
   { href: "/app/notes", label: "Notes", icon: ClipboardList },
+  { href: "/app/tasks", label: "Tasks", icon: ListTodo },
+  { href: "/app/waitlist", label: "Waitlist", icon: Hourglass },
   { href: "/app/money", label: "Money", icon: Wallet },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];

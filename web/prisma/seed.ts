@@ -257,6 +257,40 @@ async function main() {
     },
   });
 
+  // Waitlist: Mina wants a physio follow-up (matches cancel of follow-up-type slots)
+  await prisma.waitlistEntry.create({
+    data: {
+      clinicId: clinic.id,
+      patientId: patients[2].id,
+      appointmentTypeId: types[1].id,
+      practitionerId: practitioner.id,
+      autoNotify: true,
+      notes: "Happy with late morning",
+      status: "WAITING",
+    },
+  });
+
+  // Draft note for task inbox
+  const draftTemplate = await prisma.noteTemplate.findFirst({
+    where: { clinicId: clinic.id },
+  });
+  if (draftTemplate) {
+    await prisma.clinicalNote.create({
+      data: {
+        patientId: patients[1].id,
+        templateId: draftTemplate.id,
+        status: "DRAFT",
+        source: "manual",
+        content: {
+          subjective: "Neck stiffness after desk work",
+          objective: "",
+          assessment: "",
+          plan: "",
+        },
+      },
+    });
+  }
+
   console.log("Seed complete.");
   console.log("Login: alex@northbank.example / treow-demo");
   console.log("Clinic slug: northbank-manual");

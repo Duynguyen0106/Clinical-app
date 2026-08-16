@@ -15,7 +15,7 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 | Template-aware organise | Done |
 | PWA shell | Done (manifest + SW) |
 
-**Next product focus:** P3 ops (waitlist, tasks, practice pulse). P2 UK compliance baseline is in product — see `docs/UK_COMPLIANCE.md`.
+**Next product focus:** Rooms/resources and webhooks (remaining P3), then partner feedback. Waitlist auto-offer, task inbox, and practice pulse are in product.
 
 ### P1 status
 - Week calendar + drag reschedule — done
@@ -29,6 +29,13 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 - Audit export + Settings UI — done
 - RBAC polish on clinical / money / diary routes — done
 - Vendor DPA checklist (docs) — done; signed DPAs remain an ops gate before live AI
+
+### P3 status (partial)
+- Waitlist auto-offer on cancel — done
+- Task inbox — done
+- Practice pulse (5 metrics) — done
+- Rooms/resources — not started
+- Webhooks — not started
 ---
 
 ## Product goal for the next milestone
@@ -89,15 +96,13 @@ Diary API exists; booking product does not yet feel finished.
 
 ### P3 — Beat Cliniko on ops (after loop works)
 
-Do **not** start these before P0 exit criteria.
-
-| Step | Cliniko gap addressed |
-|------|------------------------|
-| Waitlist auto-offer on cancel | Scheduling depth |
-| Task inbox (unsigned notes, unpaid, missing intake) | No native tasks |
-| Practice pulse (5 metrics) | Thin reporting |
-| Rooms/resources | Fake-practitioner workaround |
-| Webhooks | Integrator pain |
+| Step | Cliniko gap addressed | Status |
+|------|------------------------|--------|
+| Waitlist auto-offer on cancel | Scheduling depth | Done |
+| Task inbox (unsigned notes, unpaid, missing intake) | No native tasks | Done |
+| Practice pulse (5 metrics) | Thin reporting | Done |
+| Rooms/resources | Fake-practitioner workaround | Later |
+| Webhooks | Integrator pain | Later |
 
 ---
 
@@ -148,4 +153,4 @@ Reuse product plan targets, measured on design partners:
 
 ## Immediate recommendation
 
-**Next build:** P3 ops that partners ask for first — waitlist auto-offer, task inbox (unsigned notes / unpaid), and a small practice pulse. Keep AI vendor DPA as the gate before real STT/LLM on live patients.
+**Next build:** rooms/resources on the calendar, or webhooks for cancel/book/note-signed — pick from partner demand. Keep AI vendor DPA as the gate before real STT/LLM on live patients.
