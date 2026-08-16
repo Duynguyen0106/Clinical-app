@@ -1,6 +1,24 @@
-# Deploy — Treow Clinic (UK beta)
+## Deploy — Treow Clinic (UK beta)
 
 Minimal production path for design-partner beta. Prefer **UK/EU** regions.
+
+Phone prep while waiting: see `docs/PHONE_CHECKLIST.md`.
+
+## 0. Vercel + Neon (click path)
+
+1. Create **Neon** project in Europe → copy `DATABASE_URL`.
+2. Vercel → Import GitHub repo `Clinical-app`.
+3. Set **Root Directory** to `web` (important).
+4. `web/vercel.json` already sets Prisma generate + build.
+5. Add env vars (below) → Deploy.
+6. Set `APP_BASE_URL` to the `https://…vercel.app` URL → Redeploy.
+7. From a computer, run schema against production DB:
+
+```bash
+cd web
+DATABASE_URL="postgresql://…" npx prisma db push
+DATABASE_URL="postgresql://…" npm run db:seed   # staging demo only
+```
 
 ## 1. Provision
 
