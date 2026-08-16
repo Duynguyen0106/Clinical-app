@@ -74,6 +74,15 @@ Bookings conflict-check **practitioner and room**. Online book auto-picks the fi
 
 Default new clinician hours: Mon–Fri 09:00–17:00. UI: `/app/team` (owners + practitioners). Leave/blocked time uses `/blocks`.
 
+## Staff pay (owner)
+
+| GET | `/team/pay?month=YYYY-MM` | Month summary per practitioner (sessions, due) |
+| GET | `/team/pay?month=YYYY-MM&format=csv` | Same as CSV download |
+| GET | `/team/:id/pay` | Current pay terms + rate history |
+| PUT | `/team/:id/pay` | Upsert rate card `{ employmentType, payMode, sessionRateCents?, dayRateCents?, feeSharePercent?, effectiveFrom?, notes? }` |
+
+Pay modes: `NONE` · `SESSION` · `DAY` · `FEE_SHARE`. Employment: `EMPLOYED` · `SELF_EMPLOYED` · `CONTRACTOR`. UI: `/app/team/pay` (separate from patient **Money**).
+
 ## Visits (AI note pipeline)
 
 | POST | `/visits` | `{ appointmentId }` → start / resume visit |

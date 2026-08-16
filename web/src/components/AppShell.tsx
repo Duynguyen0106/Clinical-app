@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   ListTodo,
   LogOut,
+  PoundSterling,
   Settings,
   Users,
   UserRoundPlus,
@@ -36,6 +37,7 @@ const nav: NavItem[] = [
   { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/app/rooms", label: "Rooms", icon: DoorOpen, staffOps: true },
   { href: "/app/team", label: "Team", icon: UserRoundPlus, clinicianOnly: true },
+  { href: "/app/team/pay", label: "Staff pay", icon: PoundSterling, ownerOnly: true },
   { href: "/app/patients", label: "Patients", icon: Users },
   { href: "/app/notes", label: "Notes", icon: ClipboardList, clinicianOnly: true },
   { href: "/app/tasks", label: "Tasks", icon: ListTodo },
@@ -136,7 +138,11 @@ export function AppShell({
                 ? item.myDayLabel
                 : item.label;
             const active =
-              href === "/app" ? pathname === "/app" : pathname.startsWith(href);
+              href === "/app"
+                ? pathname === "/app"
+                : href === "/app/team"
+                  ? pathname === "/app/team"
+                  : pathname === href || pathname.startsWith(`${href}/`);
             return (
               <Link
                 key={href}
