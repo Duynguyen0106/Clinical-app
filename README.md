@@ -9,41 +9,45 @@ AI-first practice management for UK allied health (physio, osteopathy, manual th
 - [Product plan](docs/PRODUCT_PLAN.md) — vision, MVP, locked decisions
 - [Architecture](docs/ARCHITECTURE.md) — stack, AI pipeline, UK compliance
 - [Cliniko competitive research](docs/COMPETITIVE_CLINIKO.md) — how Treow improves on Cliniko
+- [API reference](docs/API.md) — backend v1 endpoints
 
 ## Quick start
 
 ```bash
+# Postgres running locally (see DATABASE_URL in web/.env.example)
 cd web
 npm install
+npx prisma db push
+npm run db:seed
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Demo paths
+**Demo login:** `alex@northbank.example` / `treow-demo`  
+**Clinic slug:** `northbank-manual`
+
+### Backend (done)
+
+REST API under `/api/v1` with session auth:
+
+- Auth, patients, appointments (conflict checks), clinic catalog
+- Visits: consent → recording → mock STT/organise → draft note → sign
+- Invoices: create + mark paid / unpaid (GBP)
+- Public online booking by clinic slug
+
+### Demo UI paths
 
 | Path | What |
 |------|------|
 | `/` | Treow home |
-| `/app` | Today (clinic) |
-| `/app/visits/apt_1` | **AI visit demo** — consent → record → organised SOAP → sign |
-| `/app/money` | Mark paid / unpaid invoices (GBP) |
-| `/app/calendar` | Day calendar |
-| `/book/northbank-manual` | Patient online booking |
+| `/app` | Today (static demo UI — wire to API next) |
+| `/app/visits/apt_1` | Visit UI prototype |
+| `/book/northbank-manual` | Booking UI prototype |
 
-AI organise uses a **mock** pipeline (`AI_PROVIDER=mock`) — no API keys required.
+## Next
 
-## Stack
-
-- Next.js (App Router) + TypeScript + Tailwind
-- Prisma schema (`web/prisma/schema.prisma`) — defaults `Europe/London`, `GBP`
-- Brand config: `web/src/modules/config/brand.ts`
-
-## Next build steps
-
-1. Auth + multi-tenant clinics (UK defaults)
-2. Postgres + real repositories
-3. PWA + MediaRecorder upload + STT (UK/EU vendors)
-4. LLM structured notes + sign/audit
-5. Availability engine for online booking
-6. UK GDPR compliance pack + beta mixed MSK clinics
+1. Wire clinic UI to `/api/v1`
+2. Real MediaRecorder upload + PWA
+3. UK/EU STT + LLM providers (swap mock)
+4. Waitlist / rebook / tasks from competitive plan
