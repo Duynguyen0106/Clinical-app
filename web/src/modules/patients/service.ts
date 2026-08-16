@@ -12,7 +12,13 @@ export const createPatientSchema = z.object({
   lastName: z.string().min(1).max(100),
   email: z.string().email().optional().nullable(),
   phone: z.string().max(40).optional().nullable(),
-  dateOfBirth: z.string().datetime().optional().nullable(),
+  dateOfBirth: z
+    .union([
+      z.string().datetime(),
+      z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    ])
+    .optional()
+    .nullable(),
   alerts: z.string().max(2000).optional().nullable(),
   gpName: z.string().max(120).optional().nullable(),
   gpPractice: z.string().max(200).optional().nullable(),
@@ -28,19 +34,33 @@ export async function listPatients(
 ) {
   const take = Math.min(opts.take ?? 50, 100);
   const q = opts.q?.trim();
+  const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
 
   return prisma.patient.findMany({
     where: {
       clinicId: ctx.clinicId,
       ...(q
-        ? {
-            OR: [
-              { firstName: { contains: q, mode: "insensitive" } },
-              { lastName: { contains: q, mode: "insensitive" } },
-              { email: { contains: q, mode: "insensitive" } },
-              { phone: { contains: q } },
-            ],
-          }
+        ? tokens.length > 1
+          ? {
+              AND: tokens.map((token) => ({
+                OR: [
+                  { firstName: { contains: token, mode: "insensitive" as const } },
+                  { lastName: { contains: token, mode: "insensitive" as const } },
+                  { email: { contains: token, mode: "insensitive" as const } },
+                  { phone: { contains: token } },
+                  { nhsNumber: { contains: token } },
+                ],
+              })),
+            }
+          : {
+              OR: [
+                { firstName: { contains: q, mode: "insensitive" as const } },
+                { lastName: { contains: q, mode: "insensitive" as const } },
+                { email: { contains: q, mode: "insensitive" as const } },
+                { phone: { contains: q } },
+                { nhsNumber: { contains: q } },
+              ],
+            }
         : {}),
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -276,7 +296,7 @@ export async function createPatient(
       lastName: input.lastName,
       email: input.email ?? null,
       phone: input.phone ?? null,
-      dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : null,
+      dateOfBirth: parseDob(input.dateOfBirth),
       alerts: input.alerts ?? null,
       gpName: input.gpName ?? null,
       gpPractice: input.gpPractice ?? null,
@@ -284,6 +304,14 @@ export async function createPatient(
       nhsNumber: input.nhsNumber ?? null,
     },
   });
+}
+
+function parseDob(value: string | null | undefined) {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T00:00:00.000Z`);
+  }
+  return new Date(value);
 }
 
 export async function updatePatient(
@@ -305,11 +333,7 @@ export async function updatePatient(
       ...(input.gpEmail !== undefined ? { gpEmail: input.gpEmail } : {}),
       ...(input.nhsNumber !== undefined ? { nhsNumber: input.nhsNumber } : {}),
       ...(input.dateOfBirth !== undefined
-        ? {
-            dateOfBirth: input.dateOfBirth
-              ? new Date(input.dateOfBirth)
-              : null,
-          }
+        ? { dateOfBirth: parseDob(input.dateOfBirth) }
         : {}),
     },
   });

@@ -26,13 +26,15 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 
 ## Patients
 
-| GET | `/patients?q=&take=` | Search / list |
-| POST | `/patients` | Create |
+| GET | `/patients?q=&take=` | Search / list (name tokens, email, phone, NHS number) |
+| POST | `/patients` | Create `{ firstName, lastName, email?, phone?, dateOfBirth?, nhsNumber?, alerts?, gpName?, gpPractice?, gpEmail? }` |
 | GET | `/patients/:id` | Profile + booking timeline (note **metadata only**, no clinical bodies) |
 | GET | `/patients/:id?prep=1&source=` | Prep pack (logs `prep_opened`). Reception: bookings/alerts only. Clinicians: note stubs; bodies load on expand |
 | POST | `/patients/:id` | Clinician: `{ action: "note_expanded", noteId, source? }` — returns note sections + audits disclosure |
-| PATCH | `/patients/:id` | Update |
+| PATCH | `/patients/:id` | Update profile fields |
 | POST | `/patients/:id/consents` | `{ type, granted, method }` |
+
+Staff booking: Calendar empty cell → book sheet with patient lookup (`/app/calendar`). Directory create/edit: `/app/patients`.
 
 ## Appointments
 
