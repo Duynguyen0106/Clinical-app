@@ -257,12 +257,12 @@ async function main() {
     },
   });
 
-  // Waitlist: Mina wants a physio follow-up (matches cancel of follow-up-type slots)
+  // Waitlist: Mina wants osteopathy — cancel James's osteo slot to demo auto-offer
   await prisma.waitlistEntry.create({
     data: {
       clinicId: clinic.id,
       patientId: patients[2].id,
-      appointmentTypeId: types[1].id,
+      appointmentTypeId: types[2].id,
       practitionerId: practitioner.id,
       autoNotify: true,
       notes: "Happy with late morning",
