@@ -9,6 +9,9 @@ import { useAuth } from "@/components/AuthProvider";
 type ClinicCompliance = {
   id: string;
   name?: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
   audioRetentionDays: number;
   privacyNoticeVersion: string;
   dataRegion: string;
@@ -35,6 +38,9 @@ export default function SettingsPage() {
   const [support, setSupport] = useState<SupportInfo | null>(null);
   const [booking, setBooking] = useState<BookingPolicy | null>(null);
   const [days, setDays] = useState(14);
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [address, setAddress] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [auditCount, setAuditCount] = useState<number | null>(null);
@@ -48,6 +54,9 @@ export default function SettingsPage() {
       .then(([c, s, b]) => {
         setClinic(c.clinic);
         setDays(c.clinic.audioRetentionDays);
+        setPhone(c.clinic.phone ?? "");
+        setEmail(c.clinic.email ?? "");
+        setAddress(c.clinic.address ?? "");
         setSupport(s.support);
         setBooking(b.booking);
       })
@@ -60,10 +69,15 @@ export default function SettingsPage() {
     try {
       const d = await api<{ clinic: ClinicCompliance }>("/clinic/compliance", {
         method: "PATCH",
-        body: JSON.stringify({ audioRetentionDays: days }),
+        body: JSON.stringify({
+          audioRetentionDays: days,
+          phone: phone || null,
+          email: email || null,
+          address: address || null,
+        }),
       });
       setClinic(d.clinic);
-      setMessage("Saved retention settings.");
+      setMessage("Saved clinic letterhead and retention settings.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Save failed");
     }
@@ -152,6 +166,37 @@ export default function SettingsPage() {
           <Link href="/privacy" className="btn-ghost">
             View privacy notice →
           </Link>
+
+          <h3 style={{ marginTop: "1.25rem" }}>Letterhead</h3>
+          <p className="muted">
+            Shown on printed clinical notes and GP letters.
+          </p>
+          <label className="field">
+            <span>Clinic address</span>
+            <input
+              value={address}
+              disabled={!isOwner}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="12 Quayside, London"
+            />
+          </label>
+          <label className="field">
+            <span>Phone</span>
+            <input
+              value={phone}
+              disabled={!isOwner}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Email</span>
+            <input
+              type="email"
+              value={email}
+              disabled={!isOwner}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
 
           <label className="field" style={{ marginTop: "1rem" }}>
             <span>Audio retention (days)</span>

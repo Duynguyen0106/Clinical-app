@@ -4,18 +4,37 @@ import { useEffect, useState } from "react";
 import { Printer, FileText, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 
+type LetterheadClinic = {
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+};
+
+type LetterheadPractitioner = {
+  displayName: string;
+  professionalTitle: string | null;
+  registrationBody: string | null;
+  registrationNumber: string | null;
+};
+
 type ClinicalDocument = {
   kind: "clinical_note";
   noteId: string;
+  reference: string;
   signedAt: string | null;
-  clinic: { name: string };
+  signedByName: string | null;
+  clinic: LetterheadClinic;
   patient: {
     fullName: string;
     dateOfBirth: string | null;
     email: string | null;
     phone: string | null;
+    nhsNumber: string | null;
   };
-  practitioner: { displayName: string } | null;
+  practitioner: LetterheadPractitioner | null;
+  locationName: string | null;
+  locationAddress: string | null;
   serviceName: string | null;
   appointmentStartsAt: string | null;
   templateName: string | null;
@@ -26,9 +45,17 @@ type ClinicalDocument = {
 type GpLetterDocument = {
   kind: "gp_letter";
   noteId: string;
-  clinic: { name: string };
-  patient: { fullName: string; dateOfBirth: string | null };
-  practitioner: { displayName: string } | null;
+  reference: string;
+  clinic: LetterheadClinic;
+  patient: {
+    fullName: string;
+    dateOfBirth: string | null;
+    nhsNumber: string | null;
+  };
+  practitioner: LetterheadPractitioner | null;
+  signedByName: string | null;
+  locationName: string | null;
+  locationAddress: string | null;
   serviceName: string | null;
   appointmentStartsAt: string | null;
   gp: { name: string | null; practice: string | null; email: string | null };
@@ -42,7 +69,6 @@ type Doc = ClinicalDocument | GpLetterDocument;
 
 type Props = {
   noteId: string;
-  /** Compact buttons for prep panel */
   compact?: boolean;
 };
 
@@ -53,6 +79,51 @@ function formatDate(iso: string | null) {
     month: "short",
     year: "numeric",
   });
+}
+
+function formatDateTime(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function registrationLine(p: LetterheadPractitioner | null) {
+  if (!p) return null;
+  if (p.registrationBody && p.registrationNumber) {
+    return `${p.registrationBody} ${p.registrationNumber}`;
+  }
+  return p.registrationNumber;
+}
+
+function ClinicLetterhead({
+  clinic,
+  reference,
+}: {
+  clinic: LetterheadClinic;
+  reference: string;
+}) {
+  return (
+    <header className="print-head">
+      <div className="print-letterhead">
+        <div>
+          <p className="print-clinic">{clinic.name}</p>
+          {clinic.address ? <p className="print-contact">{clinic.address}</p> : null}
+          <p className="print-contact">
+            {[clinic.phone ? `Tel ${clinic.phone}` : null, clinic.email]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+        <p className="print-ref">Ref {reference}</p>
+      </div>
+    </header>
+  );
 }
 
 export function NotePrintActions({ noteId, compact = false }: Props) {
@@ -70,9 +141,7 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
     if (!open) return;
     setBusy(true);
     setError(null);
-    void api<{ document: Doc }>(
-      `/notes/${noteId}/document?kind=${kind}`,
-    )
+    void api<{ document: Doc }>(`/notes/${noteId}/document?kind=${kind}`)
       .then((d) => {
         setDoc(d.document);
         if (d.document.kind === "gp_letter") {
@@ -89,10 +158,6 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
   function openKind(next: "clinical_note" | "gp_letter") {
     setKind(next);
     setOpen(true);
-  }
-
-  function handlePrint() {
-    window.print();
   }
 
   return (
@@ -143,7 +208,7 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
                 <button
                   type="button"
                   className="btn-primary btn-sm"
-                  onClick={handlePrint}
+                  onClick={() => window.print()}
                   disabled={!doc || busy}
                 >
                   <Printer size={14} aria-hidden /> Print / Save PDF
@@ -187,16 +252,17 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
 }
 
 function ClinicalNotePrint({ doc }: { doc: ClinicalDocument }) {
+  const reg = registrationLine(doc.practitioner);
   return (
     <article className="print-sheet">
-      <header className="print-head">
-        <p className="print-clinic">{doc.clinic.name}</p>
-        <h1>Clinical note</h1>
-        <p className="print-meta">
-          {doc.templateName ?? "Consultation"} · Signed{" "}
-          {formatDate(doc.signedAt)}
-        </p>
-      </header>
+      <ClinicLetterhead clinic={doc.clinic} reference={doc.reference} />
+      <h1>Clinical note</h1>
+      <p className="print-meta">
+        {doc.templateName ?? "Consultation"} · Signed{" "}
+        {formatDateTime(doc.signedAt)}
+        {doc.signedByName ? ` by ${doc.signedByName}` : ""}
+      </p>
+
       <section className="print-block">
         <h2>Patient</h2>
         <p>
@@ -204,29 +270,50 @@ function ClinicalNotePrint({ doc }: { doc: ClinicalDocument }) {
         </p>
         <p>
           DOB {formatDate(doc.patient.dateOfBirth)}
-          {doc.patient.phone ? ` · ${doc.patient.phone}` : ""}
-          {doc.patient.email ? ` · ${doc.patient.email}` : ""}
+          {doc.patient.nhsNumber ? ` · NHS ${doc.patient.nhsNumber}` : ""}
         </p>
         <p>
-          {doc.serviceName ?? "Visit"}
-          {doc.appointmentStartsAt
-            ? ` · ${formatDate(doc.appointmentStartsAt)}`
-            : ""}
-          {doc.practitioner
-            ? ` · ${doc.practitioner.displayName}`
-            : ""}
+          {[doc.patient.phone, doc.patient.email].filter(Boolean).join(" · ") ||
+            "No contact on file"}
         </p>
       </section>
+
+      <section className="print-block">
+        <h2>Visit</h2>
+        <p>
+          {doc.serviceName ?? "Visit"} · {formatDateTime(doc.appointmentStartsAt)}
+        </p>
+        <p>
+          {doc.practitioner?.displayName ?? "Practitioner"}
+          {doc.practitioner?.professionalTitle
+            ? ` · ${doc.practitioner.professionalTitle}`
+            : ""}
+          {reg ? ` · ${reg}` : ""}
+        </p>
+        {(doc.locationName || doc.locationAddress || doc.clinic.address) && (
+          <p>
+            {[doc.locationName, doc.locationAddress || doc.clinic.address]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        )}
+      </section>
+
       {doc.sections.map((s) => (
         <section key={s.key} className="print-block">
           <h2>{s.label}</h2>
           <p className="print-body">{s.value}</p>
         </section>
       ))}
+
       <footer className="print-foot">
         <p>
-          Signed clinical record · {doc.clinic.name} · Printed{" "}
-          {formatDate(doc.printedAt)}
+          Signed by {doc.signedByName ?? doc.practitioner?.displayName ?? "—"}
+          {doc.signedAt ? ` on ${formatDateTime(doc.signedAt)}` : ""}
+        </p>
+        <p>
+          {doc.clinic.name} · Ref {doc.reference} · Printed{" "}
+          {formatDateTime(doc.printedAt)}
         </p>
       </footer>
     </article>
@@ -249,17 +336,22 @@ function GpLetterPrint({
   const gpLine = [doc.gp.name, doc.gp.practice, doc.gp.email]
     .filter(Boolean)
     .join(" · ");
+  const reg = registrationLine(doc.practitioner);
 
   return (
     <article className="print-sheet">
-      <header className="print-head">
-        <p className="print-clinic">{doc.clinic.name}</p>
-        <h1>Letter to GP</h1>
-        <p className="print-meta">
-          From {doc.practitioner?.displayName ?? "Treating clinician"}
-          {doc.signedAt ? ` · based on note signed ${formatDate(doc.signedAt)}` : ""}
-        </p>
-      </header>
+      <ClinicLetterhead clinic={doc.clinic} reference={doc.reference} />
+      <h1>Letter to GP</h1>
+      <p className="print-meta">
+        From {doc.practitioner?.displayName ?? "Treating clinician"}
+        {doc.practitioner?.professionalTitle
+          ? ` · ${doc.practitioner.professionalTitle}`
+          : ""}
+        {reg ? ` · ${reg}` : ""}
+        {doc.signedAt
+          ? ` · based on note signed ${formatDateTime(doc.signedAt)}`
+          : ""}
+      </p>
 
       <section className="print-block">
         <p>
@@ -270,16 +362,18 @@ function GpLetterPrint({
           {doc.patient.dateOfBirth
             ? ` (DOB ${formatDate(doc.patient.dateOfBirth)})`
             : ""}
+          {doc.patient.nhsNumber ? ` · NHS ${doc.patient.nhsNumber}` : ""}
+        </p>
+        <p>
+          <strong>Visit:</strong> {doc.serviceName ?? "Consultation"} ·{" "}
+          {formatDateTime(doc.appointmentStartsAt)}
         </p>
       </section>
 
       <section className="print-block no-print">
         <label className="note-field">
           <span>Subject</span>
-          <input
-            value={subject}
-            onChange={(e) => onSubject(e.target.value)}
-          />
+          <input value={subject} onChange={(e) => onSubject(e.target.value)} />
         </label>
         <label className="note-field">
           <span>Letter body — edit before printing</span>
@@ -306,7 +400,12 @@ function GpLetterPrint({
 
       <footer className="print-foot">
         <p>
-          {doc.clinic.name} · Printed {formatDate(doc.printedAt)}
+          Signed by {doc.signedByName ?? doc.practitioner?.displayName ?? "—"}
+          {reg ? ` · ${reg}` : ""}
+        </p>
+        <p>
+          {doc.clinic.name} · Ref {doc.reference} · Printed{" "}
+          {formatDateTime(doc.printedAt)}
         </p>
       </footer>
     </article>

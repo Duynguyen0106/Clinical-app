@@ -101,6 +101,10 @@ model Clinic {
   name      String
   slug      String   @unique
   timezone  String   @default("Europe/London")
+  /// Letterhead / correspondence
+  phone     String?
+  email     String?
+  address   String?
   /// Days to retain encrypted visit audio (0 = delete after note signed / organise)
   audioRetentionDays Int @default(14)
   privacyNoticeVersion String @default("2026-08-uk-v1")
@@ -154,6 +158,12 @@ model PractitionerProfile {
   displayName  String
   colour       String  @default("#0F6B5C")
   active       Boolean @default(true)
+  /// e.g. Chartered Physiotherapist
+  professionalTitle String?
+  /// e.g. HCPC, GOsC
+  registrationBody String?
+  /// e.g. PH12345
+  registrationNumber String?
 
   membership       Membership        @relation(fields: [membershipId], references: [id], onDelete: Cascade)
   availability     AvailabilityRule[]
@@ -207,6 +217,8 @@ model Patient {
   gpName      String?
   gpPractice  String?
   gpEmail     String?
+  /// Optional NHS number for correspondence
+  nhsNumber   String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
