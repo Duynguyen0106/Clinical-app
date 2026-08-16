@@ -204,15 +204,17 @@ model PatientConsent {
 }
 
 model AppointmentType {
-  id              String  @id @default(cuid())
-  clinicId        String
-  name            String
-  durationMinutes Int
-  bufferBefore    Int     @default(0)
-  bufferAfter     Int     @default(0)
-  colour          String  @default("#3D7A6E")
-  onlineBookable  Boolean @default(true)
-  active          Boolean @default(true)
+  id               String  @id @default(cuid())
+  clinicId         String
+  name             String
+  durationMinutes  Int
+  /// Default invoice amount when staff charges from the diary (GBP pence)
+  defaultPriceCents Int    @default(0)
+  bufferBefore     Int     @default(0)
+  bufferAfter      Int     @default(0)
+  colour           String  @default("#3D7A6E")
+  onlineBookable   Boolean @default(true)
+  active           Boolean @default(true)
 
   clinic          Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   appointments    Appointment[]

@@ -1,9 +1,14 @@
 import { z } from "zod";
-import { AppointmentStatus } from "@/generated/prisma/client";
+import {
+  AppointmentStatus,
+  InvoiceStatus,
+} from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import type { AuthContext } from "@/server/auth";
 import { badRequest, conflict, notFound } from "@/server/errors";
 import { requirePatient } from "@/modules/patients/service";
+import { assertWithinAvailability } from "./availability";
+import { listClinicSlots } from "./slots";
 
 const appointmentStatuses = [
   "BOOKED",
@@ -23,6 +28,10 @@ export const createAppointmentSchema = z.object({
   roomId: z.string().optional().nullable(),
   startsAt: z.string().datetime(),
   notes: z.string().max(2000).optional().nullable(),
+  /** Override type duration for this booking only */
+  durationMinutes: z.number().int().min(5).max(480).optional(),
+  /** Create a SENT invoice for this visit (pence). Extra fees can be added later. */
+  feeCents: z.number().int().min(0).optional(),
 });
 
 export const updateAppointmentStatusSchema = z.object({
@@ -32,6 +41,28 @@ export const updateAppointmentStatusSchema = z.object({
 export const rescheduleSchema = z.object({
   startsAt: z.string().datetime(),
 });
+
+export const updateAppointmentSchema = z
+  .object({
+    status: z.enum(appointmentStatuses).optional(),
+    startsAt: z.string().datetime().optional(),
+    durationMinutes: z.number().int().min(5).max(480).optional(),
+    appointmentTypeId: z.string().min(1).optional(),
+    notes: z.string().max(2000).optional().nullable(),
+    /** Add or top-up a linked invoice by this many pence (creates one if missing) */
+    additionalFeeCents: z.number().int().positive().optional(),
+    feeNote: z.string().max(200).optional(),
+  })
+  .refine(
+    (v) =>
+      v.status !== undefined ||
+      v.startsAt !== undefined ||
+      v.durationMinutes !== undefined ||
+      v.appointmentTypeId !== undefined ||
+      v.notes !== undefined ||
+      v.additionalFeeCents !== undefined,
+    { message: "No updates provided" },
+  );
 
 export async function listAppointments(
   ctx: AuthContext,
@@ -122,9 +153,15 @@ export async function createAppointment(
   }
 
   const startsAt = new Date(input.startsAt);
-  const endsAt = new Date(
-    startsAt.getTime() + type.durationMinutes * 60_000,
-  );
+  const durationMinutes = input.durationMinutes ?? type.durationMinutes;
+  const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
+
+  await assertWithinAvailability({
+    clinicId: ctx.clinicId,
+    practitionerId: input.practitionerId,
+    startsAt,
+    endsAt,
+  });
 
   let roomId = input.roomId ?? null;
   if (!roomId) {
@@ -147,7 +184,7 @@ export async function createAppointment(
     bufferAfter: type.bufferAfter,
   });
 
-  return prisma.appointment.create({
+  const appointment = await prisma.appointment.create({
     data: {
       clinicId: ctx.clinicId,
       patientId: input.patientId,
@@ -167,6 +204,34 @@ export async function createAppointment(
       room: true,
     },
   });
+
+  const feeCents =
+    input.feeCents ??
+    (type.defaultPriceCents > 0 ? type.defaultPriceCents : undefined);
+  if (feeCents && feeCents > 0) {
+    await prisma.invoice.create({
+      data: {
+        clinicId: ctx.clinicId,
+        patientId: input.patientId,
+        appointmentId: appointment.id,
+        amountCents: feeCents,
+        currency: "GBP",
+        status: InvoiceStatus.SENT,
+        issuedAt: new Date(),
+      },
+    });
+  }
+
+  try {
+    const { sendBookingConfirmation } = await import(
+      "@/modules/notifications/appointments"
+    );
+    await sendBookingConfirmation(appointment.id);
+  } catch (err) {
+    console.error("Staff booking confirmation failed", err);
+  }
+
+  return appointment;
 }
 
 export async function updateAppointmentStatus(
@@ -215,6 +280,13 @@ export async function rescheduleAppointment(
     appointment.endsAt.getTime() - appointment.startsAt.getTime();
   const endsAt = new Date(startsAt.getTime() + duration);
 
+  await assertWithinAvailability({
+    clinicId: ctx.clinicId,
+    practitionerId: appointment.practitionerId,
+    startsAt,
+    endsAt,
+  });
+
   await assertNoConflict({
     clinicId: ctx.clinicId,
     practitionerId: appointment.practitionerId,
@@ -236,6 +308,167 @@ export async function rescheduleAppointment(
       room: true,
     },
   });
+}
+
+export async function updateAppointment(
+  ctx: AuthContext,
+  id: string,
+  input: z.infer<typeof updateAppointmentSchema>,
+) {
+  if (input.status && Object.keys(input).every((k) => k === "status")) {
+    return updateAppointmentStatus(ctx, id, input.status as AppointmentStatus);
+  }
+  if (input.startsAt && Object.keys(input).length === 1) {
+    return rescheduleAppointment(ctx, id, input.startsAt);
+  }
+
+  const appointment = await getAppointment(ctx, id);
+  let type = appointment.appointmentType;
+  let startsAt = appointment.startsAt;
+  let endsAt = appointment.endsAt;
+  let notes = appointment.notes;
+
+  if (input.appointmentTypeId) {
+    const next = await prisma.appointmentType.findFirst({
+      where: {
+        id: input.appointmentTypeId,
+        clinicId: ctx.clinicId,
+        active: true,
+      },
+    });
+    if (!next) throw notFound("Appointment type not found");
+    type = next;
+    if (input.durationMinutes === undefined && input.startsAt === undefined) {
+      const durationMs = type.durationMinutes * 60_000;
+      endsAt = new Date(startsAt.getTime() + durationMs);
+    }
+  }
+
+  if (input.startsAt) {
+    startsAt = new Date(input.startsAt);
+  }
+
+  if (input.durationMinutes !== undefined) {
+    endsAt = new Date(startsAt.getTime() + input.durationMinutes * 60_000);
+  } else if (input.startsAt && input.appointmentTypeId === undefined) {
+    const duration =
+      appointment.endsAt.getTime() - appointment.startsAt.getTime();
+    endsAt = new Date(startsAt.getTime() + duration);
+  }
+
+  if (input.notes !== undefined) notes = input.notes;
+
+  if (
+    startsAt.getTime() !== appointment.startsAt.getTime() ||
+    endsAt.getTime() !== appointment.endsAt.getTime() ||
+    (input.appointmentTypeId &&
+      input.appointmentTypeId !== appointment.appointmentTypeId)
+  ) {
+    await assertWithinAvailability({
+      clinicId: ctx.clinicId,
+      practitionerId: appointment.practitionerId,
+      startsAt,
+      endsAt,
+    });
+    await assertNoConflict({
+      clinicId: ctx.clinicId,
+      practitionerId: appointment.practitionerId,
+      roomId: appointment.roomId,
+      startsAt,
+      endsAt,
+      bufferBefore: type.bufferBefore,
+      bufferAfter: type.bufferAfter,
+      excludeAppointmentId: appointment.id,
+    });
+  }
+
+  let updated = await prisma.appointment.update({
+    where: { id: appointment.id },
+    data: {
+      startsAt,
+      endsAt,
+      notes,
+      ...(input.appointmentTypeId
+        ? { appointmentTypeId: input.appointmentTypeId }
+        : {}),
+      ...(input.status ? { status: input.status } : {}),
+    },
+    include: {
+      patient: true,
+      practitioner: true,
+      appointmentType: true,
+      room: true,
+    },
+  });
+
+  if (
+    input.status === AppointmentStatus.CANCELLED &&
+    appointment.status !== AppointmentStatus.CANCELLED
+  ) {
+    const { offerSlotToWaitlist } = await import("./waitlist");
+    const offer = await offerSlotToWaitlist({
+      clinicId: ctx.clinicId,
+      appointmentTypeId: updated.appointmentTypeId,
+      practitionerId: updated.practitionerId,
+      startsAt: appointment.startsAt,
+      endsAt: appointment.endsAt,
+      sourceAppointmentId: appointment.id,
+    });
+    updated = { ...updated, waitlistOffer: offer } as typeof updated;
+  }
+
+  if (input.additionalFeeCents) {
+    const existing = await prisma.invoice.findFirst({
+      where: {
+        clinicId: ctx.clinicId,
+        appointmentId: appointment.id,
+        status: { not: InvoiceStatus.VOID },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    const noteBit = input.feeNote?.trim();
+    if (existing) {
+      await prisma.invoice.update({
+        where: { id: existing.id },
+        data: {
+          amountCents: existing.amountCents + input.additionalFeeCents,
+          status:
+            existing.status === InvoiceStatus.PAID
+              ? existing.status
+              : InvoiceStatus.SENT,
+        },
+      });
+    } else {
+      await prisma.invoice.create({
+        data: {
+          clinicId: ctx.clinicId,
+          patientId: appointment.patientId,
+          appointmentId: appointment.id,
+          amountCents: input.additionalFeeCents,
+          currency: "GBP",
+          status: InvoiceStatus.SENT,
+          issuedAt: new Date(),
+        },
+      });
+    }
+    if (noteBit) {
+      const prior = updated.notes ? `${updated.notes}\n` : "";
+      updated = await prisma.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          notes: `${prior}Fee: ${noteBit} (+£${(input.additionalFeeCents / 100).toFixed(2)})`,
+        },
+        include: {
+          patient: true,
+          practitioner: true,
+          appointmentType: true,
+          room: true,
+        },
+      });
+    }
+  }
+
+  return updated;
 }
 
 export async function listAppointmentTypes(ctx: AuthContext) {
@@ -389,6 +622,28 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     startsAt.getTime() + type.durationMinutes * 60_000,
   );
 
+  const openSlots = await listClinicSlots({
+    clinicId: clinic.id,
+    appointmentTypeId: type.id,
+    practitionerId: input.practitionerId,
+    days: 21,
+    onlineBookableOnly: true,
+    limit: 200,
+  });
+  const slotOk = openSlots.some(
+    (s) => Math.abs(new Date(s).getTime() - startsAt.getTime()) < 60_000,
+  );
+  if (!slotOk) {
+    throw conflict("That slot is no longer available");
+  }
+
+  await assertWithinAvailability({
+    clinicId: clinic.id,
+    practitionerId: input.practitionerId,
+    startsAt,
+    endsAt,
+  });
+
   await assertNoConflict({
     clinicId: clinic.id,
     practitionerId: input.practitionerId,
@@ -438,7 +693,7 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
   return appointment;
 }
 
-async function assertNoConflict(args: {
+export async function assertNoConflict(args: {
   clinicId: string;
   practitionerId: string;
   roomId?: string | null;

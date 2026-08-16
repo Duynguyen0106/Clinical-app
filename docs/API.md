@@ -29,9 +29,25 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 ## Appointments
 
 | GET | `/appointments?from=&to=&practitionerId=` | Calendar range (includes `room`) |
-| POST | `/appointments` | Create (conflict-checked; auto-assigns free room) |
+| POST | `/appointments` | Create `{ patientId, practitionerId, appointmentTypeId, startsAt, durationMinutes?, feeCents?, notes? }` — conflict + hours/block checked; optional invoice; confirmation email |
 | GET | `/appointments/:id` | Detail + visit |
-| PATCH | `/appointments/:id` | `{ status }` or `{ startsAt }` |
+| PATCH | `/appointments/:id` | `{ status }`, `{ startsAt }`, `{ durationMinutes }`, `{ appointmentTypeId }`, `{ additionalFeeCents, feeNote? }`, `{ notes }` |
+| GET | `/slots?appointmentTypeId=&practitionerId=&durationMinutes=&days=` | Staff open slots (honours weekly hours + blocks) |
+
+## Blocks (diary unavailable)
+
+| GET | `/blocks?from=&to=&practitionerId=` | List blocked periods |
+| POST | `/blocks` | `{ practitionerId, date: YYYY-MM-DD, startMinute?, endMinute?, reason? }` — omit minutes for all-day |
+| DELETE | `/blocks/:id` | Remove block |
+
+Blocks remove time from online + staff slot search.
+
+## Patient self-serve
+
+| GET | `/public/manage?token=&slots=1` | Appointment (+ optional slots) via signed link |
+| POST | `/public/manage` | `{ action: "cancel"\|"reschedule", token, startsAt? }` — closes within 2h of start |
+
+Manage links are emailed/SMS’d on confirmation and reminders. UI: `/book/manage/[token]`.
 
 ## Rooms (resources)
 
@@ -94,6 +110,8 @@ Roles (enforced on routes): **OWNER** / **PRACTITIONER** for clinical mutate; **
 | GET | `/public/clinics/:slug` | Clinic booking catalog |
 | GET | `/public/clinics/:slug/slots?appointmentTypeId=&practitionerId=` | Next available slots |
 | POST | `/public/clinics/:slug` | Book online |
+
+**Website pages:** `/book/:slug` (full) · `/embed/:slug` (iframe for clinic sites). See `docs/WEBSITE_INTEGRATION.md`.
 
 ## Notes
 
