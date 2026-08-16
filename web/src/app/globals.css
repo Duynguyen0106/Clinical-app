@@ -997,10 +997,13 @@ h3 {
   margin-bottom: 0.75rem;
 }
 
-.patient-lookup-create {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--line);
+.patient-intake-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.patient-lookup-create .consent-label {
+  margin: 0.65rem 0;
 }
 
 .week-cell-bookable {
