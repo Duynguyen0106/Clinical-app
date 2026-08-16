@@ -9,6 +9,8 @@ type LetterheadClinic = {
   phone: string | null;
   email: string | null;
   address: string | null;
+  brandColour?: string | null;
+  logoDataUrl?: string | null;
 };
 
 type LetterheadPractitioner = {
@@ -108,17 +110,38 @@ function ClinicLetterhead({
   clinic: LetterheadClinic;
   reference: string;
 }) {
+  const accent = clinic.brandColour || undefined;
   return (
     <header className="print-head">
-      <div className="print-letterhead">
-        <div>
-          <p className="print-clinic">{clinic.name}</p>
-          {clinic.address ? <p className="print-contact">{clinic.address}</p> : null}
-          <p className="print-contact">
-            {[clinic.phone ? `Tel ${clinic.phone}` : null, clinic.email]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
+      <div
+        className="print-letterhead"
+        style={accent ? { borderBottomColor: accent } : undefined}
+      >
+        <div className="print-letterhead-main">
+          {clinic.logoDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- print data URL
+            <img
+              src={clinic.logoDataUrl}
+              alt=""
+              className="print-clinic-logo"
+            />
+          ) : null}
+          <div>
+            <p
+              className="print-clinic"
+              style={accent ? { color: accent } : undefined}
+            >
+              {clinic.name}
+            </p>
+            {clinic.address ? (
+              <p className="print-contact">{clinic.address}</p>
+            ) : null}
+            <p className="print-contact">
+              {[clinic.phone ? `Tel ${clinic.phone}` : null, clinic.email]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
         </div>
         <p className="print-ref">Ref {reference}</p>
       </div>

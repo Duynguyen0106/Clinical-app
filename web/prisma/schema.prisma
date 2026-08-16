@@ -105,6 +105,11 @@ model Clinic {
   phone     String?
   email     String?
   address   String?
+  /// Clinic logo storage key (e.g. clinics/{id}/brand/logo.png)
+  logoStorageKey String?
+  logoMimeType   String?
+  /// Primary brand colour for booking / print accents (#RRGGBB)
+  brandColour String?
   /// Days to retain encrypted visit audio (0 = delete after note signed / organise)
   audioRetentionDays Int @default(14)
   privacyNoticeVersion String @default("2026-08-uk-v1")

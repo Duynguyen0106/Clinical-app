@@ -15,9 +15,11 @@ import {
   UserRoundPlus,
   Wallet,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { BrandLogo } from "@/components/BrandLogo";
 import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
+import { getToken } from "@/lib/api";
 
 type NavItem = {
   href: string;
@@ -54,6 +56,7 @@ export function AppShell({
   const { me, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const [clinicLogoUrl, setClinicLogoUrl] = useState<string | null>(null);
   const clinicName = me?.clinic.name ?? DEMO_CLINIC.name;
   const userName = me?.user.name ?? DEMO_CLINIC.practitioner;
   const bookHref = `/book/${me?.clinic.slug ?? DEMO_CLINIC.slug}`;
@@ -61,6 +64,42 @@ export function AppShell({
   const isOwner = me?.role === "OWNER";
   const isPractitioner = me?.role === "PRACTITIONER";
   const hasDiary = Boolean(me?.practitionerProfileId);
+
+  useEffect(() => {
+    if (!me?.clinic.hasLogo) {
+      setClinicLogoUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    const token = getToken();
+    void fetch("/api/v1/clinic/logo", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (res) => {
+        if (!res.ok || cancelled) return null;
+        return URL.createObjectURL(await res.blob());
+      })
+      .then((url) => {
+        if (cancelled || !url) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrl = url;
+        setClinicLogoUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [me?.clinic.hasLogo, me?.clinic.id]);
 
   const visibleNav = nav.filter((item) => {
     if (item.clinicianOnly && !isClinician) return false;
@@ -74,10 +113,19 @@ export function AppShell({
     <div className="app-shell min-h-screen">
       <aside className="app-nav">
         <Link href="/app" className="brand-block brand-block-logo">
-          <BrandLogo variant="mark" className="nav-mark" />
+          {clinicLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- authenticated blob URL
+            <img
+              src={clinicLogoUrl}
+              alt=""
+              className="nav-clinic-logo"
+            />
+          ) : (
+            <BrandLogo variant="mark" className="nav-mark" />
+          )}
           <div>
-            <p className="brand-word">{BRAND.shortName}</p>
-            <p className="brand-sub">Clinic</p>
+            <p className="brand-word">{clinicName}</p>
+            <p className="brand-sub">{BRAND.shortName}</p>
           </div>
         </Link>
         <nav className="nav-list" aria-label="Clinic">

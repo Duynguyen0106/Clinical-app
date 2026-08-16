@@ -3,6 +3,7 @@ import { mkdir, writeFile, readFile, access, unlink, rm } from "node:fs/promises
 import path from "node:path";
 
 const ROOT = path.join(process.cwd(), "storage", "audio");
+const BRAND_ROOT = path.join(process.cwd(), "storage", "brand");
 const ENC_SUFFIX = ".enc";
 
 function encryptionKey() {
@@ -112,3 +113,67 @@ export async function deleteAudioByStorageKey(storageKey: string) {
   }
   return true;
 }
+
+/** Clinic brand assets (logos) — stored unencrypted for serving on booking/print */
+export function clinicLogoPath(clinicId: string, filename: string) {
+  return path.join(BRAND_ROOT, clinicId, filename);
+}
+
+export async function saveClinicLogo(
+  clinicId: string,
+  bytes: Buffer,
+  mimeType: string,
+) {
+  const ext =
+    mimeType === "image/png"
+      ? "png"
+      : mimeType === "image/webp"
+        ? "webp"
+        : mimeType === "image/svg+xml"
+          ? "svg"
+          : "jpg";
+  const filename = `logo.${ext}`;
+  const dir = path.join(BRAND_ROOT, clinicId);
+  await mkdir(dir, { recursive: true });
+  // Remove previous extensions so only one logo remains
+  for (const stale of ["logo.png", "logo.jpg", "logo.jpeg", "logo.webp", "logo.svg"]) {
+    try {
+      await unlink(path.join(dir, stale));
+    } catch {
+      /* ignore */
+    }
+  }
+  await writeFile(path.join(dir, filename), bytes);
+  return {
+    storageKey: `clinics/${clinicId}/brand/${filename}`,
+    mimeType,
+  };
+}
+
+export async function readClinicLogo(storageKey: string) {
+  const parts = storageKey.split("/");
+  if (parts.length < 4 || parts[0] !== "clinics" || parts[2] !== "brand") {
+    throw new Error("Invalid logo storage key");
+  }
+  const clinicId = parts[1];
+  const filename = parts.slice(3).join("/");
+  const full = clinicLogoPath(clinicId, filename);
+  await access(full);
+  return readFile(full);
+}
+
+export async function deleteClinicLogoFile(storageKey: string) {
+  try {
+    const parts = storageKey.split("/");
+    if (parts.length < 4 || parts[0] !== "clinics" || parts[2] !== "brand") {
+      return false;
+    }
+    const clinicId = parts[1];
+    const filename = parts.slice(3).join("/");
+    await unlink(clinicLogoPath(clinicId, filename));
+    return true;
+  } catch {
+    return false;
+  }
+}
+

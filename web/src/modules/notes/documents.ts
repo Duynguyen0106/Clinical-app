@@ -3,6 +3,7 @@ import type { AuthContext } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
 import { assertCanAccessClinicalRecord } from "@/server/rbac";
+import { clinicLogoDataUrl } from "@/modules/clinic/profile";
 
 export type DocumentSection = { key: string; label: string; value: string };
 
@@ -12,6 +13,8 @@ export type LetterheadClinic = {
   phone: string | null;
   email: string | null;
   address: string | null;
+  brandColour: string | null;
+  logoDataUrl: string | null;
 };
 
 export type LetterheadPractitioner = {
@@ -241,11 +244,13 @@ async function loadSignedNoteForDocuments(ctx: AuthContext, noteId: string) {
               location: { select: { name: true, address: true } },
               clinic: {
                 select: {
+                  id: true,
                   name: true,
                   timezone: true,
                   phone: true,
                   email: true,
                   address: true,
+                  brandColour: true,
                 },
               },
             },
@@ -264,13 +269,17 @@ async function loadSignedNoteForDocuments(ctx: AuthContext, noteId: string) {
     (await prisma.clinic.findUniqueOrThrow({
       where: { id: ctx.clinicId },
       select: {
+        id: true,
         name: true,
         timezone: true,
         phone: true,
         email: true,
         address: true,
+        brandColour: true,
       },
     }));
+
+  const logoDataUrl = await clinicLogoDataUrl(clinic.id);
 
   let signedByName: string | null = null;
   if (note.signedById) {
@@ -281,17 +290,15 @@ async function loadSignedNoteForDocuments(ctx: AuthContext, noteId: string) {
     signedByName = signer?.name ?? null;
   }
 
-  return { note, clinic, signedByName };
+  return { note, clinic, signedByName, logoDataUrl };
 }
 
 export async function getClinicalDocument(
   ctx: AuthContext,
   noteId: string,
 ): Promise<ClinicalDocument> {
-  const { note, clinic, signedByName } = await loadSignedNoteForDocuments(
-    ctx,
-    noteId,
-  );
+  const { note, clinic, signedByName, logoDataUrl } =
+    await loadSignedNoteForDocuments(ctx, noteId);
   const sections = flattenNoteSections(note.content);
   const practitioner = mapPractitioner(note.visit?.appointment.practitioner);
 
@@ -317,6 +324,8 @@ export async function getClinicalDocument(
       phone: clinic.phone,
       email: clinic.email,
       address: clinic.address,
+      brandColour: clinic.brandColour ?? null,
+      logoDataUrl,
     },
     patient: {
       id: note.patient.id,
@@ -342,10 +351,8 @@ export async function getGpLetterDocument(
   ctx: AuthContext,
   noteId: string,
 ): Promise<GpLetterDocument> {
-  const { note, clinic, signedByName } = await loadSignedNoteForDocuments(
-    ctx,
-    noteId,
-  );
+  const { note, clinic, signedByName, logoDataUrl } =
+    await loadSignedNoteForDocuments(ctx, noteId);
   const sections = flattenNoteSections(note.content);
   const practitioner =
     mapPractitioner(note.visit?.appointment.practitioner) ?? {
@@ -363,6 +370,8 @@ export async function getGpLetterDocument(
     phone: clinic.phone,
     email: clinic.email,
     address: clinic.address,
+    brandColour: clinic.brandColour ?? null,
+    logoDataUrl,
   };
 
   await prisma.noteAuditEvent.create({

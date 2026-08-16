@@ -56,6 +56,7 @@ async function main() {
       phone: "+44 20 7946 0123",
       email: "hello@northbank.example",
       address: "12 Quayside, London E1W 1UN",
+      brandColour: "#1E3F37",
       audioRetentionDays: 14,
       privacyNoticeVersion: "2026-08-uk-v1",
       dataRegion: "uk-eu",

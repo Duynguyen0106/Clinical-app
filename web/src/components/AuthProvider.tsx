@@ -13,7 +13,15 @@ import { api, clearSession, getToken, setSession } from "@/lib/api";
 
 type Me = {
   user: { id: string; email: string; name: string };
-  clinic: { id: string; name: string; slug: string; timezone: string };
+  clinic: {
+    id: string;
+    name: string;
+    slug: string;
+    timezone: string;
+    brandColour?: string | null;
+    hasLogo?: boolean;
+    logoUrl?: string | null;
+  };
   role: string;
   practitionerProfileId: string | null;
 };
