@@ -61,6 +61,8 @@ export default function TodayPage() {
   const isClinician =
     me?.role === "OWNER" || me?.role === "PRACTITIONER";
   const isPractitionerHome = Boolean(myPractitionerId && isClinician);
+  const canEditSchedule =
+    me?.role === "OWNER" || me?.role === "RECEPTION";
   const showPracticePulse =
     me?.role === "OWNER" || me?.role === "RECEPTION";
 
@@ -258,13 +260,15 @@ export default function TodayPage() {
                         Open visit
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      className="btn-ghost btn-sm"
-                      onClick={() => void cancelAppointment(apt.id)}
-                    >
-                      Cancel
-                    </button>
+                    {canEditSchedule ? (
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        onClick={() => void cancelAppointment(apt.id)}
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
                   </div>
                 </li>
               ))}

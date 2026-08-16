@@ -115,6 +115,15 @@ export async function cancelManagedAppointment(token: string) {
   });
 
   try {
+    const { sendAppointmentCancelled } = await import(
+      "@/modules/notifications/appointments"
+    );
+    await sendAppointmentCancelled(appointment.id);
+  } catch (err) {
+    console.error("Patient cancel notification failed", err);
+  }
+
+  try {
     const { offerSlotToWaitlist } = await import("./waitlist");
     await offerSlotToWaitlist({
       clinicId: appointment.clinicId,
@@ -199,9 +208,31 @@ export async function rescheduleManagedAppointment(
     excludeAppointmentId: appointment.id,
   });
 
-  return prisma.appointment.update({
+  const previousStartsAt = appointment.startsAt;
+
+  const updated = await prisma.appointment.update({
     where: { id: appointment.id },
-    data: { startsAt, endsAt, status: AppointmentStatus.BOOKED },
+    data: {
+      startsAt,
+      endsAt,
+      status: AppointmentStatus.BOOKED,
+      reminderSentAt: null,
+      smsReminderSentAt: null,
+    },
     include: appointmentInclude,
   });
+
+  try {
+    const { sendAppointmentRescheduled } = await import(
+      "@/modules/notifications/appointments"
+    );
+    await sendAppointmentRescheduled({
+      appointmentId: updated.id,
+      previousStartsAt,
+    });
+  } catch (err) {
+    console.error("Patient reschedule notification failed", err);
+  }
+
+  return updated;
 }

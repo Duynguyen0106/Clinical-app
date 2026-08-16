@@ -1,6 +1,10 @@
 import { withAuth } from "@/server/api";
 import { jsonOk } from "@/server/http";
-import { assertCanMutateClinical, requireStaff } from "@/server/rbac";
+import {
+  assertCanManageSchedule,
+  requireOwnerOrReception,
+  requireStaff,
+} from "@/server/rbac";
 import {
   getAppointment,
   updateAppointment,
@@ -23,7 +27,9 @@ export const PATCH = withAuth(async (req, ctx, params) => {
     parsed.status === "CANCELLED" ||
     parsed.status === "NO_SHOW"
   ) {
-    assertCanMutateClinical(ctx);
+    assertCanManageSchedule(ctx);
+  } else if (parsed.additionalFeeCents !== undefined) {
+    requireOwnerOrReception(ctx);
   } else {
     requireStaff(ctx);
   }

@@ -7,7 +7,7 @@ export function requireClinician(ctx: AuthContext) {
   requireRole(ctx, ["OWNER", "PRACTITIONER"]);
 }
 
-/** Alias used by visit/appointment mutation routes */
+/** Alias used by visit / clinical note mutation routes */
 export function assertCanMutateClinical(ctx: AuthContext) {
   requireClinician(ctx);
 }
@@ -27,6 +27,18 @@ export function requireOwnerOrReception(ctx: AuthContext) {
   requireRole(ctx, ["OWNER", "RECEPTION"]);
 }
 
+/**
+ * Diary schedule changes (reschedule, cancel, duration, no-show).
+ * Reception + owners — not practitioners.
+ */
+export function requireScheduleManager(ctx: AuthContext) {
+  requireRole(ctx, ["OWNER", "RECEPTION"]);
+}
+
+export function assertCanManageSchedule(ctx: AuthContext) {
+  requireScheduleManager(ctx);
+}
+
 export function canMutateClinical(role: MembershipRole) {
   return role === "OWNER" || role === "PRACTITIONER";
 }
@@ -34,4 +46,8 @@ export function canMutateClinical(role: MembershipRole) {
 /** Same roles as canMutateClinical — clinical record need-to-know */
 export function canAccessClinicalRecord(role: MembershipRole) {
   return canMutateClinical(role);
+}
+
+export function canManageSchedule(role: MembershipRole) {
+  return role === "OWNER" || role === "RECEPTION";
 }
