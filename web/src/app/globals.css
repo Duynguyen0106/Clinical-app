@@ -1021,6 +1021,26 @@ h3 {
   font-size: 0.92rem;
 }
 
+.book-page-embed {
+  min-height: 100%;
+  padding: 0.75rem;
+  background: transparent;
+}
+
+.embed-root {
+  min-height: 100vh;
+  background:
+    radial-gradient(800px 400px at 10% -10%, rgba(163, 177, 138, 0.25) 0%, transparent 55%),
+    linear-gradient(165deg, #eef2ec, #e2e9e3);
+}
+
+.embed-powered,
+.embed-foot {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
 /* Booking */
 .book-page {
   min-height: 100vh;

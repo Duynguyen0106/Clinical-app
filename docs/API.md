@@ -86,6 +86,8 @@ Roles (enforced on routes): **OWNER** / **PRACTITIONER** for clinical mutate; **
 | GET | `/public/clinics/:slug/slots?appointmentTypeId=&practitionerId=` | Next available slots |
 | POST | `/public/clinics/:slug` | Book online |
 
+**Website pages:** `/book/:slug` (full) · `/embed/:slug` (iframe for clinic sites). See `docs/WEBSITE_INTEGRATION.md`.
+
 ## Notes
 
 | GET | `/notes?status=DRAFT` | List |

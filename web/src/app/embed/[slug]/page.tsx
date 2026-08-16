@@ -5,7 +5,8 @@ import { PublicBookingFlow } from "@/components/PublicBookingFlow";
 
 type Props = { params: Promise<{ slug: string }> };
 
-export default function BookingPage({ params }: Props) {
+/** Compact booking UI for iframe embeds on clinic websites. */
+export default function EmbedBookingPage({ params }: Props) {
   const { slug } = use(params);
-  return <PublicBookingFlow slug={slug} />;
+  return <PublicBookingFlow slug={slug} embed />;
 }
