@@ -53,10 +53,25 @@ export async function saveAudioUpload(
   clinicId: string,
   visitId: string,
   bytes: Buffer,
+  opts: { extension?: string } = {},
 ) {
   const dir = path.join(ROOT, clinicId, visitId);
   await mkdir(dir, { recursive: true });
-  const filename = `audio.webm${ENC_SUFFIX}`;
+  const ext = (opts.extension ?? "webm").replace(/[^a-z0-9]/gi, "") || "webm";
+  const filename = `audio.${ext}${ENC_SUFFIX}`;
+  // Remove prior audio variants so one consult keeps one blob
+  for (const stale of ["webm", "mp4", "aac", "ogg", "m4a"]) {
+    try {
+      await unlink(path.join(dir, `audio.${stale}${ENC_SUFFIX}`));
+    } catch {
+      /* ignore */
+    }
+    try {
+      await unlink(path.join(dir, `audio.${stale}`));
+    } catch {
+      /* ignore */
+    }
+  }
   const full = path.join(dir, filename);
   await writeFile(full, encryptBytes(bytes));
   return `clinics/${clinicId}/visits/${visitId}/${filename}`;

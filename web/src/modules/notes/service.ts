@@ -87,6 +87,33 @@ export async function createDraftFromAi(
     templateId = def?.id;
   }
 
+  // Idempotent: retries after STT/organise timeout must not spawn duplicate drafts
+  const existing = await prisma.clinicalNote.findFirst({
+    where: {
+      visitId: args.visitId,
+      status: NoteStatus.DRAFT,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existing) {
+    return prisma.clinicalNote.update({
+      where: { id: existing.id },
+      data: {
+        templateId: templateId ?? existing.templateId,
+        source: "ai",
+        content: args.content as unknown as Prisma.InputJsonValue,
+        audits: {
+          create: {
+            actorId: ctx.userId,
+            action: "updated",
+            meta: { source: "ai", reason: "organise_retry" },
+          },
+        },
+      },
+    });
+  }
+
   const note = await prisma.clinicalNote.create({
     data: {
       patientId: args.patientId,

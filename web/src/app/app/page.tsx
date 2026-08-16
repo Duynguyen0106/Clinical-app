@@ -135,12 +135,16 @@ export default function TodayPage() {
     router.push(`/app/visits/${visit.id}`);
   }
 
-  async function cancelAppointment(id: string) {
+  async function setAppointmentStatus(
+    id: string,
+    status: "CONFIRMED" | "CHECKED_IN" | "CANCELLED",
+  ) {
     setError(null);
     setMessage(null);
     try {
       const d = await api<{
         appointment: {
+          status: string;
           waitlistOffer?: {
             offered: boolean;
             entry: { patient: { firstName: string } } | null;
@@ -148,21 +152,27 @@ export default function TodayPage() {
         };
       }>(`/appointments/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "CANCELLED" }),
+        body: JSON.stringify({ status }),
       });
-      if (
-        d.appointment.waitlistOffer?.offered &&
-        d.appointment.waitlistOffer.entry
-      ) {
-        setMessage(
-          `Cancelled — offered slot to ${d.appointment.waitlistOffer.entry.patient.firstName} on the waitlist.`,
-        );
+      if (status === "CANCELLED") {
+        if (
+          d.appointment.waitlistOffer?.offered &&
+          d.appointment.waitlistOffer.entry
+        ) {
+          setMessage(
+            `Cancelled — offered slot to ${d.appointment.waitlistOffer.entry.patient.firstName} on the waitlist.`,
+          );
+        } else {
+          setMessage("Appointment cancelled.");
+        }
+      } else if (status === "CHECKED_IN") {
+        setMessage("Patient checked in.");
       } else {
-        setMessage("Appointment cancelled.");
+        setMessage("Appointment confirmed.");
       }
       await loadDay();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Cancel failed");
+      setError(e instanceof ApiError ? e.message : "Update failed");
     }
   }
 
@@ -195,6 +205,19 @@ export default function TodayPage() {
               </p>
               <p className="muted">{nextUp.appointmentType.name}</p>
               <div className="apt-actions next-up-actions">
+                {canEditSchedule &&
+                (nextUp.status === "BOOKED" ||
+                  nextUp.status === "CONFIRMED") ? (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() =>
+                      void setAppointmentStatus(nextUp.id, "CHECKED_IN")
+                    }
+                  >
+                    Check in
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="btn-primary btn-sm"
@@ -207,9 +230,6 @@ export default function TodayPage() {
                 <Link
                   href={`/app/patients`}
                   className="btn-secondary btn-sm"
-                  onClick={() => {
-                    /* patients page lets them pick prep */
-                  }}
                 >
                   Patient directory
                 </Link>
@@ -249,6 +269,18 @@ export default function TodayPage() {
                     >
                       {apt.status.replaceAll("_", " ").toLowerCase()}
                     </span>
+                    {canEditSchedule &&
+                    (apt.status === "BOOKED" || apt.status === "CONFIRMED") ? (
+                      <button
+                        type="button"
+                        className="btn-secondary btn-sm"
+                        onClick={() =>
+                          void setAppointmentStatus(apt.id, "CHECKED_IN")
+                        }
+                      >
+                        Check in
+                      </button>
+                    ) : null}
                     {isClinician ? (
                       <button
                         type="button"
@@ -260,11 +292,16 @@ export default function TodayPage() {
                         Open visit
                       </button>
                     ) : null}
-                    {canEditSchedule ? (
+                    {canEditSchedule &&
+                    !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
+                      apt.status,
+                    ) ? (
                       <button
                         type="button"
                         className="btn-ghost btn-sm"
-                        onClick={() => void cancelAppointment(apt.id)}
+                        onClick={() =>
+                          void setAppointmentStatus(apt.id, "CANCELLED")
+                        }
                       >
                         Cancel
                       </button>
@@ -397,8 +434,8 @@ export default function TodayPage() {
             <section className="panel tip-panel">
               <h2>Front desk</h2>
               <p>
-                Book and cancel from the calendar. Clinical notes stay with
-                practitioners.
+                Check patients in on arrival, then book or cancel from the
+                calendar. Clinical notes stay with practitioners.
               </p>
               <Link href="/app/calendar" className="btn-secondary">
                 Calendar →

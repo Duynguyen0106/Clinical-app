@@ -108,6 +108,24 @@ export async function startRecording(ctx: AuthContext, visitId: string) {
   }
 
   if (visit.recording) {
+    // Allow a fresh take after a failed organise (audio may be replaced on upload)
+    if (
+      visit.recording.status === RecordingStatus.FAILED ||
+      visit.recording.status === RecordingStatus.READY
+    ) {
+      const hasSigned = visit.notes.some((n) => n.status === "SIGNED");
+      if (hasSigned) {
+        throw badRequest("Visit already has a signed note");
+      }
+      return prisma.recording.update({
+        where: { id: visit.recording.id },
+        data: {
+          status: RecordingStatus.RECORDING,
+          error: null,
+          durationSec: null,
+        },
+      });
+    }
     return visit.recording;
   }
 
@@ -124,6 +142,7 @@ export async function uploadRecordingAudio(
   ctx: AuthContext,
   visitId: string,
   bytes: Buffer,
+  opts: { extension?: string } = {},
 ) {
   const visit = await getVisit(ctx, visitId);
   if (!visit.recording) throw badRequest("Start recording first");
@@ -131,13 +150,16 @@ export async function uploadRecordingAudio(
     throw badRequest("Recording consent required");
   }
 
-  const storageKey = await saveAudioUpload(ctx.clinicId, visit.id, bytes);
+  const storageKey = await saveAudioUpload(ctx.clinicId, visit.id, bytes, {
+    extension: opts.extension,
+  });
 
   return prisma.recording.update({
     where: { id: visit.recording.id },
     data: {
       storageKey,
       status: RecordingStatus.UPLOADING,
+      error: null,
     },
   });
 }
@@ -150,6 +172,7 @@ export const stopRecordingSchema = z.object({
 
 /**
  * Stop recording → STT → template-aware organise → draft note.
+ * Safe to retry when status is FAILED / UPLOADING if audio is on disk.
  */
 export async function stopRecordingAndOrganise(
   ctx: AuthContext,
@@ -162,11 +185,21 @@ export async function stopRecordingAndOrganise(
     throw badRequest("Recording consent required");
   }
 
+  const hasSigned = visit.notes.some((n) => n.status === "SIGNED");
+  if (hasSigned) {
+    throw badRequest("Visit already has a signed note");
+  }
+
+  if (!visit.recording.storageKey) {
+    throw badRequest("Upload audio before organising");
+  }
+
   await prisma.recording.update({
     where: { id: visit.recording.id },
     data: {
       status: RecordingStatus.TRANSCRIBING,
       durationSec: input.durationSec ?? visit.recording.durationSec,
+      error: null,
     },
   });
 
