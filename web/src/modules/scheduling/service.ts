@@ -20,6 +20,7 @@ export const createAppointmentSchema = z.object({
   practitionerId: z.string().min(1),
   appointmentTypeId: z.string().min(1),
   locationId: z.string().optional().nullable(),
+  roomId: z.string().optional().nullable(),
   startsAt: z.string().datetime(),
   notes: z.string().max(2000).optional().nullable(),
 });
@@ -59,6 +60,7 @@ export async function listAppointments(
       practitioner: true,
       appointmentType: true,
       location: true,
+      room: true,
       visit: { select: { id: true, recordingConsentAt: true } },
     },
     orderBy: { startsAt: "asc" },
@@ -112,14 +114,33 @@ export async function createAppointment(
     if (!location) throw notFound("Location not found");
   }
 
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({
+      where: { id: input.roomId, clinicId: ctx.clinicId, active: true },
+    });
+    if (!room) throw notFound("Room not found");
+  }
+
   const startsAt = new Date(input.startsAt);
   const endsAt = new Date(
     startsAt.getTime() + type.durationMinutes * 60_000,
   );
 
+  let roomId = input.roomId ?? null;
+  if (!roomId) {
+    const { findAvailableRoom } = await import("./rooms");
+    const free = await findAvailableRoom({
+      clinicId: ctx.clinicId,
+      startsAt,
+      endsAt,
+    });
+    roomId = free?.id ?? null;
+  }
+
   await assertNoConflict({
     clinicId: ctx.clinicId,
     practitionerId: input.practitionerId,
+    roomId,
     startsAt,
     endsAt,
     bufferBefore: type.bufferBefore,
@@ -133,6 +154,7 @@ export async function createAppointment(
       practitionerId: input.practitionerId,
       appointmentTypeId: input.appointmentTypeId,
       locationId: input.locationId ?? null,
+      roomId,
       startsAt,
       endsAt,
       notes: input.notes ?? null,
@@ -142,6 +164,7 @@ export async function createAppointment(
       patient: true,
       practitioner: true,
       appointmentType: true,
+      room: true,
     },
   });
 }
@@ -195,6 +218,7 @@ export async function rescheduleAppointment(
   await assertNoConflict({
     clinicId: ctx.clinicId,
     practitionerId: appointment.practitionerId,
+    roomId: appointment.roomId,
     startsAt,
     endsAt,
     bufferBefore: appointment.appointmentType.bufferBefore,
@@ -209,6 +233,7 @@ export async function rescheduleAppointment(
       patient: true,
       practitioner: true,
       appointmentType: true,
+      room: true,
     },
   });
 }
@@ -373,12 +398,20 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     bufferAfter: type.bufferAfter,
   });
 
+  const { findAvailableRoom } = await import("./rooms");
+  const freeRoom = await findAvailableRoom({
+    clinicId: clinic.id,
+    startsAt,
+    endsAt,
+  });
+
   const appointment = await prisma.appointment.create({
     data: {
       clinicId: clinic.id,
       patientId: patient.id,
       practitionerId: input.practitionerId,
       appointmentTypeId: type.id,
+      roomId: freeRoom?.id ?? null,
       startsAt,
       endsAt,
       status: AppointmentStatus.BOOKED,
@@ -388,6 +421,7 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
       patient: true,
       practitioner: true,
       appointmentType: true,
+      room: true,
       clinic: true,
     },
   });
@@ -407,6 +441,7 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
 async function assertNoConflict(args: {
   clinicId: string;
   practitionerId: string;
+  roomId?: string | null;
   startsAt: Date;
   endsAt: Date;
   bufferBefore: number;
@@ -420,7 +455,7 @@ async function assertNoConflict(args: {
     args.endsAt.getTime() + args.bufferAfter * 60_000,
   );
 
-  const clash = await prisma.appointment.findFirst({
+  const practitionerClash = await prisma.appointment.findFirst({
     where: {
       clinicId: args.clinicId,
       practitionerId: args.practitionerId,
@@ -437,8 +472,30 @@ async function assertNoConflict(args: {
     },
   });
 
-  if (clash) {
+  if (practitionerClash) {
     throw conflict("Practitioner already has an appointment in this slot");
+  }
+
+  if (args.roomId) {
+    const roomClash = await prisma.appointment.findFirst({
+      where: {
+        clinicId: args.clinicId,
+        roomId: args.roomId,
+        status: {
+          notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW],
+        },
+        ...(args.excludeAppointmentId
+          ? { id: { not: args.excludeAppointmentId } }
+          : {}),
+        AND: [
+          { startsAt: { lt: windowEnd } },
+          { endsAt: { gt: windowStart } },
+        ],
+      },
+    });
+    if (roomClash) {
+      throw conflict("Room is already booked in this slot");
+    }
   }
 }
 

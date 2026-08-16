@@ -28,10 +28,18 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 
 ## Appointments
 
-| GET | `/appointments?from=&to=&practitionerId=` | Calendar range |
-| POST | `/appointments` | Create (conflict-checked) |
+| GET | `/appointments?from=&to=&practitionerId=` | Calendar range (includes `room`) |
+| POST | `/appointments` | Create (conflict-checked; auto-assigns free room) |
 | GET | `/appointments/:id` | Detail + visit |
 | PATCH | `/appointments/:id` | `{ status }` or `{ startsAt }` |
+
+## Rooms (resources)
+
+| GET | `/rooms` | List treatment rooms / couches |
+| POST | `/rooms` | Create `{ name, locationId?, colour? }` |
+| PATCH | `/rooms/:id` | Update / deactivate |
+
+Bookings conflict-check **practitioner and room**. Online book auto-picks the first free room.
 
 ## Visits (AI note pipeline)
 
@@ -42,7 +50,7 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | POST | `/visits/:id/recording/upload` | multipart `audio` file |
 | GET | `/visits/:id/rebook` | Suggest follow-up slots from Plan |
 | POST | `/visits/:id/rebook` | Book follow-up `{ startsAt }` |
-| POST | `/jobs/reminders` | Send due email reminders (staff) |
+| POST | `/jobs/reminders` | Email + SMS reminders (staff) |
 | POST | `/jobs/retention` | Purge expired encrypted audio (owner) |
 
 ## Waitlist & ops

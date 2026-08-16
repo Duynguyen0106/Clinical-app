@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays,
   ClipboardList,
+  DoorOpen,
   Hourglass,
   LayoutDashboard,
   ListTodo,
@@ -20,6 +21,7 @@ import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
 const nav = [
   { href: "/app", label: "Today", icon: LayoutDashboard },
   { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/app/rooms", label: "Rooms", icon: DoorOpen },
   { href: "/app/patients", label: "Patients", icon: Users },
   { href: "/app/notes", label: "Notes", icon: ClipboardList },
   { href: "/app/tasks", label: "Tasks", icon: ListTodo },

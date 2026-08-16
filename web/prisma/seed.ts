@@ -22,6 +22,7 @@ async function main() {
   await prisma.availabilityRule.deleteMany();
   await prisma.noteTemplate.deleteMany();
   await prisma.appointmentType.deleteMany();
+  await prisma.room.deleteMany();
   await prisma.location.deleteMany();
   await prisma.practitionerProfile.deleteMany();
   await prisma.session.deleteMany();
@@ -97,10 +98,29 @@ async function main() {
   const location = await prisma.location.create({
     data: {
       clinicId: clinic.id,
-      name: "Treatment room 1",
+      name: "Northbank clinic",
       address: "12 Quayside, London",
     },
   });
+
+  const [room1, room2] = await Promise.all([
+    prisma.room.create({
+      data: {
+        clinicId: clinic.id,
+        locationId: location.id,
+        name: "Couch 1",
+        colour: "#1E3F37",
+      },
+    }),
+    prisma.room.create({
+      data: {
+        clinicId: clinic.id,
+        locationId: location.id,
+        name: "Couch 2",
+        colour: "#5D7A5D",
+      },
+    }),
+  ]);
 
   const types = await Promise.all(
     [
@@ -199,6 +219,7 @@ async function main() {
         practitionerId: practitioner.id,
         appointmentTypeId: types[0].id,
         locationId: location.id,
+        roomId: room1.id,
         startsAt: at(9),
         endsAt: at(9, 45),
         status: "CHECKED_IN",
@@ -211,6 +232,7 @@ async function main() {
         practitionerId: practitioner.id,
         appointmentTypeId: types[2].id,
         locationId: location.id,
+        roomId: room2.id,
         startsAt: at(10),
         endsAt: at(10, 40),
         status: "BOOKED",
@@ -223,6 +245,7 @@ async function main() {
         practitionerId: practitioner.id,
         appointmentTypeId: types[3].id,
         locationId: location.id,
+        roomId: room1.id,
         startsAt: at(11),
         endsAt: at(11, 30),
         status: "BOOKED",

@@ -34,7 +34,8 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 - Waitlist auto-offer on cancel — done
 - Task inbox — done
 - Practice pulse (5 metrics) — done
-- Rooms/resources — not started
+- Rooms/resources — done (`Room` model, conflict checks, `/app/rooms`)
+- SMS reminders — done (`SMS_PROVIDER=console|twilio`)
 - Webhooks — not started
 
 ### Launch readiness
