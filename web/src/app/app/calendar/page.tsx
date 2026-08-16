@@ -552,6 +552,7 @@ export default function CalendarPage() {
               patientId={selected.patient.id}
               excludeAppointmentId={selected.id}
               compact
+              source="calendar"
             />
 
             {blocks.some((b) => b.practitioner.id === selected.practitioner.id) ? (

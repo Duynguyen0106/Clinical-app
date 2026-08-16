@@ -226,6 +226,7 @@ export function VisitRecorder({ visitId }: Props) {
           patientId={visit.appointment.patient.id}
           compact
           className="visit-prep"
+          source="visit"
         />
       ) : null}
       <div className="visit-layout">

@@ -8,43 +8,82 @@ export async function exportNoteAudits(
 ) {
   requireRole(ctx, ["OWNER", "PRACTITIONER", "RECEPTION"]);
 
-  const events = await prisma.noteAuditEvent.findMany({
-    where: {
-      note: {
-        patient: {
-          clinicId: ctx.clinicId,
-          ...(opts.patientId ? { id: opts.patientId } : {}),
+  const [noteEvents, accessEvents] = await Promise.all([
+    prisma.noteAuditEvent.findMany({
+      where: {
+        note: {
+          patient: {
+            clinicId: ctx.clinicId,
+            ...(opts.patientId ? { id: opts.patientId } : {}),
+          },
+        },
+        ...(opts.from || opts.to
+          ? {
+              createdAt: {
+                ...(opts.from ? { gte: opts.from } : {}),
+                ...(opts.to ? { lte: opts.to } : {}),
+              },
+            }
+          : {}),
+      },
+      include: {
+        note: {
+          select: {
+            id: true,
+            status: true,
+            signedAt: true,
+            patientId: true,
+            patient: { select: { firstName: true, lastName: true } },
+          },
         },
       },
-      ...(opts.from || opts.to
-        ? {
-            createdAt: {
-              ...(opts.from ? { gte: opts.from } : {}),
-              ...(opts.to ? { lte: opts.to } : {}),
-            },
-          }
-        : {}),
-    },
-    include: {
-      note: {
-        select: {
-          id: true,
-          status: true,
-          signedAt: true,
-          patientId: true,
-          patient: { select: { firstName: true, lastName: true } },
-        },
+      orderBy: { createdAt: "desc" },
+      take: 2000,
+    }),
+    prisma.patientAccessEvent.findMany({
+      where: {
+        clinicId: ctx.clinicId,
+        ...(opts.patientId ? { patientId: opts.patientId } : {}),
+        ...(opts.from || opts.to
+          ? {
+              createdAt: {
+                ...(opts.from ? { gte: opts.from } : {}),
+                ...(opts.to ? { lte: opts.to } : {}),
+              },
+            }
+          : {}),
       },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 2000,
-  });
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 2000,
+    }),
+  ]);
 
-  return events.map((e) => ({
+  const actorIds = [
+    ...new Set(
+      [...noteEvents, ...accessEvents]
+        .map((e) => e.actorId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const actors = actorIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: actorIds } },
+        select: { id: true, email: true, name: true },
+      })
+    : [];
+  const actorMap = new Map(actors.map((a) => [a.id, a]));
+
+  const notes = noteEvents.map((e) => ({
+    kind: "note" as const,
     eventId: e.id,
     action: e.action,
     at: e.createdAt.toISOString(),
     actorId: e.actorId,
+    actorEmail: e.actorId ? (actorMap.get(e.actorId)?.email ?? null) : null,
+    actorName: e.actorId ? (actorMap.get(e.actorId)?.name ?? null) : null,
     noteId: e.noteId,
     noteStatus: e.note.status,
     patientId: e.note.patientId,
@@ -52,6 +91,26 @@ export async function exportNoteAudits(
     signedAt: e.note.signedAt?.toISOString() ?? null,
     meta: e.meta,
   }));
+
+  const access = accessEvents.map((e) => ({
+    kind: "patient_access" as const,
+    eventId: e.id,
+    action: e.action,
+    at: e.createdAt.toISOString(),
+    actorId: e.actorId,
+    actorEmail: e.actorId ? (actorMap.get(e.actorId)?.email ?? null) : null,
+    actorName: e.actorId ? (actorMap.get(e.actorId)?.name ?? null) : null,
+    noteId: null as string | null,
+    noteStatus: null as string | null,
+    patientId: e.patientId,
+    patientName: `${e.patient.firstName} ${e.patient.lastName}`,
+    signedAt: null as string | null,
+    meta: e.meta,
+  }));
+
+  return [...notes, ...access].sort(
+    (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
+  );
 }
 
 export async function getClinicCompliance(ctx: AuthContext) {

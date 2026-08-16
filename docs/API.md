@@ -23,7 +23,8 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | GET | `/patients?q=&take=` | Search / list |
 | POST | `/patients` | Create |
 | GET | `/patients/:id` | Profile + timeline |
-| GET | `/patients/:id?prep=1` | Prep pack: booking history + prior notes (summaries + sections) |
+| GET | `/patients/:id?prep=1&source=` | Prep pack (logs `prep_opened` access event) |
+| POST | `/patients/:id` | `{ action: "note_expanded", noteId, source? }` — audit expand of prior note |
 | PATCH | `/patients/:id` | Update |
 | POST | `/patients/:id/consents` | `{ type, granted, method }` |
 
@@ -99,7 +100,7 @@ Cancelling an appointment (`PATCH /appointments/:id` with `status: CANCELLED`) a
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/clinic/compliance` | Retention days, privacy notice version, data region |
-| GET | `/clinic/compliance?audits=1&from=&to=&patientId=` | Note audit export (JSON) |
+| GET | `/clinic/compliance?audits=1&from=&to=&patientId=` | Note views + patient prep access export (JSON) |
 | PATCH | `/clinic/compliance` | `{ audioRetentionDays }` — owner only |
 
 Public privacy notice: `/privacy`. Booking intake links to it.

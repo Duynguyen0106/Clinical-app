@@ -84,7 +84,11 @@ export async function getPatient(ctx: AuthContext, id: string) {
 }
 
 /** Compact prep payload for diary / visit — history + readable prior notes */
-export async function getPatientPrep(ctx: AuthContext, id: string) {
+export async function getPatientPrep(
+  ctx: AuthContext,
+  id: string,
+  opts: { source?: string } = {},
+) {
   const patient = await getPatient(ctx, id);
   const notes = patient.notes.map((n) => ({
     id: n.id,
@@ -100,6 +104,21 @@ export async function getPatientPrep(ctx: AuthContext, id: string) {
     summary: summariseNoteContent(n.content),
     sections: flattenNoteSections(n.content),
   }));
+
+  await prisma.patientAccessEvent.create({
+    data: {
+      clinicId: ctx.clinicId,
+      patientId: patient.id,
+      actorId: ctx.userId,
+      action: "prep_opened",
+      meta: {
+        source: opts.source ?? "unknown",
+        appointmentCount: patient.appointments.length,
+        noteCount: notes.length,
+        noteIds: notes.map((n) => n.id),
+      },
+    },
+  });
 
   return {
     id: patient.id,
@@ -121,6 +140,48 @@ export async function getPatientPrep(ctx: AuthContext, id: string) {
     })),
     notes,
   };
+}
+
+export async function recordNoteHistoryExpand(
+  ctx: AuthContext,
+  patientId: string,
+  noteId: string,
+  opts: { source?: string } = {},
+) {
+  await assertPatientInClinic(ctx.clinicId, patientId);
+
+  const note = await prisma.clinicalNote.findFirst({
+    where: { id: noteId, patientId, patient: { clinicId: ctx.clinicId } },
+    select: { id: true },
+  });
+  if (!note) throw notFound("Note not found");
+
+  await prisma.$transaction([
+    prisma.patientAccessEvent.create({
+      data: {
+        clinicId: ctx.clinicId,
+        patientId,
+        actorId: ctx.userId,
+        action: "note_expanded",
+        meta: {
+          noteId,
+          source: opts.source ?? "patient_prep",
+        },
+      },
+    }),
+    prisma.noteAuditEvent.create({
+      data: {
+        noteId,
+        actorId: ctx.userId,
+        action: "viewed",
+        meta: {
+          source: opts.source ?? "patient_prep_expand",
+        },
+      },
+    }),
+  ]);
+
+  return { ok: true };
 }
 
 function asRecord(content: unknown): Record<string, unknown> {
