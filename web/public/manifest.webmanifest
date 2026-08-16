@@ -1,11 +1,11 @@
 {
   "name": "Treow Clinic",
   "short_name": "Treow",
-  "description": "AI visit notes and booking for UK allied health clinics",
+  "description": "Rooted in Osteopathy, Growing in Health — AI visit notes and booking for UK clinics",
   "start_url": "/login",
   "display": "standalone",
-  "background_color": "#e9f0ec",
-  "theme_color": "#0f6b5c",
+  "background_color": "#eef2ec",
+  "theme_color": "#1e3f37",
   "lang": "en-GB",
   "icons": [
     {

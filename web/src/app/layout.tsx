@@ -1,18 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Manrope } from "next/font/google";
+import { Cormorant_Garamond, Source_Sans_3 } from "next/font/google";
 import { BRAND } from "@/modules/config/brand";
 import { PwaRegister } from "@/components/PwaRegister";
 import "./globals.css";
 
-const fraunces = Fraunces({
+const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
-  variable: "--font-fraunces",
-  axes: ["opsz"],
+  weight: ["500", "600", "700"],
+  variable: "--font-cormorant",
 });
 
-const manrope = Manrope({
+const sourceSans = Source_Sans_3({
   subsets: ["latin"],
-  variable: "--font-manrope",
+  variable: "--font-source-sans",
 });
 
 export const metadata: Metadata = {
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f6b5c",
+  themeColor: BRAND.colours.forest,
   width: "device-width",
   initialScale: 1,
 };
@@ -41,7 +41,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en-GB"
-      className={`${fraunces.variable} ${manrope.variable} h-full antialiased`}
+      className={`${cormorant.variable} ${sourceSans.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <PwaRegister />

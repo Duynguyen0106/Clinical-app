@@ -1,22 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --bg0: #e9f0ec;
-  --bg1: #dfe8f2;
-  --surface: rgba(255, 255, 255, 0.78);
-  --surface-solid: #f7faf8;
+  /* Logo-derived forest / sage system */
+  --bg0: #eef2ec;
+  --bg1: #e2e9e3;
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-solid: #f5f8f4;
   --ink: #14241f;
-  --muted: #5a6f68;
-  --accent: #0f6b5c;
-  --accent-deep: #0a4f44;
-  --accent-soft: #d5ebe5;
-  --danger: #b42318;
-  --line: rgba(20, 36, 31, 0.1);
-  --shadow: 0 18px 50px rgba(20, 36, 31, 0.08);
-  --radius: 18px;
-  --font-display: var(--font-fraunces), Georgia, serif;
-  --font-body: var(--font-manrope), system-ui, sans-serif;
+  --muted: #5a6b61;
+  --accent: #1e3f37;
+  --accent-deep: #16352e;
+  --accent-mid: #5d7a5d;
+  --accent-soft: #d8e2d0;
+  --sage: #a3b18a;
+  --danger: #9b2c2c;
+  --line: rgba(30, 63, 55, 0.12);
+  --shadow: 0 20px 48px rgba(22, 53, 46, 0.1);
+  --radius: 16px;
+  --font-display: var(--font-cormorant), "Times New Roman", Georgia, serif;
+  --font-body: var(--font-source-sans), system-ui, sans-serif;
 }
+
 
 @theme inline {
   --color-background: var(--bg0);
@@ -34,9 +38,9 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   background:
-    radial-gradient(1200px 600px at 10% -10%, #cfe3da 0%, transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, #c9d7ea 0%, transparent 50%),
-    linear-gradient(160deg, var(--bg0), var(--bg1));
+    radial-gradient(1000px 520px at 8% -8%, rgba(163, 177, 138, 0.35) 0%, transparent 55%),
+    radial-gradient(900px 480px at 100% 0%, rgba(93, 122, 93, 0.18) 0%, transparent 50%),
+    linear-gradient(165deg, var(--bg0), var(--bg1));
 }
 
 a {
@@ -46,12 +50,73 @@ a {
 
 h1,
 h2,
-h3,
-.brand-mark {
+h3 {
   font-family: var(--font-display);
   font-weight: 650;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+  text-transform: none;
 }
+
+.brand-mark,
+.brand-word {
+  font-family: var(--font-display);
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+
+.brand-motto {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.brand-logo {
+  display: block;
+  height: auto;
+  object-fit: contain;
+}
+
+.brand-logo-full {
+  width: min(320px, 72vw);
+  height: auto;
+}
+
+.brand-logo-mark {
+  width: 52px;
+  height: auto;
+}
+
+.nav-mark {
+  width: 44px;
+}
+
+.brand-block-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+}
+
+.brand-block-logo .brand-word {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: 0.12em;
+}
+
+.brand-block-logo .brand-sub {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 
 .muted {
   color: var(--muted);
@@ -127,60 +192,156 @@ h3,
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.25rem 2rem;
+  padding: 1.1rem clamp(1rem, 3vw, 2rem);
+  position: relative;
+  z-index: 2;
 }
 
-.home-hero {
+.home-hero-brand {
   display: grid;
-  align-content: center;
-  gap: 1.25rem;
-  padding: 2rem clamp(1.25rem, 4vw, 4rem) 4rem;
-  max-width: 1100px;
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 0;
+  padding: 0;
+  max-width: none;
+  min-height: calc(100vh - 72px);
+  position: relative;
+  overflow: hidden;
 }
 
-.home-hero h1 {
-  font-size: clamp(2.6rem, 7vw, 4.8rem);
-  line-height: 1.02;
-  margin: 0;
-  max-width: 14ch;
+.home-hero-copy {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+  padding: clamp(1.5rem, 5vw, 4rem);
+  max-width: 640px;
+  animation: hero-rise 700ms ease both;
+}
+
+.home-logo {
+  width: min(360px, 78vw);
+  margin-bottom: 0.25rem;
+  animation: logo-breathe 4.5s ease-in-out infinite;
 }
 
 .home-hero .lede {
-  font-size: 1.15rem;
-  max-width: 42ch;
+  font-size: 1.1rem;
+  max-width: 38ch;
   color: var(--muted);
   margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
 }
 
 .home-cta {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 0.5rem;
+  margin-top: 0.35rem;
 }
 
-.home-visual {
-  margin-top: 1.5rem;
-  height: min(42vh, 360px);
-  border-radius: 28px;
-  background:
-    linear-gradient(135deg, rgba(15, 107, 92, 0.18), transparent 40%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cpath fill='none' stroke='%230f6b5c33' stroke-width='1' d='M0 80h160M80 0v160'/%3E%3C/svg%3E"),
-    linear-gradient(160deg, #1f4f46, #2f6d8a);
-  box-shadow: var(--shadow);
-  position: relative;
-  overflow: hidden;
-  animation: hero-rise 900ms ease both;
-}
-
-.home-visual::after {
-  content: "Record → Organise → Sign";
+.home-hero-plane {
   position: absolute;
-  left: 1.5rem;
-  bottom: 1.5rem;
-  color: white;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(105deg, rgba(238, 242, 236, 0.92) 0%, rgba(238, 242, 236, 0.55) 42%, rgba(30, 63, 55, 0.55) 100%),
+    radial-gradient(ellipse 70% 60% at 78% 45%, rgba(163, 177, 138, 0.45), transparent 60%),
+    linear-gradient(160deg, #1e3f37, #5d7a5d 55%, #a3b18a);
+  animation: plane-shift 12s ease-in-out infinite alternate;
+}
+
+.home-hero-glow {
+  position: absolute;
+  width: 48%;
+  height: 70%;
+  right: 4%;
+  top: 12%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245, 248, 244, 0.22), transparent 70%);
+  animation: glow-pulse 5s ease-in-out infinite;
+}
+
+.home-hero-flow {
+  position: absolute;
+  right: clamp(1.25rem, 4vw, 3rem);
+  bottom: clamp(1.5rem, 4vw, 3rem);
+  margin: 0;
+  color: rgba(245, 248, 244, 0.92);
   font-family: var(--font-display);
-  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-size: clamp(1.35rem, 3vw, 2.1rem);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Auth */
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  align-items: stretch;
+}
+
+.auth-brand {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(163, 177, 138, 0.35), transparent 55%),
+    linear-gradient(165deg, #eef2ec, #d8e2d0);
+  animation: hero-rise 600ms ease both;
+}
+
+.auth-logo {
+  width: min(340px, 70%);
+}
+
+.auth-form {
+  display: grid;
+  align-content: center;
+  gap: 0.85rem;
+  padding: clamp(1.5rem, 4vw, 3rem);
+  background: rgba(245, 248, 244, 0.88);
+  border-left: 1px solid var(--line);
+}
+
+.auth-form h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: 0.08em;
+}
+
+.auth-form .btn-primary,
+.auth-form .btn-ghost {
+  width: fit-content;
+}
+
+@media (max-width: 860px) {
+  .auth-page {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-brand {
+    padding: 1.5rem 1.25rem 0.5rem;
+  }
+
+  .auth-logo {
+    width: min(260px, 70vw);
+  }
+
+  .auth-form {
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+
+  .home-hero-flow {
+    display: none;
+  }
 }
 
 .form-error {
@@ -255,6 +416,37 @@ h3,
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes logo-breathe {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes plane-shift {
+  from {
+    filter: saturate(1);
+  }
+  to {
+    filter: saturate(1.08) brightness(1.03);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
   }
 }
 
@@ -475,10 +667,11 @@ h3,
 }
 
 .tip-panel {
-  background: linear-gradient(160deg, #0f6b5c, #1f5f78);
+  background: linear-gradient(160deg, #1e3f37, #5d7a5d);
   color: white;
   border: none;
 }
+
 
 .tip-panel .muted,
 .tip-panel p {
@@ -822,8 +1015,37 @@ h3,
   padding: 1.5rem;
 }
 
+.book-shell {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 1rem;
+}
+
+.book-brand {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  text-align: center;
+  animation: hero-rise 500ms ease both;
+}
+
+.book-mark {
+  width: 72px;
+}
+
+.book-brand .brand-word {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.book-brand .brand-motto {
+  font-size: 0.85rem;
+  color: var(--muted);
+  max-width: 28ch;
+}
+
 .book-card {
-  width: min(480px, 100%);
+  width: 100%;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 24px;
@@ -832,6 +1054,7 @@ h3,
   display: grid;
   gap: 1rem;
   animation: hero-rise 500ms ease both;
+  animation-delay: 80ms;
 }
 
 .book-card h1 {

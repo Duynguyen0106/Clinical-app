@@ -112,7 +112,7 @@ export default function TodayPage() {
   return (
     <AppShell
       title="Today"
-      subtitle="Open a visit to record — Treow organises the note for you to sign."
+      subtitle="Your day at the practice — open a visit to record and sign."
     >
       <div className="today-grid">
         <section className="panel">
@@ -224,7 +224,7 @@ export default function TodayPage() {
           </section>
 
           <section className="panel tip-panel">
-            <h2>AI scribe</h2>
+            <h2>Visit mode</h2>
             <p>
               Consent, record on this device, review the organised note, then
               sign. Nothing enters the record without you.
