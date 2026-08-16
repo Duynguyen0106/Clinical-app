@@ -5,6 +5,10 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { api } from "@/lib/api";
 import { NotePrintActions } from "@/components/NotePrintActions";
+import {
+  PatientTimeline,
+  type TimelineItem,
+} from "@/components/PatientTimeline";
 
 export type PatientPrep = {
   id: string;
@@ -38,6 +42,7 @@ export type PatientPrep = {
     summary: string;
     sections: { key: string; value: string }[];
   }>;
+  timeline?: TimelineItem[];
 };
 
 type NoteBody = {
@@ -188,6 +193,12 @@ export function PatientPrepPanel({
           </p>
         </div>
       )}
+
+      <PatientTimeline
+        items={prep.timeline ?? []}
+        compact={compact}
+        canViewNotes={canViewNotes}
+      />
 
       <section className="prep-section">
         <h4>Booking history</h4>

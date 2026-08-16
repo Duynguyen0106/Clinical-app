@@ -375,6 +375,7 @@ export async function sendWaitlistOfferEmail(opts: {
   serviceName: string;
   startsAt: Date;
   expiresAt: Date;
+  offerUrl?: string;
 }) {
   const when = formatWhen(opts.startsAt, opts.timezone);
   const expires = formatWhen(opts.expiresAt, opts.timezone);
@@ -391,7 +392,11 @@ export async function sendWaitlistOfferEmail(opts: {
         `A ${opts.serviceName} slot has opened at ${opts.clinicName}.`,
         "",
         `Offered time: ${when}`,
-        `Please reply to the clinic soon — this offer expires around ${expires}.`,
+        `This offer expires around ${expires}.`,
+        "",
+        opts.offerUrl
+          ? `Accept or decline in one tap:\n${opts.offerUrl}`
+          : "Please reply to the clinic soon to accept.",
         "",
         `(Waitlist ref: ${opts.entryId})`,
         "",
@@ -404,7 +409,9 @@ export async function sendWaitlistOfferEmail(opts: {
   if (opts.patientPhone) {
     await sendSms({
       to: opts.patientPhone,
-      body: `${opts.clinicName}: ${opts.serviceName} slot free ${when}. Reply to clinic soon (offer ends ~${expires}).`,
+      body: opts.offerUrl
+        ? `${opts.clinicName}: ${opts.serviceName} free ${when}. Accept/decline: ${opts.offerUrl}`
+        : `${opts.clinicName}: ${opts.serviceName} slot free ${when}. Reply to clinic soon (offer ends ~${expires}).`,
     });
     smsSent = true;
   }

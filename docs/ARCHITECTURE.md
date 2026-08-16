@@ -40,7 +40,10 @@
 ## Multi-tenancy
 
 - Every clinical row carries `clinicId`.
-- Auth session resolves membership → role → RLS-style checks in app layer (Postgres RLS optional later).
+- Auth session resolves membership → role → **app-layer** `clinicId` filters on every query (primary defence).
+- **Postgres RLS** (optional hardening): `web/prisma/sql/001_clinic_rls.sql` enables policies on Patient, Appointment, WaitlistEntry, Invoice, PatientAccessEvent, NoteTemplate, AiOrganiseJob. Apply with `npm run db:rls`.
+- Use `withClinicTransaction(clinicId, fn)` / `SET LOCAL app.clinic_id` so pooled connections never leak tenant context (`src/server/clinic-rls.ts`).
+- Production hardening path: non-owner DB role + `FORCE ROW LEVEL SECURITY` + always set clinic GUC (or `app.rls_bypass=on` only for seed/cron). Until FORCE is on, the table-owner role bypasses RLS (Postgres default).
 - Patient booking pages scoped by clinic slug / public booking token.
 
 ---

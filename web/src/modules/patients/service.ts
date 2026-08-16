@@ -6,6 +6,13 @@ import {
   assertCanAccessClinicalRecord,
   canAccessClinicalRecord,
 } from "@/server/rbac";
+import {
+  buildPatientTimeline,
+  type TimelineItem,
+} from "@/modules/patients/timeline";
+
+export type { TimelineItem };
+export { buildPatientTimeline } from "@/modules/patients/timeline";
 
 export const createPatientSchema = z.object({
   firstName: z.string().min(1).max(100),
@@ -165,8 +172,16 @@ export async function getPatientPrep(
         noteIds: notes.map((n) => n.id),
         clinicalNotesIncluded: canViewNotes,
         role: ctx.role,
+        invoiceCount: patient.invoices.length,
       },
     },
+  });
+
+  const timeline = buildPatientTimeline({
+    appointments: patient.appointments,
+    notes: canViewNotes ? patient.notes : [],
+    invoices: patient.invoices,
+    includeNotes: canViewNotes,
   });
 
   return {
@@ -189,6 +204,17 @@ export async function getPatientPrep(
       visitId: a.visit?.id ?? null,
     })),
     notes,
+    invoices: patient.invoices.map((inv) => ({
+      id: inv.id,
+      amountCents: inv.amountCents,
+      currency: inv.currency,
+      status: inv.status,
+      issuedAt: inv.issuedAt,
+      paidAt: inv.paidAt,
+      createdAt: inv.createdAt,
+      appointmentId: inv.appointmentId,
+    })),
+    timeline,
   };
 }
 

@@ -79,6 +79,8 @@ Staff sessions still work from Settings for manual runs.
 
 Audio: set `S3_BUCKET` + `S3_REGION=eu-west-2` + keys for durable UK object storage; otherwise files stay under `web/storage/`.
 
+Optional: `cd web && npm run db:rls` applies clinic RLS policies (`prisma/sql/001_clinic_rls.sql`). App-layer `clinicId` filters remain primary; see ARCHITECTURE multi-tenancy for FORCE + non-owner role.
+
 ## 5. Smoke after deploy
 
 1. `GET /api/v1/health` → `{ "ok": true, ... }`
