@@ -120,6 +120,7 @@ Roles (enforced on routes): **OWNER** / **PRACTITIONER** for clinical **read and
 | GET | `/notes?status=DRAFT&practitionerId=` | List metadata only (clinician; **no content**). Practitioners default to their own visit notes |
 | GET | `/notes?templates=1` | Templates (clinician) |
 | GET | `/notes/:id` | Full note + audit `viewed` (clinician) |
+| GET | `/notes/:id/document?kind=clinical_note\|gp_letter` | Printable signed note or editable GP letter draft (clinician; audits `printed` / `letter_opened`) |
 | PATCH | `/notes/:id` | Update draft `{ content }` (clinician) |
 | POST | `/notes/:id/sign` | Sign & lock (clinician) |
 

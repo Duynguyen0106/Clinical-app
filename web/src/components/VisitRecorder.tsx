@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Mic, Square, Check, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
 import { PatientPrepPanel } from "@/components/PatientPrepPanel";
+import { NotePrintActions } from "@/components/NotePrintActions";
 
 type Phase =
   | "loading"
@@ -312,6 +313,8 @@ export function VisitRecorder({ visitId }: Props) {
             <p className="muted">
               Locked in the clinical record with an audit event.
             </p>
+
+            {noteId ? <NotePrintActions noteId={noteId} /> : null}
 
             {rebook && !rebookDone ? (
               <div className="rebook-box">

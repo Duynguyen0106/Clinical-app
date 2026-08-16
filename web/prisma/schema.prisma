@@ -203,6 +203,10 @@ model Patient {
   phone       String?
   dateOfBirth DateTime?
   alerts      String?
+  /// Usual GP / practice (for referral letters)
+  gpName      String?
+  gpPractice  String?
+  gpEmail     String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

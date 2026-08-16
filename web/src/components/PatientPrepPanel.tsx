@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { api } from "@/lib/api";
+import { NotePrintActions } from "@/components/NotePrintActions";
 
 export type PatientPrep = {
   id: string;
@@ -266,6 +267,9 @@ export function PatientPrepPanel({
                           </div>
                         ))
                       )}
+                      {n.status === "SIGNED" ? (
+                        <NotePrintActions noteId={n.id} compact />
+                      ) : null}
                       {n.visitId ? (
                         <Link
                           href={`/app/visits/${n.visitId}`}
