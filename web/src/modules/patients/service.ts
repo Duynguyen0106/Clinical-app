@@ -2,6 +2,10 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
 import type { AuthContext } from "@/server/auth";
+import {
+  assertCanAccessClinicalRecord,
+  canAccessClinicalRecord,
+} from "@/server/rbac";
 
 export const createPatientSchema = z.object({
   firstName: z.string().min(1).max(100),
@@ -40,6 +44,28 @@ export async function listPatients(
   });
 }
 
+const noteMetaSelect = {
+  id: true,
+  status: true,
+  source: true,
+  signedAt: true,
+  createdAt: true,
+  visitId: true,
+  template: { select: { id: true, name: true } },
+  visit: {
+    select: {
+      id: true,
+      appointment: {
+        select: {
+          startsAt: true,
+          appointmentType: { select: { name: true } },
+          practitioner: { select: { displayName: true } },
+        },
+      },
+    },
+  },
+} as const;
+
 export async function getPatient(ctx: AuthContext, id: string) {
   const patient = await prisma.patient.findFirst({
     where: { id, clinicId: ctx.clinicId },
@@ -54,24 +80,11 @@ export async function getPatient(ctx: AuthContext, id: string) {
           visit: { select: { id: true } },
         },
       },
+      // Metadata only — clinical bodies stay off the patient profile payload
       notes: {
         orderBy: { createdAt: "desc" },
         take: 15,
-        include: {
-          template: { select: { id: true, name: true } },
-          visit: {
-            select: {
-              id: true,
-              appointment: {
-                select: {
-                  startsAt: true,
-                  appointmentType: { select: { name: true } },
-                  practitioner: { select: { displayName: true } },
-                },
-              },
-            },
-          },
-        },
+        select: noteMetaSelect,
       },
       invoices: {
         orderBy: { createdAt: "desc" },
@@ -83,27 +96,37 @@ export async function getPatient(ctx: AuthContext, id: string) {
   return patient;
 }
 
-/** Compact prep payload for diary / visit — history + readable prior notes */
+/**
+ * Prep pack for diary / visit.
+ * Staff always get booking history + alerts.
+ * Clinical note bodies are never included here — clinicians load them via
+ * expand (`recordNoteHistoryExpand`), which audits the disclosure.
+ */
 export async function getPatientPrep(
   ctx: AuthContext,
   id: string,
   opts: { source?: string } = {},
 ) {
   const patient = await getPatient(ctx, id);
-  const notes = patient.notes.map((n) => ({
-    id: n.id,
-    status: n.status,
-    source: n.source,
-    signedAt: n.signedAt,
-    createdAt: n.createdAt,
-    templateName: n.template?.name ?? null,
-    visitId: n.visitId,
-    appointmentStartsAt: n.visit?.appointment?.startsAt ?? null,
-    serviceName: n.visit?.appointment?.appointmentType?.name ?? null,
-    practitionerName: n.visit?.appointment?.practitioner?.displayName ?? null,
-    summary: summariseNoteContent(n.content),
-    sections: flattenNoteSections(n.content),
-  }));
+  const canViewNotes = canAccessClinicalRecord(ctx.role);
+
+  const notes = canViewNotes
+    ? patient.notes.map((n) => ({
+        id: n.id,
+        status: n.status,
+        source: n.source,
+        signedAt: n.signedAt,
+        createdAt: n.createdAt,
+        templateName: n.template?.name ?? null,
+        visitId: n.visitId,
+        appointmentStartsAt: n.visit?.appointment?.startsAt ?? null,
+        serviceName: n.visit?.appointment?.appointmentType?.name ?? null,
+        practitionerName: n.visit?.appointment?.practitioner?.displayName ?? null,
+        // Progressive disclosure: content loaded only on expand
+        summary: "",
+        sections: [] as { key: string; value: string }[],
+      }))
+    : [];
 
   await prisma.patientAccessEvent.create({
     data: {
@@ -116,6 +139,8 @@ export async function getPatientPrep(
         appointmentCount: patient.appointments.length,
         noteCount: notes.length,
         noteIds: notes.map((n) => n.id),
+        clinicalNotesIncluded: canViewNotes,
+        role: ctx.role,
       },
     },
   });
@@ -128,6 +153,7 @@ export async function getPatientPrep(
     phone: patient.phone,
     dateOfBirth: patient.dateOfBirth,
     alerts: patient.alerts,
+    canViewClinicalNotes: canViewNotes,
     appointments: patient.appointments.map((a) => ({
       id: a.id,
       startsAt: a.startsAt,
@@ -142,17 +168,22 @@ export async function getPatientPrep(
   };
 }
 
+/**
+ * Clinician expands a prior note in prep — returns body and audits the read.
+ * Reception is denied (need-to-know).
+ */
 export async function recordNoteHistoryExpand(
   ctx: AuthContext,
   patientId: string,
   noteId: string,
   opts: { source?: string } = {},
 ) {
+  assertCanAccessClinicalRecord(ctx);
   await assertPatientInClinic(ctx.clinicId, patientId);
 
   const note = await prisma.clinicalNote.findFirst({
     where: { id: noteId, patientId, patient: { clinicId: ctx.clinicId } },
-    select: { id: true },
+    select: { id: true, content: true, status: true },
   });
   if (!note) throw notFound("Note not found");
 
@@ -181,7 +212,13 @@ export async function recordNoteHistoryExpand(
     }),
   ]);
 
-  return { ok: true };
+  return {
+    ok: true as const,
+    noteId: note.id,
+    status: note.status,
+    summary: summariseNoteContent(note.content),
+    sections: flattenNoteSections(note.content),
+  };
 }
 
 function asRecord(content: unknown): Record<string, unknown> {

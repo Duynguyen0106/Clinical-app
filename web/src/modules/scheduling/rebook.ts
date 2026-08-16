@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { notFound } from "@/server/errors";
 import { listClinicSlots } from "@/modules/scheduling/slots";
 import { createAppointment } from "@/modules/scheduling/service";
+import { canAccessClinicalRecord } from "@/server/rbac";
 import { addWeeks } from "date-fns";
 
 export function inferFollowUpWeeks(planText: string | undefined) {
@@ -56,6 +57,8 @@ export async function suggestRebook(ctx: AuthContext, visitId: string) {
     days: 14,
   });
 
+  const canSeePlan = canAccessClinicalRecord(ctx.role);
+
   return {
     visitId,
     patientId: visit.appointment.patientId,
@@ -63,7 +66,8 @@ export async function suggestRebook(ctx: AuthContext, visitId: string) {
     appointmentTypeId: followUp.id,
     appointmentTypeName: followUp.name,
     suggestedWeeks: weeks,
-    planExcerpt: plan.slice(0, 240),
+    // Plan text is clinical — only clinicians receive an excerpt
+    planExcerpt: canSeePlan ? plan.slice(0, 240) : "",
     slots: slots.slice(0, 8),
   };
 }
