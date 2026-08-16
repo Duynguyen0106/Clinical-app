@@ -13,6 +13,8 @@ AI-first practice management for UK allied health (physio, osteopathy, manual th
 - [UK compliance](docs/UK_COMPLIANCE.md)
 - [Launch readiness](docs/LAUNCH.md)
 - [Deploy](docs/DEPLOY.md)
+- [Phone checklist](docs/PHONE_CHECKLIST.md)
+- [Pilot script](docs/PILOT.md)
 - [Next steps](docs/NEXT_STEPS.md)
 
 ## Quick start
