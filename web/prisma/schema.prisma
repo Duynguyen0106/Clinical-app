@@ -82,6 +82,20 @@ model Session {
   @@index([userId])
 }
 
+enum DepositStatus {
+  NONE
+  REQUIRED
+  PAID
+  WAIVED
+  REFUNDED
+}
+
+enum DepositMode {
+  OFF
+  ALL_ONLINE
+  NEW_PATIENTS
+}
+
 model Clinic {
   id        String   @id @default(cuid())
   name      String
@@ -91,6 +105,18 @@ model Clinic {
   audioRetentionDays Int @default(14)
   privacyNoticeVersion String @default("2026-08-uk-v1")
   dataRegion String @default("uk-eu")
+  /// Online booking: earliest bookable start from now (hours)
+  bookingMinNoticeHours Int @default(2)
+  /// Online booking: how far ahead patients can book (days)
+  bookingMaxAdvanceDays Int @default(60)
+  /// Patient self-serve cancel/reschedule closes this many hours before start
+  cancelMinNoticeHours Int @default(2)
+  /// When deposits are required on online booking
+  depositMode DepositMode @default(OFF)
+  /// Default deposit amount (pence) when mode is on and type has no override
+  depositDefaultCents Int @default(2000)
+  /// Shown on public booking / manage pages
+  bookingPolicyText String @default("Please give at least 2 hours’ notice to cancel or reschedule online. Late cancels and no-shows may forfeit the deposit.")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -231,6 +257,8 @@ model AppointmentType {
   durationMinutes  Int
   /// Default invoice amount when staff charges from the diary (GBP pence)
   defaultPriceCents Int    @default(0)
+  /// Optional deposit override (pence); null = clinic default
+  depositCents     Int?
   bufferBefore     Int     @default(0)
   bufferAfter      Int     @default(0)
   colour           String  @default("#3D7A6E")
@@ -283,6 +311,9 @@ model Appointment {
   status            AppointmentStatus @default(BOOKED)
   recurrenceGroupId String?
   notes             String?
+  depositCents      Int               @default(0)
+  depositStatus     DepositStatus     @default(NONE)
+  depositPaidAt     DateTime?
   confirmationSentAt DateTime?
   reminderSentAt    DateTime?
   smsReminderSentAt DateTime?

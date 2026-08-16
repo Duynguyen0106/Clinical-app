@@ -3,6 +3,10 @@ import { prisma } from "@/server/db";
 import { notFound } from "@/server/errors";
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { isWindowAvailable, loadExceptions } from "./availability";
+import {
+  getClinicBookingPolicy,
+  isSlotAllowedByPolicy,
+} from "./policy";
 
 export async function listClinicSlots(args: {
   clinicId: string;
@@ -41,6 +45,10 @@ export async function listClinicSlots(args: {
     include: { availability: true },
   });
   if (!practitioner) throw notFound("Practitioner not found");
+
+  const policy = args.onlineBookableOnly
+    ? await getClinicBookingPolicy(args.clinicId)
+    : null;
 
   const days = args.days ?? 14;
   const limit = args.limit ?? 48;
@@ -103,6 +111,7 @@ export async function listClinicSlots(args: {
           minute % 60,
         );
         if (startsAt <= now) continue;
+        if (policy && !isSlotAllowedByPolicy(policy, startsAt, now)) continue;
         const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
         const windowStart = new Date(
           startsAt.getTime() - type.bufferBefore * 60_000,

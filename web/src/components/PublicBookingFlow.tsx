@@ -11,7 +11,20 @@ type Clinic = {
   id: string;
   name: string;
   slug: string;
-  appointmentTypes: { id: string; name: string; durationMinutes: number }[];
+  booking?: {
+    minNoticeHours: number;
+    maxAdvanceDays: number;
+    cancelMinNoticeHours: number;
+    depositMode: string;
+    depositDefaultCents: number;
+    policyText: string;
+  };
+  appointmentTypes: {
+    id: string;
+    name: string;
+    durationMinutes: number;
+    effectiveDepositCents?: number;
+  }[];
   practitioners: ({ id: string; displayName: string } | null)[];
 };
 
@@ -37,6 +50,12 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [manageHref, setManageHref] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [depositInfo, setDepositInfo] = useState<{
+    status: string;
+    depositCents: number;
+    checkoutUrl: string | null;
+  } | null>(null);
+  const [policyText, setPolicyText] = useState<string | null>(null);
 
   useEffect(() => {
     void api<{ clinic: Clinic }>(`/public/clinics/${slug}`, { auth: false })
@@ -45,6 +64,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
         setServiceId(d.clinic.appointmentTypes[0]?.id ?? "");
         const prac = d.clinic.practitioners.filter(Boolean)[0];
         setPractitionerId(prac?.id ?? "");
+        setPolicyText(d.clinic.booking?.policyText ?? null);
       })
       .catch((e: Error) => setError(e.message));
   }, [slug]);
@@ -70,6 +90,12 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
       const booked = await api<{
         appointment: { id: string };
         manageUrl?: string;
+        deposit?: {
+          status: string;
+          depositCents: number;
+          checkoutUrl: string | null;
+        } | null;
+        policyText?: string;
       }>(`/public/clinics/${slug}`, {
         method: "POST",
         auth: false,
@@ -86,6 +112,12 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
         }),
       });
       if (booked.manageUrl) setManageHref(booked.manageUrl);
+      if (booked.deposit) setDepositInfo(booked.deposit);
+      if (booked.policyText) setPolicyText(booked.policyText);
+      if (booked.deposit?.checkoutUrl) {
+        window.location.href = booked.deposit.checkoutUrl;
+        return;
+      }
       setStep("done");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Booking failed");
@@ -116,6 +148,14 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
             cancel or reschedule. We&apos;ll also send a reminder before your
             visit.
           </p>
+          {depositInfo ? (
+            <p className="alert-line">
+              {depositInfo.status === "paid"
+                ? `Deposit of £${(depositInfo.depositCents / 100).toFixed(2)} received — booking confirmed.`
+                : `A deposit of £${(depositInfo.depositCents / 100).toFixed(2)} is required to hold this slot.`}
+            </p>
+          ) : null}
+          {policyText ? <p className="muted book-fineprint">{policyText}</p> : null}
           {manageHref ? (
             <Link href={manageHref} className="btn-secondary">
               Manage this booking
@@ -197,6 +237,25 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                   <p className="muted">No open slots in the next fortnight.</p>
                 ) : null}
               </fieldset>
+              {clinic.booking?.depositMode &&
+              clinic.booking.depositMode !== "OFF" ? (
+                <p className="muted book-fineprint">
+                  A deposit of about £
+                  {(
+                    (clinic.appointmentTypes.find((t) => t.id === serviceId)
+                      ?.effectiveDepositCents ??
+                      clinic.booking.depositDefaultCents) / 100
+                  ).toFixed(2)}{" "}
+                  may be required
+                  {clinic.booking.depositMode === "NEW_PATIENTS"
+                    ? " for new patients"
+                    : ""}
+                  .
+                </p>
+              ) : null}
+              {policyText ? (
+                <p className="muted book-fineprint">{policyText}</p>
+              ) : null}
               <button
                 type="button"
                 className="btn-primary"

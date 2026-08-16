@@ -20,10 +20,20 @@ type SupportInfo = {
   privacyPath: string;
 };
 
+type BookingPolicy = {
+  bookingMinNoticeHours: number;
+  bookingMaxAdvanceDays: number;
+  cancelMinNoticeHours: number;
+  depositMode: "OFF" | "ALL_ONLINE" | "NEW_PATIENTS";
+  depositDefaultCents: number;
+  bookingPolicyText: string;
+};
+
 export default function SettingsPage() {
   const { me } = useAuth();
   const [clinic, setClinic] = useState<ClinicCompliance | null>(null);
   const [support, setSupport] = useState<SupportInfo | null>(null);
+  const [booking, setBooking] = useState<BookingPolicy | null>(null);
   const [days, setDays] = useState(14);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,11 +43,13 @@ export default function SettingsPage() {
     void Promise.all([
       api<{ clinic: ClinicCompliance }>("/clinic/compliance"),
       api<{ support: SupportInfo }>("/ops/support"),
+      api<{ booking: BookingPolicy }>("/clinic/booking"),
     ])
-      .then(([c, s]) => {
+      .then(([c, s, b]) => {
         setClinic(c.clinic);
         setDays(c.clinic.audioRetentionDays);
         setSupport(s.support);
+        setBooking(b.booking);
       })
       .catch((e: Error) => setError(e.message));
   }, []);
@@ -54,6 +66,22 @@ export default function SettingsPage() {
       setMessage("Saved retention settings.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Save failed");
+    }
+  }
+
+  async function saveBooking() {
+    if (!booking) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const d = await api<{ booking: BookingPolicy }>("/clinic/booking", {
+        method: "PATCH",
+        body: JSON.stringify(booking),
+      });
+      setBooking(d.booking);
+      setMessage("Saved booking policy.");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Booking policy save failed");
     }
   }
 
@@ -155,6 +183,128 @@ export default function SettingsPage() {
             </div>
           ) : (
             <p className="muted">Only clinic owners can change retention.</p>
+          )}
+        </section>
+
+        <section className="panel">
+          <h2>Online booking policy</h2>
+          <p className="muted">
+            Notice windows, how far ahead patients can book, and deposits (like
+            Fresha-style no-show protection).
+          </p>
+          {booking ? (
+            <>
+              <label className="field">
+                <span>Min notice to book (hours)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={168}
+                  disabled={!isOwner}
+                  value={booking.bookingMinNoticeHours}
+                  onChange={(e) =>
+                    setBooking({
+                      ...booking,
+                      bookingMinNoticeHours: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Max advance book (days)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  disabled={!isOwner}
+                  value={booking.bookingMaxAdvanceDays}
+                  onChange={(e) =>
+                    setBooking({
+                      ...booking,
+                      bookingMaxAdvanceDays: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Online cancel / reschedule closes (hours before)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={168}
+                  disabled={!isOwner}
+                  value={booking.cancelMinNoticeHours}
+                  onChange={(e) =>
+                    setBooking({
+                      ...booking,
+                      cancelMinNoticeHours: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Deposit mode</span>
+                <select
+                  disabled={!isOwner}
+                  value={booking.depositMode}
+                  onChange={(e) =>
+                    setBooking({
+                      ...booking,
+                      depositMode: e.target.value as BookingPolicy["depositMode"],
+                    })
+                  }
+                >
+                  <option value="OFF">Off</option>
+                  <option value="NEW_PATIENTS">New patients (online)</option>
+                  <option value="ALL_ONLINE">All online bookings</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Default deposit (£)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  disabled={!isOwner}
+                  value={(booking.depositDefaultCents / 100).toFixed(2)}
+                  onChange={(e) =>
+                    setBooking({
+                      ...booking,
+                      depositDefaultCents: Math.round(
+                        Number(e.target.value) * 100,
+                      ),
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Policy text (shown on booking)</span>
+                <textarea
+                  rows={3}
+                  disabled={!isOwner}
+                  value={booking.bookingPolicyText}
+                  onChange={(e) =>
+                    setBooking({
+                      ...booking,
+                      bookingPolicyText: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              {isOwner ? (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void saveBooking()}
+                >
+                  Save booking policy
+                </button>
+              ) : (
+                <p className="muted">Only owners can change booking policy.</p>
+              )}
+            </>
+          ) : (
+            <p className="muted">Loading…</p>
           )}
         </section>
 

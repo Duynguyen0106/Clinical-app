@@ -73,6 +73,8 @@ export default function CalendarPage() {
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 }),
   );
+  const [viewMode, setViewMode] = useState<"week" | "day">("week");
+  const [dayFocus, setDayFocus] = useState(() => new Date());
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -107,19 +109,25 @@ export default function CalendarPage() {
   const [feeNote, setFeeNote] = useState("");
 
   const days = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
-    [weekStart],
+    () =>
+      viewMode === "day"
+        ? [dayFocus]
+        : Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart, viewMode, dayFocus],
   );
 
   const load = useCallback(() => {
-    const from = weekStart;
-    const to = addDays(weekStart, 7);
+    const from = viewMode === "day" ? dayFocus : weekStart;
+    const to = viewMode === "day" ? addDays(dayFocus, 1) : addDays(weekStart, 7);
     void Promise.all([
       api<{ appointments: Appointment[] }>(
         `/appointments?from=${from.toISOString()}&to=${to.toISOString()}`,
       ),
       api<{ blocks: Block[] }>(
-        `/blocks?from=${format(from, "yyyy-MM-dd")}&to=${format(to, "yyyy-MM-dd")}`,
+        `/blocks?from=${format(from, "yyyy-MM-dd")}&to=${format(
+          viewMode === "day" ? dayFocus : addDays(weekStart, 6),
+          "yyyy-MM-dd",
+        )}`,
       ),
     ])
       .then(([a, b]) => {
@@ -127,7 +135,7 @@ export default function CalendarPage() {
         setBlocks(b.blocks);
       })
       .catch((e: Error) => setError(e.message));
-  }, [weekStart]);
+  }, [weekStart, viewMode, dayFocus]);
 
   useEffect(() => {
     load();
@@ -277,37 +285,67 @@ export default function CalendarPage() {
   return (
     <AppShell
       title="Calendar"
-      subtitle="Book, block time, drag to reschedule, or open an appointment to adjust length and fees."
+      subtitle="Day or week view — book, block time, drag to reschedule, prepare from patient history."
     >
       <div className="panel calendar-panel">
         <div className="panel-head week-toolbar">
           <div className="week-nav">
+            <div className="view-toggle" role="group" aria-label="Calendar view">
+              <button
+                type="button"
+                className={`btn-sm ${viewMode === "day" ? "btn-secondary" : "btn-ghost"}`}
+                onClick={() => {
+                  setViewMode("day");
+                  setDayFocus(new Date());
+                }}
+              >
+                Day
+              </button>
+              <button
+                type="button"
+                className={`btn-sm ${viewMode === "week" ? "btn-secondary" : "btn-ghost"}`}
+                onClick={() => setViewMode("week")}
+              >
+                Week
+              </button>
+            </div>
             <button
               type="button"
               className="btn-ghost btn-sm"
-              onClick={() => setWeekStart((d) => addDays(d, -7))}
+              onClick={() =>
+                viewMode === "day"
+                  ? setDayFocus((d) => addDays(d, -1))
+                  : setWeekStart((d) => addDays(d, -7))
+              }
             >
               ← Prev
             </button>
             <h2>
-              {format(weekStart, "d MMM")} –{" "}
-              {format(addDays(weekStart, 6), "d MMM yyyy")}
+              {viewMode === "day"
+                ? format(dayFocus, "EEE d MMM yyyy")
+                : `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 6), "d MMM yyyy")}`}
             </h2>
             <button
               type="button"
               className="btn-ghost btn-sm"
-              onClick={() => setWeekStart((d) => addDays(d, 7))}
+              onClick={() =>
+                viewMode === "day"
+                  ? setDayFocus((d) => addDays(d, 1))
+                  : setWeekStart((d) => addDays(d, 7))
+              }
             >
               Next →
             </button>
             <button
               type="button"
               className="btn-secondary btn-sm"
-              onClick={() =>
-                setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
-              }
+              onClick={() => {
+                const today = new Date();
+                setDayFocus(today);
+                setWeekStart(startOfWeek(today, { weekStartsOn: 1 }));
+              }}
             >
-              This week
+              Today
             </button>
           </div>
           <div className="week-actions">
@@ -336,7 +374,11 @@ export default function CalendarPage() {
         {error ? <p className="form-error">{error}</p> : null}
         {message ? <p className="form-ok">{message}</p> : null}
 
-        <div className="week-grid" role="grid" aria-label="Week calendar">
+        <div
+          className={`week-grid ${viewMode === "day" ? "week-grid-day" : ""}`}
+          role="grid"
+          aria-label={viewMode === "day" ? "Day calendar" : "Week calendar"}
+        >
           <div className="week-corner" />
           {days.map((day) => (
             <div key={day.toISOString()} className="week-day-head">

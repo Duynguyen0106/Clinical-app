@@ -1301,6 +1301,16 @@ h3 {
   overflow-x: auto;
 }
 
+.week-grid-day {
+  grid-template-columns: 56px minmax(220px, 1fr);
+}
+
+.view-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-right: 0.35rem;
+}
+
 .week-corner {
   border-bottom: 1px solid var(--line);
 }
