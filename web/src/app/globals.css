@@ -943,10 +943,72 @@ h3 {
   margin-top: 1rem;
 }
 
-.pay-total {
-  margin-top: 1rem;
-  padding-top: 0.75rem;
+.patient-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-end;
+}
+
+.patient-lookup {
+  margin-bottom: 0.75rem;
+}
+
+.patient-lookup-results {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.patient-lookup-results > li {
+  border-bottom: 1px solid var(--line);
+}
+
+.patient-lookup-results > li:last-child {
+  border-bottom: none;
+}
+
+.patient-lookup-option {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 0.65rem 0.75rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font: inherit;
+}
+
+.patient-lookup-option:hover {
+  background: var(--accent-soft);
+}
+
+.patient-lookup-selected {
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 12px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.patient-lookup-create {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
   border-top: 1px solid var(--line);
+}
+
+.week-cell-bookable {
+  cursor: pointer;
+}
+
+.week-cell-bookable:hover {
+  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
 }
 
 .pay-history-title {

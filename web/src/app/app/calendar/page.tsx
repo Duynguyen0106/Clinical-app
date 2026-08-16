@@ -14,6 +14,7 @@ import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
 import { PatientPrepPanel } from "@/components/PatientPrepPanel";
+import { PatientLookup } from "@/components/PatientLookup";
 
 type Appointment = {
   id: string;
@@ -52,8 +53,6 @@ type Catalog = {
   practitioners: { id: string; displayName: string }[];
 };
 
-type Patient = { id: string; firstName: string; lastName: string };
-
 const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
 function minutesLabel(m: number) {
@@ -81,7 +80,6 @@ export default function CalendarPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -89,6 +87,8 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [bookOpen, setBookOpen] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);
+  /** When true, slot came from clicking a diary cell */
+  const [bookSlotFixed, setBookSlotFixed] = useState(false);
 
   const [bookPatientId, setBookPatientId] = useState("");
   const [bookTypeId, setBookTypeId] = useState("");
@@ -165,12 +165,6 @@ export default function CalendarPage() {
         setBookFeePounds(fee ? (fee / 100).toFixed(2) : "");
       })
       .catch(() => undefined);
-    void api<{ patients: Patient[] }>("/patients?take=50")
-      .then((d) => {
-        setPatients(d.patients);
-        setBookPatientId(d.patients[0]?.id ?? "");
-      })
-      .catch(() => undefined);
   }, [me?.practitionerProfileId]);
 
   useEffect(() => {
@@ -184,7 +178,7 @@ export default function CalendarPage() {
   }, [me, filterReady]);
 
   useEffect(() => {
-    if (!bookOpen || !bookTypeId || !bookPractitionerId) return;
+    if (!bookOpen || !bookTypeId || !bookPractitionerId || bookSlotFixed) return;
     void api<{ slots: string[] }>(
       `/slots?appointmentTypeId=${bookTypeId}&practitionerId=${bookPractitionerId}&durationMinutes=${bookDuration}&days=14`,
     )
@@ -193,7 +187,7 @@ export default function CalendarPage() {
         setBookSlot(d.slots[0] ?? "");
       })
       .catch((e: Error) => setError(e.message));
-  }, [bookOpen, bookTypeId, bookPractitionerId, bookDuration]);
+  }, [bookOpen, bookTypeId, bookPractitionerId, bookDuration, bookSlotFixed]);
 
   useEffect(() => {
     if (!selected) return;
@@ -201,6 +195,24 @@ export default function CalendarPage() {
     setExtraFee("");
     setFeeNote("");
   }, [selected]);
+
+  function openBookSheet(opts?: { day?: Date; hour?: number }) {
+    setSelected(null);
+    setMessage(null);
+    setError(null);
+    setBookPatientId("");
+    setBookNotes("");
+    if (opts?.day != null && opts.hour != null) {
+      const startsAt = setMinutes(setHours(opts.day, opts.hour), 0);
+      setBookSlot(startsAt.toISOString());
+      setBookSlotFixed(true);
+      if (filterPractitionerId) setBookPractitionerId(filterPractitionerId);
+    } else {
+      setBookSlotFixed(false);
+      setBookSlot("");
+    }
+    setBookOpen(true);
+  }
 
   async function reschedule(id: string, day: Date, hour: number) {
     const startsAt = setMinutes(setHours(day, hour), 0);
@@ -238,6 +250,7 @@ export default function CalendarPage() {
         }),
       });
       setBookOpen(false);
+      setBookSlotFixed(false);
       setMessage("Appointment booked");
       load();
     } catch (e) {
@@ -310,7 +323,7 @@ export default function CalendarPage() {
       subtitle={
         me?.role === "PRACTITIONER"
           ? "Your diary — switch to All to see the full clinic board."
-          : "Day or week view — book, block time, drag to reschedule, prepare from patient history."
+          : "Click an empty time slot to book — look up the patient by name, phone, or NHS number."
       }
     >
       <div className="panel calendar-panel">
@@ -407,7 +420,7 @@ export default function CalendarPage() {
             <button
               type="button"
               className="btn-primary btn-sm"
-              onClick={() => setBookOpen(true)}
+              onClick={() => openBookSheet()}
             >
               Book
             </button>
@@ -467,7 +480,14 @@ export default function CalendarPage() {
                 return (
                   <div
                     key={`${day.toISOString()}-${hour}`}
-                    className={`week-cell ${draggingId ? "droppable" : ""}`}
+                    className={`week-cell ${draggingId ? "droppable" : ""} ${
+                      cellAppts.length === 0 && cellBlocks.length === 0
+                        ? "week-cell-bookable"
+                        : ""
+                    }`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Book ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -476,6 +496,16 @@ export default function CalendarPage() {
                         draggingId;
                       if (id) void reschedule(id, day, hour);
                       setDraggingId(null);
+                    }}
+                    onClick={() => {
+                      if (cellAppts.length > 0 || cellBlocks.length > 0) return;
+                      openBookSheet({ day, hour });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      if (cellAppts.length > 0 || cellBlocks.length > 0) return;
+                      e.preventDefault();
+                      openBookSheet({ day, hour });
                     }}
                   >
                     {cellBlocks.map((b) => (
@@ -498,7 +528,8 @@ export default function CalendarPage() {
                           setDraggingId(apt.id);
                         }}
                         onDragEnd={() => setDraggingId(null)}
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setMessage(null);
                           setSelected(apt);
                         }}
@@ -689,7 +720,13 @@ export default function CalendarPage() {
       ) : null}
 
       {bookOpen ? (
-        <div className="sheet-backdrop" onClick={() => setBookOpen(false)}>
+        <div
+          className="sheet-backdrop"
+          onClick={() => {
+            setBookOpen(false);
+            setBookSlotFixed(false);
+          }}
+        >
           <div
             className="sheet-card"
             role="dialog"
@@ -701,24 +738,33 @@ export default function CalendarPage() {
               <button
                 type="button"
                 className="btn-ghost btn-sm"
-                onClick={() => setBookOpen(false)}
+                onClick={() => {
+                  setBookOpen(false);
+                  setBookSlotFixed(false);
+                }}
               >
                 Close
               </button>
             </div>
-            <label className="field">
-              <span>Patient</span>
-              <select
-                value={bookPatientId}
-                onChange={(e) => setBookPatientId(e.target.value)}
-              >
-                {patients.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.firstName} {p.lastName}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {bookSlotFixed && bookSlot ? (
+              <p className="alert-line">
+                Slot: {format(new Date(bookSlot), "EEE d MMM HH:mm")}
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => {
+                    setBookSlotFixed(false);
+                    setBookSlot("");
+                  }}
+                >
+                  Change slot
+                </button>
+              </p>
+            ) : null}
+            <PatientLookup
+              value={bookPatientId}
+              onChange={(id) => setBookPatientId(id)}
+            />
             <label className="field">
               <span>Service</span>
               <select
@@ -778,23 +824,25 @@ export default function CalendarPage() {
                 onChange={(e) => setBookFeePounds(e.target.value)}
               />
             </label>
-            <label className="field">
-              <span>Slot</span>
-              <select
-                value={bookSlot}
-                onChange={(e) => setBookSlot(e.target.value)}
-              >
-                {bookSlots.length === 0 ? (
-                  <option value="">No open slots</option>
-                ) : (
-                  bookSlots.map((s) => (
-                    <option key={s} value={s}>
-                      {format(new Date(s), "EEE d MMM HH:mm")}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
+            {!bookSlotFixed ? (
+              <label className="field">
+                <span>Slot</span>
+                <select
+                  value={bookSlot}
+                  onChange={(e) => setBookSlot(e.target.value)}
+                >
+                  {bookSlots.length === 0 ? (
+                    <option value="">No open slots</option>
+                  ) : (
+                    bookSlots.map((s) => (
+                      <option key={s} value={s}>
+                        {format(new Date(s), "EEE d MMM HH:mm")}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+            ) : null}
             <label className="field">
               <span>Notes</span>
               <textarea
