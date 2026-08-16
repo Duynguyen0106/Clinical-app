@@ -50,6 +50,14 @@ enum RecordingStatus {
   FAILED
 }
 
+enum WaitlistStatus {
+  WAITING
+  OFFERED
+  BOOKED
+  DECLINED
+  CANCELLED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -250,23 +258,32 @@ model Appointment {
 }
 
 model WaitlistEntry {
-  id                String   @id @default(cuid())
+  id                String         @id @default(cuid())
   clinicId          String
   patientId         String
   practitionerId    String?
   appointmentTypeId String
   preferredFrom     DateTime?
   preferredTo       DateTime?
-  autoNotify        Boolean  @default(true)
+  autoNotify        Boolean        @default(true)
+  status            WaitlistStatus @default(WAITING)
   notes             String?
-  createdAt         DateTime @default(now())
+  /// Slot offered after a cancellation
+  offeredStartsAt   DateTime?
+  offeredEndsAt     DateTime?
+  offeredAt         DateTime?
+  offerExpiresAt    DateTime?
+  bookedAppointmentId String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
   clinic          Clinic              @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   patient         Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
   practitioner    PractitionerProfile? @relation(fields: [practitionerId], references: [id])
   appointmentType AppointmentType     @relation(fields: [appointmentTypeId], references: [id])
 
-  @@index([clinicId])
+  @@index([clinicId, status])
+  @@index([clinicId, appointmentTypeId, status])
 }
 
 model Visit {

@@ -485,9 +485,80 @@ h3,
   color: rgba(255, 255, 255, 0.88);
 }
 
-.tip-panel .btn-secondary {
+.pulse-panel .pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
   margin-top: 0.75rem;
 }
+
+.pulse-grid div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.pulse-grid strong {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.pulse-grid span,
+.pulse-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.task-snip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.task-snip a {
+  color: var(--accent-deep);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.task-snip a:hover {
+  text-decoration: underline;
+}
+
+.status-waiting {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.status-offered {
+  background: #e8eef8;
+  color: #1f5f78;
+}
+
+.status-booked {
+  background: #d9f0e4;
+  color: #0a4f44;
+}
+
+.status-unsigned_note,
+.status-unpaid_invoice,
+.status-missing_intake {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  text-transform: none;
+}
+
+.waitlist-row {
+  align-items: flex-start;
+}
+
+.tip-panel .btn-ghost {
+  margin-top: 0.5rem;
+  display: inline-flex;
+}
+
 
 .waitlist-name {
   margin: 0.5rem 0 0;
