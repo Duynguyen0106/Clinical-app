@@ -5,8 +5,10 @@ import {
   createDepositCheckout,
   markDepositPaid,
 } from "@/modules/billing/deposits";
+import { enforcePublicDepositLimits } from "@/server/abuse";
 
 export const POST = withPublic(async (req) => {
+  enforcePublicDepositLimits(req);
   const body = (await req.json()) as {
     appointmentId?: string;
     action?: string;

@@ -51,7 +51,13 @@ Optional later:
 AI_PROVIDER=openai
 OPENAI_API_KEY=...
 # S3_* for remote audio
+
+# Cloudflare Turnstile (public book + forgot-password when secret is set)
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x…
+TURNSTILE_SECRET_KEY=0x…
 ```
+
+Auth and public write endpoints are rate-limited in-app (IP + email buckets). Turnstile is skipped until `TURNSTILE_SECRET_KEY` is set.
 
 The app **refuses to boot in production** if `AUTH_SECRET` is missing or still the demo value.
 

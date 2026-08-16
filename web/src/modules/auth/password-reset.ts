@@ -11,6 +11,7 @@ const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export const forgotPasswordSchema = z.object({
   email: z.string().email(),
+  captchaToken: z.string().min(1).optional(),
 });
 
 export const resetPasswordSchema = z.object({

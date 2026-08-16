@@ -5,6 +5,10 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { BRAND } from "@/modules/config/brand";
 import { BrandLogo } from "@/components/BrandLogo";
+import {
+  TurnstileField,
+  turnstileEnabledInBrowser,
+} from "@/components/TurnstileField";
 import { api, ApiError } from "@/lib/api";
 
 type Clinic = {
@@ -56,6 +60,8 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [manageHref, setManageHref] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRequired = turnstileEnabledInBrowser();
   const [depositInfo, setDepositInfo] = useState<{
     status: string;
     depositCents: number;
@@ -88,6 +94,10 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
 
   async function confirm() {
     if (!clinic || !privacy) return;
+    if (captchaRequired && !captchaToken) {
+      setError("Complete the security check before booking.");
+      return;
+    }
     const [firstName, ...rest] = name.trim().split(/\s+/);
     const lastName = rest.join(" ") || "Patient";
     setBusy(true);
@@ -115,6 +125,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
             privacyConsent: true,
             recordingConsentPreferred: recordingPref,
           },
+          captchaToken: captchaToken || undefined,
         }),
       });
       if (booked.manageUrl) setManageHref(booked.manageUrl);
@@ -366,10 +377,17 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                   help write clinical notes (confirmed again at the visit).
                 </span>
               </label>
+              <TurnstileField onToken={setCaptchaToken} />
               <button
                 type="button"
                 className="btn-primary"
-                disabled={busy || !name || !email || !privacy}
+                disabled={
+                  busy ||
+                  !name ||
+                  !email ||
+                  !privacy ||
+                  (captchaRequired && !captchaToken)
+                }
                 onClick={() => void confirm()}
               >
                 {busy ? "Booking…" : "Confirm booking"}
