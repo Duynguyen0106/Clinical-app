@@ -58,13 +58,22 @@ enum WaitlistStatus {
   CANCELLED
 }
 
+enum AiJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String
-  passwordHash String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  name                    String
+  passwordHash            String?
+  passwordResetTokenHash  String?
+  passwordResetExpiresAt  DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   memberships Membership[]
   sessions    Session[]
@@ -448,6 +457,28 @@ model Recording {
 
   visit      Visit       @relation(fields: [visitId], references: [id], onDelete: Cascade)
   transcript Transcript?
+}
+
+/// Background STT + organise work (drained by after() and /jobs/organise cron)
+model AiOrganiseJob {
+  id           String      @id @default(cuid())
+  visitId      String
+  clinicId     String
+  actorUserId  String
+  status       AiJobStatus @default(PENDING)
+  attempts     Int         @default(0)
+  maxAttempts  Int         @default(3)
+  error        String?
+  /// durationSec, templateId, transcriptText, role, membershipId, practitionerProfileId
+  payload      Json?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  @@index([status, createdAt])
+  @@index([visitId])
+  @@index([clinicId, status])
 }
 
 model Transcript {

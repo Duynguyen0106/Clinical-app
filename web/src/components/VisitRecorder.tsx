@@ -249,6 +249,41 @@ export function VisitRecorder({ visitId }: Props) {
     return blob;
   }
 
+  async function waitForOrganisedNote() {
+    setStatusLine("Organising in the background…");
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const { visit: v } = await api<{ visit: VisitPayload }>(
+        `/visits/${visitId}`,
+      );
+      const draft = v.notes.find((n) => n.status === "DRAFT");
+      if (draft) {
+        await clearVisitAudioBuffer(visitId);
+        setVisit(v);
+        setNoteId(draft.id);
+        setContent(stringifyContent(draft.content));
+        setFlags(asFlags(draft.content));
+        setPhase("review");
+        return;
+      }
+      if (v.recording?.status === "FAILED") {
+        throw new Error(
+          v.recording.error ||
+            "Organise failed — you can retry from this device",
+        );
+      }
+      setStatusLine(
+        v.recording?.status === "ORGANISING"
+          ? "Drafting clinical note…"
+          : "Transcribing & organising note…",
+      );
+    }
+    throw new Error(
+      "Organise is taking longer than expected — open this visit again shortly, or retry.",
+    );
+  }
+
   async function uploadAndOrganise(blob: Blob, durationSec: number) {
     setPhase("processing");
     setError(null);
@@ -277,7 +312,9 @@ export function VisitRecorder({ visitId }: Props) {
     const result = await withRetry(
       () =>
         api<{
-          note: { id: string; content: Record<string, unknown> };
+          async?: boolean;
+          job?: { id: string };
+          note?: { id: string; content: Record<string, unknown> };
         }>(`/visits/${visitId}/recording`, {
           method: "PATCH",
           body: JSON.stringify({ durationSec: durationSec || 1 }),
@@ -285,11 +322,16 @@ export function VisitRecorder({ visitId }: Props) {
       { attempts: 2, delayMs: 1200 },
     );
 
-    await clearVisitAudioBuffer(visitId);
-    setNoteId(result.note.id);
-    setContent(stringifyContent(result.note.content));
-    setFlags(asFlags(result.note.content));
-    setPhase("review");
+    if (result.note) {
+      await clearVisitAudioBuffer(visitId);
+      setNoteId(result.note.id);
+      setContent(stringifyContent(result.note.content));
+      setFlags(asFlags(result.note.content));
+      setPhase("review");
+      return;
+    }
+
+    await waitForOrganisedNote();
   }
 
   async function stopAndOrganise() {
@@ -332,17 +374,22 @@ export function VisitRecorder({ visitId }: Props) {
       const result = await withRetry(
         () =>
           api<{
-            note: { id: string; content: Record<string, unknown> };
+            async?: boolean;
+            note?: { id: string; content: Record<string, unknown> };
           }>(`/visits/${visitId}/recording`, {
             method: "PATCH",
             body: JSON.stringify({ durationSec: elapsed || 1 }),
           }),
         { attempts: 2, delayMs: 1200 },
       );
-      setNoteId(result.note.id);
-      setContent(stringifyContent(result.note.content));
-      setFlags(asFlags(result.note.content));
-      setPhase("review");
+      if (result.note) {
+        setNoteId(result.note.id);
+        setContent(stringifyContent(result.note.content));
+        setFlags(asFlags(result.note.content));
+        setPhase("review");
+        return;
+      }
+      await waitForOrganisedNote();
     } catch (e) {
       const msg =
         e instanceof ApiError

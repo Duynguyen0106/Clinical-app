@@ -1,6 +1,12 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { mkdir, writeFile, readFile, access, unlink, rm } from "node:fs/promises";
 import path from "node:path";
+import {
+  s3Configured,
+  s3DeleteObject,
+  s3GetObject,
+  s3PutObject,
+} from "@/server/s3";
 
 const ROOT = path.join(process.cwd(), "storage", "audio");
 const BRAND_ROOT = path.join(process.cwd(), "storage", "brand");
@@ -55,11 +61,28 @@ export async function saveAudioUpload(
   bytes: Buffer,
   opts: { extension?: string } = {},
 ) {
-  const dir = path.join(ROOT, clinicId, visitId);
-  await mkdir(dir, { recursive: true });
   const ext = (opts.extension ?? "webm").replace(/[^a-z0-9]/gi, "") || "webm";
   const filename = `audio.${ext}${ENC_SUFFIX}`;
-  // Remove prior audio variants so one consult keeps one blob
+  const storageKey = `clinics/${clinicId}/visits/${visitId}/${filename}`;
+  const encrypted = encryptBytes(bytes);
+
+  if (s3Configured()) {
+    // Best-effort clear sibling keys for prior formats
+    for (const stale of ["webm", "mp4", "aac", "ogg", "m4a"]) {
+      try {
+        await s3DeleteObject(
+          `clinics/${clinicId}/visits/${visitId}/audio.${stale}${ENC_SUFFIX}`,
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+    await s3PutObject(storageKey, encrypted);
+    return storageKey;
+  }
+
+  const dir = path.join(ROOT, clinicId, visitId);
+  await mkdir(dir, { recursive: true });
   for (const stale of ["webm", "mp4", "aac", "ogg", "m4a"]) {
     try {
       await unlink(path.join(dir, `audio.${stale}${ENC_SUFFIX}`));
@@ -73,8 +96,8 @@ export async function saveAudioUpload(
     }
   }
   const full = path.join(dir, filename);
-  await writeFile(full, encryptBytes(bytes));
-  return `clinics/${clinicId}/visits/${visitId}/${filename}`;
+  await writeFile(full, encrypted);
+  return storageKey;
 }
 
 export async function readAudioFile(storageKey: string) {
@@ -85,13 +108,22 @@ export async function readAudioFile(storageKey: string) {
   const clinicId = parts[1];
   const visitId = parts[3];
   const filename = parts.slice(4).join("/") || `audio.webm${ENC_SUFFIX}`;
+
+  if (s3Configured()) {
+    try {
+      const raw = await s3GetObject(storageKey);
+      return filename.endsWith(ENC_SUFFIX) ? decryptBytes(raw) : raw;
+    } catch {
+      // Fall through to local (migration / hybrid)
+    }
+  }
+
   const full = audioPath(clinicId, visitId, filename);
   try {
     await access(full);
     const raw = await readFile(full);
     return filename.endsWith(ENC_SUFFIX) ? decryptBytes(raw) : raw;
   } catch {
-    // try legacy unencrypted path
     const legacy = audioPath(clinicId, visitId, "audio.webm");
     await access(legacy);
     return readFile(legacy);
@@ -111,6 +143,15 @@ export async function deleteAudioForVisit(clinicId: string, visitId: string) {
 export async function deleteAudioByStorageKey(storageKey: string) {
   const parts = storageKey.split("/");
   if (parts.length < 5 || parts[0] !== "clinics") return false;
+
+  if (s3Configured()) {
+    try {
+      await s3DeleteObject(storageKey);
+    } catch {
+      /* ignore */
+    }
+  }
+
   const clinicId = parts[1];
   const visitId = parts[3];
   const filename = parts.slice(4).join("/");
@@ -120,7 +161,6 @@ export async function deleteAudioByStorageKey(storageKey: string) {
   } catch {
     /* ignore */
   }
-  // also try removing directory if empty
   try {
     await rm(path.join(ROOT, clinicId, visitId), { recursive: true, force: true });
   } catch {

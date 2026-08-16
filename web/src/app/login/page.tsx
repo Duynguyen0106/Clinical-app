@@ -86,6 +86,9 @@ export default function LoginPage() {
         <button type="submit" className="btn-primary" disabled={busy}>
           {busy ? "Signing in…" : "Open clinic"}
         </button>
+        <Link href="/login/forgot" className="btn-ghost">
+          Forgot password?
+        </Link>
         <Link href="/" className="btn-ghost">
           Back
         </Link>
