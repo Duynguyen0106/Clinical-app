@@ -102,6 +102,7 @@ model Clinic {
   noteTemplates    NoteTemplate[]
   waitlistEntries  WaitlistEntry[]
   invoices         Invoice[]
+  rooms            Room[]
 }
 
 model Membership {
@@ -143,8 +144,27 @@ model Location {
 
   clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   appointments Appointment[]
+  rooms        Room[]
 
   @@index([clinicId])
+}
+
+/// Treatment room / couch / resource on the diary (not a fake practitioner)
+model Room {
+  id         String  @id @default(cuid())
+  clinicId   String
+  locationId String?
+  name       String
+  colour     String  @default("#5D7A5D")
+  active     Boolean @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  location     Location?     @relation(fields: [locationId], references: [id])
+  appointments Appointment[]
+
+  @@index([clinicId, active])
 }
 
 model Patient {
@@ -233,6 +253,7 @@ model Appointment {
   patientId         String
   practitionerId    String
   locationId        String?
+  roomId            String?
   appointmentTypeId String
   startsAt          DateTime
   endsAt            DateTime
@@ -241,6 +262,7 @@ model Appointment {
   notes             String?
   confirmationSentAt DateTime?
   reminderSentAt    DateTime?
+  smsReminderSentAt DateTime?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -248,6 +270,7 @@ model Appointment {
   patient         Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
   practitioner    PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
   location        Location?          @relation(fields: [locationId], references: [id])
+  room            Room?              @relation(fields: [roomId], references: [id])
   appointmentType AppointmentType    @relation(fields: [appointmentTypeId], references: [id])
   visit           Visit?
 

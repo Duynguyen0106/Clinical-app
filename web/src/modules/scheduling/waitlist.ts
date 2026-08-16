@@ -153,6 +153,7 @@ export async function offerSlotToWaitlist(opts: {
     clinicName: match.clinic.name,
     timezone: match.clinic.timezone,
     patientEmail: match.patient.email,
+    patientPhone: match.patient.phone,
     patientFirstName: match.patient.firstName,
     serviceName: match.appointmentType.name,
     startsAt: opts.startsAt,
@@ -204,12 +205,20 @@ export async function acceptWaitlistOffer(ctx: AuthContext, id: string) {
     throw conflict("Slot is no longer free");
   }
 
+  const { findAvailableRoom } = await import("./rooms");
+  const freeRoom = await findAvailableRoom({
+    clinicId: ctx.clinicId,
+    startsAt: entry.offeredStartsAt,
+    endsAt: entry.offeredEndsAt,
+  });
+
   const appointment = await prisma.appointment.create({
     data: {
       clinicId: ctx.clinicId,
       patientId: entry.patientId,
       practitionerId,
       appointmentTypeId: entry.appointmentTypeId,
+      roomId: freeRoom?.id ?? null,
       startsAt: entry.offeredStartsAt,
       endsAt: entry.offeredEndsAt,
       status: AppointmentStatus.BOOKED,
@@ -219,6 +228,7 @@ export async function acceptWaitlistOffer(ctx: AuthContext, id: string) {
       patient: true,
       practitioner: true,
       appointmentType: true,
+      room: true,
     },
   });
 

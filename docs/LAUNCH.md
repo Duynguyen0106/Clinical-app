@@ -48,8 +48,9 @@ See `docs/DEPLOY.md`. Minimum:
 | DB | Managed Postgres + daily backups |
 | Email | `EMAIL_PROVIDER=resend` + verified domain |
 | AI | `AI_PROVIDER=mock` until DPA; then `openai` (or EU vendor) |
-| Cron | Hit `/api/v1/jobs/reminders` and `/api/v1/jobs/retention` daily (owner token or cron secret later) |
+| Cron | Hit `/api/v1/jobs/reminders` (email+SMS) and `/api/v1/jobs/retention` daily |
 | Env | `APP_BASE_URL`, `NODE_ENV=production` |
+| SMS | `SMS_PROVIDER=console` or `twilio` + Twilio creds |
 
 - [ ] Staging URL for internal QA
 - [ ] Production URL for pilot clinic only (no public marketing push)

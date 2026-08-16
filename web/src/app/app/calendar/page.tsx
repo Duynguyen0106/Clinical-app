@@ -20,6 +20,7 @@ type Appointment = {
   endsAt: string;
   patient: { firstName: string; lastName: string };
   appointmentType: { name: string };
+  room: { name: string } | null;
   visit: { id: string } | null;
 };
 
@@ -181,6 +182,9 @@ export default function CalendarPage() {
                           {apt.patient.firstName} {apt.patient.lastName}
                         </strong>
                         <span>{apt.appointmentType.name}</span>
+                        {apt.room ? (
+                          <span className="cal-room">{apt.room.name}</span>
+                        ) : null}
                       </button>
                     ))}
                   </div>

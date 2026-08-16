@@ -830,6 +830,20 @@ h3 {
   font-size: 0.85rem;
 }
 
+.cal-room {
+  font-size: 0.78rem !important;
+  color: var(--accent-mid) !important;
+  font-weight: 600;
+}
+
+.room-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  margin-top: 0.35rem;
+  flex-shrink: 0;
+}
+
 .empty-panel {
   text-align: left;
   max-width: 520px;
