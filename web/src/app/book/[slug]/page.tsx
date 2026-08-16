@@ -27,6 +27,9 @@ export default function BookingPage({ params }: Props) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [reason, setReason] = useState("");
+  const [privacy, setPrivacy] = useState(false);
+  const [recordingPref, setRecordingPref] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -53,7 +56,7 @@ export default function BookingPage({ params }: Props) {
   }, [slug, serviceId, practitionerId]);
 
   async function confirm() {
-    if (!clinic) return;
+    if (!clinic || !privacy) return;
     const [firstName, ...rest] = name.trim().split(/\s+/);
     const lastName = rest.join(" ") || "Patient";
     setBusy(true);
@@ -67,6 +70,11 @@ export default function BookingPage({ params }: Props) {
           practitionerId,
           startsAt: slot,
           patient: { firstName, lastName, email, phone },
+          intake: {
+            reasonForVisit: reason || undefined,
+            privacyConsent: true,
+            recordingConsentPreferred: recordingPref,
+          },
         }),
       });
       setStep("done");
@@ -86,7 +94,10 @@ export default function BookingPage({ params }: Props) {
           <p className="muted">
             {name} · {format(new Date(slot), "EEE d MMM HH:mm")}
           </p>
-          <p>Confirmation would email {email}.</p>
+          <p>
+            A confirmation email is on its way to {email}. We&apos;ll also send
+            a reminder before your visit.
+          </p>
           <Link href="/login" className="btn-primary">
             Clinic sign in
           </Link>
@@ -106,7 +117,7 @@ export default function BookingPage({ params }: Props) {
         <p className="brand-mark">{clinic?.name ?? slug}</p>
         <h1>Book online</h1>
         <p className="muted">
-          Physio, osteopathy, and manual therapy — pick a service and time.
+          Physio, osteopathy, and manual therapy — short intake, then confirm.
         </p>
         {error ? <p className="form-error">{error}</p> : null}
 
@@ -162,7 +173,7 @@ export default function BookingPage({ params }: Props) {
               disabled={!slot}
               onClick={() => setStep("details")}
             >
-              Continue
+              Continue to intake
             </button>
           </>
         )}
@@ -196,13 +207,51 @@ export default function BookingPage({ params }: Props) {
                 autoComplete="tel"
               />
             </label>
+            <label className="field">
+              <span>Reason for visit (optional)</span>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+                placeholder="e.g. Right shoulder pain for 3 weeks"
+              />
+            </label>
+            <label className="consent-label">
+              <input
+                type="checkbox"
+                checked={privacy}
+                onChange={(e) => setPrivacy(e.target.checked)}
+              />
+              <span>
+                I agree to the clinic privacy notice and processing of my
+                health information for this appointment (UK GDPR).
+              </span>
+            </label>
+            <label className="consent-label">
+              <input
+                type="checkbox"
+                checked={recordingPref}
+                onChange={(e) => setRecordingPref(e.target.checked)}
+              />
+              <span>
+                I&apos;m happy for the clinician to record the consultation to
+                help write clinical notes (confirmed again at the visit).
+              </span>
+            </label>
             <button
               type="button"
               className="btn-primary"
-              disabled={busy || !name || !email}
+              disabled={busy || !name || !email || !privacy}
               onClick={() => void confirm()}
             >
               {busy ? "Booking…" : "Confirm booking"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setStep("pick")}
+            >
+              Back
             </button>
           </>
         )}

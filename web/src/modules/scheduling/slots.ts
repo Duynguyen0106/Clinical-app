@@ -3,21 +3,20 @@ import { prisma } from "@/server/db";
 import { notFound } from "@/server/errors";
 import { AppointmentStatus } from "@/generated/prisma/client";
 
-export async function listPublicSlots(args: {
-  slug: string;
+export async function listClinicSlots(args: {
+  clinicId: string;
   appointmentTypeId: string;
   practitionerId: string;
   days?: number;
+  from?: Date;
+  onlineBookableOnly?: boolean;
 }) {
-  const clinic = await prisma.clinic.findUnique({ where: { slug: args.slug } });
-  if (!clinic) throw notFound("Clinic not found");
-
   const type = await prisma.appointmentType.findFirst({
     where: {
       id: args.appointmentTypeId,
-      clinicId: clinic.id,
-      onlineBookable: true,
+      clinicId: args.clinicId,
       active: true,
+      ...(args.onlineBookableOnly ? { onlineBookable: true } : {}),
     },
   });
   if (!type) throw notFound("Appointment type not found");
@@ -26,7 +25,7 @@ export async function listPublicSlots(args: {
     where: {
       id: args.practitionerId,
       active: true,
-      membership: { clinicId: clinic.id },
+      membership: { clinicId: args.clinicId },
     },
     include: { availability: true },
   });
@@ -34,12 +33,12 @@ export async function listPublicSlots(args: {
 
   const days = args.days ?? 14;
   const now = new Date();
-  const from = startOfDay(now);
+  const from = startOfDay(args.from ?? now);
   const to = addDays(from, days);
 
   const existing = await prisma.appointment.findMany({
     where: {
-      clinicId: clinic.id,
+      clinicId: args.clinicId,
       practitionerId: practitioner.id,
       startsAt: { gte: from, lte: to },
       status: {
@@ -82,4 +81,22 @@ export async function listPublicSlots(args: {
     }
   }
   return slots;
+}
+
+export async function listPublicSlots(args: {
+  slug: string;
+  appointmentTypeId: string;
+  practitionerId: string;
+  days?: number;
+}) {
+  const clinic = await prisma.clinic.findUnique({ where: { slug: args.slug } });
+  if (!clinic) throw notFound("Clinic not found");
+
+  return listClinicSlots({
+    clinicId: clinic.id,
+    appointmentTypeId: args.appointmentTypeId,
+    practitionerId: args.practitionerId,
+    days: args.days,
+    onlineBookableOnly: true,
+  });
 }

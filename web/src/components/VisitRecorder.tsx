@@ -42,6 +42,14 @@ export function VisitRecorder({ visitId }: Props) {
   const [statusLine, setStatusLine] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [micHint, setMicHint] = useState<string | null>(null);
+  const [rebook, setRebook] = useState<{
+    suggestedWeeks: number;
+    appointmentTypeName: string;
+    planExcerpt: string;
+    slots: string[];
+  } | null>(null);
+  const [rebookBusy, setRebookBusy] = useState(false);
+  const [rebookDone, setRebookDone] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -168,6 +176,36 @@ export function VisitRecorder({ visitId }: Props) {
     });
     await api(`/notes/${noteId}/sign`, { method: "POST" });
     setPhase("signed");
+    try {
+      const { suggestion } = await api<{
+        suggestion: {
+          suggestedWeeks: number;
+          appointmentTypeName: string;
+          planExcerpt: string;
+          slots: string[];
+        };
+      }>(`/visits/${visitId}/rebook`);
+      setRebook(suggestion);
+    } catch {
+      setRebook(null);
+    }
+  }
+
+  async function bookFollowUp(startsAt: string) {
+    setRebookBusy(true);
+    try {
+      const { appointment } = await api<{
+        appointment: { startsAt: string };
+      }>(`/visits/${visitId}/rebook`, {
+        method: "POST",
+        body: JSON.stringify({ startsAt }),
+      });
+      setRebookDone(appointment.startsAt);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not book follow-up");
+    } finally {
+      setRebookBusy(false);
+    }
   }
 
   const patientName = visit
@@ -264,6 +302,49 @@ export function VisitRecorder({ visitId }: Props) {
             <p className="muted">
               Locked in the clinical record with an audit event.
             </p>
+
+            {rebook && !rebookDone ? (
+              <div className="rebook-box">
+                <h4>Suggest follow-up</h4>
+                <p className="muted">
+                  From the plan (~{rebook.suggestedWeeks} weeks) ·{" "}
+                  {rebook.appointmentTypeName}
+                </p>
+                {rebook.planExcerpt ? (
+                  <p className="plan-excerpt">{rebook.planExcerpt}</p>
+                ) : null}
+                <div className="slot-grid">
+                  {rebook.slots.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className="slot"
+                      disabled={rebookBusy}
+                      onClick={() => void bookFollowUp(s)}
+                    >
+                      {new Date(s).toLocaleString("en-GB", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </button>
+                  ))}
+                </div>
+                {rebook.slots.length === 0 ? (
+                  <p className="muted">No open slots in that window.</p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {rebookDone ? (
+              <p className="alert-line">
+                Follow-up booked for{" "}
+                {new Date(rebookDone).toLocaleString("en-GB")}.
+              </p>
+            ) : null}
+
             <Link href="/app" className="btn-primary">
               Back to Today
             </Link>

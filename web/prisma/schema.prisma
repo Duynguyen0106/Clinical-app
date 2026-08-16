@@ -227,6 +227,8 @@ model Appointment {
   status            AppointmentStatus @default(BOOKED)
   recurrenceGroupId String?
   notes             String?
+  confirmationSentAt DateTime?
+  reminderSentAt    DateTime?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -240,6 +242,7 @@ model Appointment {
   @@index([clinicId, startsAt])
   @@index([practitionerId, startsAt])
   @@index([patientId])
+  @@index([reminderSentAt, startsAt])
 }
 
 model WaitlistEntry {

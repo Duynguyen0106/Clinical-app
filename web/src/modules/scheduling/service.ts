@@ -246,6 +246,13 @@ export const publicBookSchema = z.object({
     email: z.string().email(),
     phone: z.string().optional(),
   }),
+  intake: z
+    .object({
+      reasonForVisit: z.string().max(1000).optional(),
+      privacyConsent: z.literal(true),
+      recordingConsentPreferred: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export async function publicBook(slug: string, input: z.infer<typeof publicBookSchema>) {
@@ -278,6 +285,17 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     },
   });
 
+  const intakeNote = input.intake?.reasonForVisit?.trim();
+  const alerts = [
+    patient?.alerts,
+    intakeNote ? `Intake: ${intakeNote}` : null,
+    input.intake?.recordingConsentPreferred
+      ? "Prefers recording for clinical notes (confirm at visit)"
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   if (!patient) {
     patient = await prisma.patient.create({
       data: {
@@ -286,6 +304,39 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
         lastName: input.patient.lastName,
         email: input.patient.email,
         phone: input.patient.phone ?? null,
+        alerts: alerts || null,
+      },
+    });
+  } else if (alerts) {
+    patient = await prisma.patient.update({
+      where: { id: patient.id },
+      data: {
+        phone: input.patient.phone ?? patient.phone,
+        firstName: input.patient.firstName,
+        lastName: input.patient.lastName,
+        alerts,
+      },
+    });
+  }
+
+  if (input.intake?.privacyConsent) {
+    await prisma.patientConsent.create({
+      data: {
+        patientId: patient.id,
+        type: "PRIVACY_POLICY",
+        granted: true,
+        method: "online_form",
+      },
+    });
+  }
+  if (input.intake?.recordingConsentPreferred) {
+    await prisma.patientConsent.create({
+      data: {
+        patientId: patient.id,
+        type: "RECORDING",
+        granted: true,
+        method: "online_form",
+        meta: { preferred: true, confirmAtVisit: true } as object,
       },
     });
   }
@@ -304,7 +355,7 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     bufferAfter: type.bufferAfter,
   });
 
-  return prisma.appointment.create({
+  const appointment = await prisma.appointment.create({
     data: {
       clinicId: clinic.id,
       patientId: patient.id,
@@ -313,13 +364,26 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
       startsAt,
       endsAt,
       status: AppointmentStatus.BOOKED,
+      notes: intakeNote || null,
     },
     include: {
       patient: true,
       practitioner: true,
       appointmentType: true,
+      clinic: true,
     },
   });
+
+  try {
+    const { sendBookingConfirmation } = await import(
+      "@/modules/notifications/appointments"
+    );
+    await sendBookingConfirmation(appointment.id);
+  } catch (err) {
+    console.error("Booking confirmation email failed", err);
+  }
+
+  return appointment;
 }
 
 async function assertNoConflict(args: {

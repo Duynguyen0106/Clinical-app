@@ -15,7 +15,13 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 | Template-aware organise | Done |
 | PWA shell | Done (manifest + SW) |
 
-**Next product focus:** P1 booking polish (email reminders, intake) and UK compliance (P2).
+**Next product focus:** P2 UK compliance (privacy notice, retention, DPAs) and P3 ops (waitlist, tasks, practice pulse).
+
+### P1 status
+- Week calendar + drag reschedule — done
+- Email confirmation + reminder job — done (`EMAIL_PROVIDER=console|resend`)
+- Online intake — done
+- Suggest rebook from Plan — done
 
 ---
 

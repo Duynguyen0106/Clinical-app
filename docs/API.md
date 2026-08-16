@@ -40,7 +40,9 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | POST | `/visits/:id/consent` | `{ granted: true, method }` |
 | POST | `/visits/:id/recording` | Start recording |
 | POST | `/visits/:id/recording/upload` | multipart `audio` file |
-| PATCH | `/visits/:id/recording` | Stop → STT → template organise → draft |
+| GET | `/visits/:id/rebook` | Suggest follow-up slots from Plan |
+| POST | `/visits/:id/rebook` | Book follow-up `{ startsAt }` |
+| POST | `/jobs/reminders` | Send due email reminders (staff) |
 
 ## Public booking
 
