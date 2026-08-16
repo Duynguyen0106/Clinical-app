@@ -26,9 +26,16 @@ export async function listNotes(
       ...(opts.status ? { status: opts.status } : {}),
       ...(opts.practitionerId
         ? {
-            visit: {
-              appointment: { practitionerId: opts.practitionerId },
-            },
+            OR: [
+              // Notes on this practitioner's diary visits
+              {
+                visit: {
+                  appointment: { practitionerId: opts.practitionerId },
+                },
+              },
+              // Notes this user signed (covers another diary / addenda)
+              { signedById: ctx.userId },
+            ],
           }
         : {}),
     },
