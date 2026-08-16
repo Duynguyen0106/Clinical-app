@@ -41,7 +41,7 @@ Staff booking: Calendar empty cell → book sheet with patient lookup (`/app/cal
 | GET | `/appointments?from=&to=&practitionerId=` | Calendar range (includes `room`) |
 | POST | `/appointments` | Create `{ patientId, practitionerId, appointmentTypeId, startsAt, durationMinutes?, feeCents?, notes? }` — conflict + hours/block checked; optional invoice; confirmation email |
 | GET | `/appointments/:id` | Detail + visit pointers (no note bodies / transcripts) |
-| PATCH | `/appointments/:id` | `{ status }`, `{ startsAt }`, `{ durationMinutes }`, `{ appointmentTypeId }`, `{ additionalFeeCents, feeNote? }`, `{ notes }` |
+| PATCH | `/appointments/:id` | Schedule changes (`startsAt`, `durationMinutes`, `appointmentTypeId`, `CANCELLED`, `NO_SHOW`): **OWNER/RECEPTION only**. Fees: OWNER/RECEPTION. Notes: any staff. Practitioners cannot modify the diary. Reschedule/cancel email+SMS the patient and email the practitioner. |
 | GET | `/slots?appointmentTypeId=&practitionerId=&durationMinutes=&days=` | Staff open slots (honours weekly hours + blocks) |
 
 ## Blocks (diary unavailable)

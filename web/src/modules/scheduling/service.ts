@@ -259,6 +259,15 @@ export async function updateAppointmentStatus(
     status === AppointmentStatus.CANCELLED &&
     appointment.status !== AppointmentStatus.CANCELLED
   ) {
+    try {
+      const { sendAppointmentCancelled } = await import(
+        "@/modules/notifications/appointments"
+      );
+      await sendAppointmentCancelled(appointment.id);
+    } catch (err) {
+      console.error("Cancel notification failed", err);
+    }
+
     const { offerSlotToWaitlist } = await import("./waitlist");
     const offer = await offerSlotToWaitlist({
       clinicId: ctx.clinicId,
@@ -280,6 +289,7 @@ export async function rescheduleAppointment(
   startsAtIso: string,
 ) {
   const appointment = await getAppointment(ctx, id);
+  const previousStartsAt = appointment.startsAt;
   const startsAt = new Date(startsAtIso);
   const duration =
     appointment.endsAt.getTime() - appointment.startsAt.getTime();
@@ -303,9 +313,15 @@ export async function rescheduleAppointment(
     excludeAppointmentId: appointment.id,
   });
 
-  return prisma.appointment.update({
+  const updated = await prisma.appointment.update({
     where: { id: appointment.id },
-    data: { startsAt, endsAt },
+    data: {
+      startsAt,
+      endsAt,
+      // New time should get a fresh reminder window
+      reminderSentAt: null,
+      smsReminderSentAt: null,
+    },
     include: {
       patient: true,
       practitioner: true,
@@ -313,6 +329,20 @@ export async function rescheduleAppointment(
       room: true,
     },
   });
+
+  try {
+    const { sendAppointmentRescheduled } = await import(
+      "@/modules/notifications/appointments"
+    );
+    await sendAppointmentRescheduled({
+      appointmentId: updated.id,
+      previousStartsAt,
+    });
+  } catch (err) {
+    console.error("Reschedule notification failed", err);
+  }
+
+  return updated;
 }
 
 export async function updateAppointment(

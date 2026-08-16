@@ -69,6 +69,8 @@ function durationOf(apt: Appointment) {
 export default function CalendarPage() {
   const { me } = useAuth();
   const router = useRouter();
+  const canEditSchedule =
+    me?.role === "OWNER" || me?.role === "RECEPTION";
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 }),
   );
@@ -331,7 +333,7 @@ export default function CalendarPage() {
       title="Calendar"
       subtitle={
         me?.role === "PRACTITIONER"
-          ? "Your diary — switch to All to see the full clinic board."
+          ? "Your diary — reception manages schedule changes; you get notified of updates."
           : "Click an empty time slot to book — look up the patient by name, phone, or NHS number."
       }
     >
@@ -426,20 +428,24 @@ export default function CalendarPage() {
             </button>
           </div>
           <div className="week-actions">
-            <button
-              type="button"
-              className="btn-primary btn-sm"
-              onClick={() => openBookSheet()}
-            >
-              Book
-            </button>
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              onClick={() => setBlockOpen(true)}
-            >
-              Block time
-            </button>
+            {canEditSchedule ? (
+              <>
+                <button
+                  type="button"
+                  className="btn-primary btn-sm"
+                  onClick={() => openBookSheet()}
+                >
+                  Book
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={() => setBlockOpen(true)}
+                >
+                  Block time
+                </button>
+              </>
+            ) : null}
             <Link
               href={`/book/${me?.clinic.slug ?? "northbank-manual"}`}
               className="btn-ghost"
@@ -490,15 +496,20 @@ export default function CalendarPage() {
                   <div
                     key={`${day.toISOString()}-${hour}`}
                     className={`week-cell ${draggingId ? "droppable" : ""} ${
-                      cellAppts.length === 0 && cellBlocks.length === 0
+                      canEditSchedule &&
+                      cellAppts.length === 0 &&
+                      cellBlocks.length === 0
                         ? "week-cell-bookable"
                         : ""
                     }`}
                     role="button"
-                    tabIndex={0}
+                    tabIndex={canEditSchedule ? 0 : -1}
                     aria-label={`Book ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`}
-                    onDragOver={(e) => e.preventDefault()}
+                    onDragOver={(e) => {
+                      if (canEditSchedule) e.preventDefault();
+                    }}
                     onDrop={(e) => {
+                      if (!canEditSchedule) return;
                       e.preventDefault();
                       const id =
                         e.dataTransfer.getData("text/appointment-id") ||
@@ -507,10 +518,12 @@ export default function CalendarPage() {
                       setDraggingId(null);
                     }}
                     onClick={() => {
+                      if (!canEditSchedule) return;
                       if (cellAppts.length > 0 || cellBlocks.length > 0) return;
                       openBookSheet({ day, hour });
                     }}
                     onKeyDown={(e) => {
+                      if (!canEditSchedule) return;
                       if (e.key !== "Enter" && e.key !== " ") return;
                       if (cellAppts.length > 0 || cellBlocks.length > 0) return;
                       e.preventDefault();
@@ -528,8 +541,9 @@ export default function CalendarPage() {
                         key={apt.id}
                         type="button"
                         className="cal-event week-event"
-                        draggable
+                        draggable={canEditSchedule}
                         onDragStart={(e) => {
+                          if (!canEditSchedule) return;
                           e.dataTransfer.setData(
                             "text/appointment-id",
                             apt.id,
@@ -542,7 +556,11 @@ export default function CalendarPage() {
                           setMessage(null);
                           setSelected(apt);
                         }}
-                        title="Click for actions · drag to reschedule"
+                        title={
+                          canEditSchedule
+                            ? "Click for actions · drag to reschedule"
+                            : "View appointment"
+                        }
                       >
                         <strong>
                           {apt.patient.firstName} {apt.patient.lastName}
@@ -589,35 +607,49 @@ export default function CalendarPage() {
             <p className="muted">Status: {selected.status}</p>
 
             <div className="sheet-actions">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => void openVisit(selected)}
-              >
-                Open visit
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                disabled={busy || selected.status === "CANCELLED"}
-                onClick={() =>
-                  void patchSelected({ status: "CANCELLED" }, "Cancelled")
-                }
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={busy || selected.status === "NO_SHOW"}
-                onClick={() =>
-                  void patchSelected({ status: "NO_SHOW" }, "Marked no-show")
-                }
-              >
-                No-show
-              </button>
+              {(me?.role === "OWNER" ||
+                me?.role === "PRACTITIONER") ? (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void openVisit(selected)}
+                >
+                  Open visit
+                </button>
+              ) : null}
+              {canEditSchedule ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={busy || selected.status === "CANCELLED"}
+                    onClick={() =>
+                      void patchSelected({ status: "CANCELLED" }, "Cancelled")
+                    }
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={busy || selected.status === "NO_SHOW"}
+                    onClick={() =>
+                      void patchSelected({ status: "NO_SHOW" }, "Marked no-show")
+                    }
+                  >
+                    No-show
+                  </button>
+                </>
+              ) : (
+                <p className="muted">
+                  Schedule changes are managed by reception. You are notified by
+                  email when appointments move or cancel.
+                </p>
+              )}
             </div>
 
+            {canEditSchedule ? (
+              <>
             <label className="field">
               <span>Length (minutes)</span>
               <div className="inline-row">
@@ -680,6 +712,8 @@ export default function CalendarPage() {
                 </button>
               </div>
             </label>
+              </>
+            ) : null}
 
             {selected.notes ? (
               <p className="muted sheet-notes">{selected.notes}</p>

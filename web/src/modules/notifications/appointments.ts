@@ -13,17 +13,58 @@ function formatWhen(date: Date, timezone: string) {
   }
 }
 
-export async function sendBookingConfirmation(appointmentId: string) {
-  const apt = await prisma.appointment.findUnique({
-    where: { id: appointmentId },
+const appointmentNotifyInclude = {
+  patient: true,
+  appointmentType: true,
+  room: true,
+  clinic: true,
+  practitioner: {
     include: {
-      patient: true,
-      practitioner: true,
-      appointmentType: true,
-      room: true,
-      clinic: true,
+      membership: {
+        include: {
+          user: { select: { email: true, name: true } },
+        },
+      },
     },
+  },
+} as const;
+
+async function loadNotifyAppointment(appointmentId: string) {
+  return prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: appointmentNotifyInclude,
   });
+}
+
+type NotifyAppointment = NonNullable<
+  Awaited<ReturnType<typeof loadNotifyAppointment>>
+>;
+
+function practitionerEmail(apt: NotifyAppointment) {
+  return apt.practitioner.membership.user.email || null;
+}
+
+function practitionerName(apt: NotifyAppointment) {
+  return (
+    apt.practitioner.displayName ||
+    apt.practitioner.membership.user.name ||
+    "Practitioner"
+  );
+}
+
+async function notifyPractitioner(
+  apt: NotifyAppointment,
+  subject: string,
+  text: string,
+) {
+  const to = practitionerEmail(apt);
+  if (!to) return false;
+  await sendEmail({ to, subject, text });
+  return true;
+}
+
+export async function sendBookingConfirmation(appointmentId: string) {
+  const apt = await loadNotifyAppointment(appointmentId);
   if (!apt) return null;
 
   const when = formatWhen(apt.startsAt, apt.clinic.timezone);
@@ -31,6 +72,7 @@ export async function sendBookingConfirmation(appointmentId: string) {
   const manageLink = manageUrl(apt.id);
   let emailSent = false;
   let smsSent = false;
+  let practitionerEmailSent = false;
 
   if (apt.patient.email) {
     const subject = `Booking confirmed — ${apt.clinic.name}`;
@@ -72,6 +114,26 @@ export async function sendBookingConfirmation(appointmentId: string) {
     smsSent = true;
   }
 
+  practitionerEmailSent = await notifyPractitioner(
+    apt,
+    `New booking — ${apt.patient.firstName} ${apt.patient.lastName}`,
+    [
+      `Hi ${practitionerName(apt)},`,
+      "",
+      `A new appointment was booked at ${apt.clinic.name}.`,
+      "",
+      `When: ${when} (${apt.clinic.timezone})`,
+      `Patient: ${apt.patient.firstName} ${apt.patient.lastName}`,
+      apt.patient.phone ? `Phone: ${apt.patient.phone}` : null,
+      `Service: ${apt.appointmentType.name}`,
+      roomLine,
+      "",
+      "— Treow Clinic",
+    ]
+      .filter((line) => line !== null)
+      .join("\n"),
+  );
+
   if (emailSent || smsSent) {
     await prisma.appointment.update({
       where: { id: apt.id },
@@ -79,7 +141,143 @@ export async function sendBookingConfirmation(appointmentId: string) {
     });
   }
 
-  return { emailSent, smsSent, manageLink };
+  return { emailSent, smsSent, practitionerEmailSent, manageLink };
+}
+
+export async function sendAppointmentRescheduled(opts: {
+  appointmentId: string;
+  previousStartsAt: Date;
+}) {
+  const apt = await loadNotifyAppointment(opts.appointmentId);
+  if (!apt) return null;
+
+  const when = formatWhen(apt.startsAt, apt.clinic.timezone);
+  const previous = formatWhen(opts.previousStartsAt, apt.clinic.timezone);
+  const roomLine = apt.room ? `Room: ${apt.room.name}` : null;
+  const manageLink = manageUrl(apt.id);
+  let patientEmailSent = false;
+  let patientSmsSent = false;
+  let practitionerEmailSent = false;
+
+  if (apt.patient.email) {
+    await sendEmail({
+      to: apt.patient.email,
+      subject: `Appointment updated — ${apt.clinic.name}`,
+      text: [
+        `Hi ${apt.patient.firstName},`,
+        "",
+        `Your appointment at ${apt.clinic.name} has been rescheduled.`,
+        "",
+        `Was: ${previous}`,
+        `Now: ${when} (${apt.clinic.timezone})`,
+        `With: ${apt.practitioner.displayName}`,
+        `Service: ${apt.appointmentType.name}`,
+        roomLine,
+        "",
+        "Manage your booking:",
+        manageLink,
+        "",
+        "— Treow Clinic",
+      ]
+        .filter((line) => line !== null)
+        .join("\n"),
+    });
+    patientEmailSent = true;
+  }
+
+  if (apt.patient.phone) {
+    await sendSms({
+      to: apt.patient.phone,
+      body: `${apt.clinic.name}: appointment moved to ${when} with ${apt.practitioner.displayName}. Manage: ${manageLink}`,
+    });
+    patientSmsSent = true;
+  }
+
+  practitionerEmailSent = await notifyPractitioner(
+    apt,
+    `Rescheduled — ${apt.patient.firstName} ${apt.patient.lastName}`,
+    [
+      `Hi ${practitionerName(apt)},`,
+      "",
+      `An appointment on your diary was rescheduled.`,
+      "",
+      `Patient: ${apt.patient.firstName} ${apt.patient.lastName}`,
+      `Was: ${previous}`,
+      `Now: ${when} (${apt.clinic.timezone})`,
+      `Service: ${apt.appointmentType.name}`,
+      roomLine,
+      "",
+      "— Treow Clinic",
+    ]
+      .filter((line) => line !== null)
+      .join("\n"),
+  );
+
+  return { patientEmailSent, patientSmsSent, practitionerEmailSent };
+}
+
+export async function sendAppointmentCancelled(appointmentId: string) {
+  const apt = await loadNotifyAppointment(appointmentId);
+  if (!apt) return null;
+
+  const when = formatWhen(apt.startsAt, apt.clinic.timezone);
+  const roomLine = apt.room ? `Room: ${apt.room.name}` : null;
+  let patientEmailSent = false;
+  let patientSmsSent = false;
+  let practitionerEmailSent = false;
+
+  if (apt.patient.email) {
+    await sendEmail({
+      to: apt.patient.email,
+      subject: `Appointment cancelled — ${apt.clinic.name}`,
+      text: [
+        `Hi ${apt.patient.firstName},`,
+        "",
+        `Your appointment at ${apt.clinic.name} has been cancelled.`,
+        "",
+        `Was due: ${when} (${apt.clinic.timezone})`,
+        `With: ${apt.practitioner.displayName}`,
+        `Service: ${apt.appointmentType.name}`,
+        roomLine,
+        "",
+        "Please contact the clinic if you need to rebook.",
+        "",
+        "— Treow Clinic",
+      ]
+        .filter((line) => line !== null)
+        .join("\n"),
+    });
+    patientEmailSent = true;
+  }
+
+  if (apt.patient.phone) {
+    await sendSms({
+      to: apt.patient.phone,
+      body: `${apt.clinic.name}: your appointment on ${when} with ${apt.practitioner.displayName} was cancelled. Contact the clinic to rebook.`,
+    });
+    patientSmsSent = true;
+  }
+
+  practitionerEmailSent = await notifyPractitioner(
+    apt,
+    `Cancelled — ${apt.patient.firstName} ${apt.patient.lastName}`,
+    [
+      `Hi ${practitionerName(apt)},`,
+      "",
+      `An appointment on your diary was cancelled.`,
+      "",
+      `Patient: ${apt.patient.firstName} ${apt.patient.lastName}`,
+      `Was due: ${when} (${apt.clinic.timezone})`,
+      `Service: ${apt.appointmentType.name}`,
+      roomLine,
+      "",
+      "— Treow Clinic",
+    ]
+      .filter((line) => line !== null)
+      .join("\n"),
+  );
+
+  return { patientEmailSent, patientSmsSent, practitionerEmailSent };
 }
 
 export async function sendUpcomingReminders(withinHours = 24) {
