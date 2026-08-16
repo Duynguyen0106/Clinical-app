@@ -288,7 +288,7 @@ async function main() {
     ?.id;
   assert(typeId && practitionerId, `missing type/practitioner ${typeId} ${practitionerId}`);
 
-  // Create waitlist + cancel something to offer — use direct offer via cancel
+  // Create waitlist + cancel a free future slot to trigger offer
   await req("/waitlist", {
     method: "POST",
     token: rToken,
@@ -302,10 +302,13 @@ async function main() {
   });
   ok("waitlist entry");
 
-  // Create a future appointment then cancel to trigger offer
-  const starts = new Date();
-  starts.setDate(starts.getDate() + 3);
-  starts.setHours(11, 0, 0, 0);
+  const slots = await req(
+    `/slots?appointmentTypeId=${typeId}&practitionerId=${practitionerId}&days=14`,
+    { token: rToken, clinicId: rClinic },
+  );
+  const freeSlot = (slots.slots as string[])[0];
+  assert(freeSlot, "no free slots for waitlist offer test");
+
   const booked = await req("/appointments", {
     method: "POST",
     token: rToken,
@@ -314,7 +317,7 @@ async function main() {
       patientId,
       practitionerId,
       appointmentTypeId: typeId,
-      startsAt: starts.toISOString(),
+      startsAt: freeSlot,
     },
   });
   const bookedId = (booked.appointment as { id: string }).id;
@@ -324,18 +327,28 @@ async function main() {
     clinicId: rClinic,
     body: { status: "CANCELLED" },
   });
-  const offer = (cancelled.appointment as { waitlistOffer?: { offered: boolean; entry?: { id: string } } })
-    .waitlistOffer;
+  const offer = (
+    cancelled.appointment as {
+      waitlistOffer?: { offered: boolean; entry?: { id: string } };
+    }
+  ).waitlistOffer;
   if (offer?.offered && offer.entry?.id) {
     const { waitlistOfferUrl } = await import(
       "../src/modules/scheduling/waitlist-token"
     );
-    // Need expiry from DB — create token with 2h like offer
-    const url = waitlistOfferUrl(offer.entry.id, new Date(Date.now() + 2 * 3600_000));
+    const url = waitlistOfferUrl(
+      offer.entry.id,
+      new Date(Date.now() + 2 * 3600_000),
+    );
     const tokenPart = url.split("/").pop()!;
     const decoded = decodeURIComponent(tokenPart);
-    const pub = await req(`/public/waitlist?token=${encodeURIComponent(decoded)}`);
-    assert((pub.offer as { actionable: boolean }).actionable, "offer not actionable");
+    const pub = await req(
+      `/public/waitlist?token=${encodeURIComponent(decoded)}`,
+    );
+    assert(
+      (pub.offer as { actionable: boolean }).actionable,
+      "offer not actionable",
+    );
     await req("/public/waitlist", {
       method: "POST",
       body: { token: decoded, action: "accept" },
