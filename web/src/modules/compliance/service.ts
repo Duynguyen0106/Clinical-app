@@ -121,6 +121,9 @@ export async function getClinicCompliance(ctx: AuthContext) {
       name: true,
       slug: true,
       timezone: true,
+      phone: true,
+      email: true,
+      address: true,
       audioRetentionDays: true,
       privacyNoticeVersion: true,
       dataRegion: true,
@@ -131,7 +134,12 @@ export async function getClinicCompliance(ctx: AuthContext) {
 
 export async function updateClinicCompliance(
   ctx: AuthContext,
-  input: { audioRetentionDays?: number },
+  input: {
+    audioRetentionDays?: number;
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+  },
 ) {
   requireRole(ctx, ["OWNER"]);
   return prisma.clinic.update({
@@ -140,9 +148,22 @@ export async function updateClinicCompliance(
       ...(input.audioRetentionDays !== undefined
         ? { audioRetentionDays: Math.max(0, Math.min(365, input.audioRetentionDays)) }
         : {}),
+      ...(input.phone !== undefined
+        ? { phone: input.phone?.trim() || null }
+        : {}),
+      ...(input.email !== undefined
+        ? { email: input.email?.trim() || null }
+        : {}),
+      ...(input.address !== undefined
+        ? { address: input.address?.trim() || null }
+        : {}),
     },
     select: {
       id: true,
+      name: true,
+      phone: true,
+      email: true,
+      address: true,
       audioRetentionDays: true,
       privacyNoticeVersion: true,
       dataRegion: true,

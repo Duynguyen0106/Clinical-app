@@ -17,6 +17,7 @@ export const createPatientSchema = z.object({
   gpName: z.string().max(120).optional().nullable(),
   gpPractice: z.string().max(200).optional().nullable(),
   gpEmail: z.string().email().optional().nullable(),
+  nhsNumber: z.string().max(20).optional().nullable(),
 });
 
 export const updatePatientSchema = createPatientSchema.partial();
@@ -280,6 +281,7 @@ export async function createPatient(
       gpName: input.gpName ?? null,
       gpPractice: input.gpPractice ?? null,
       gpEmail: input.gpEmail ?? null,
+      nhsNumber: input.nhsNumber ?? null,
     },
   });
 }
@@ -301,6 +303,7 @@ export async function updatePatient(
       ...(input.gpName !== undefined ? { gpName: input.gpName } : {}),
       ...(input.gpPractice !== undefined ? { gpPractice: input.gpPractice } : {}),
       ...(input.gpEmail !== undefined ? { gpEmail: input.gpEmail } : {}),
+      ...(input.nhsNumber !== undefined ? { nhsNumber: input.nhsNumber } : {}),
       ...(input.dateOfBirth !== undefined
         ? {
             dateOfBirth: input.dateOfBirth

@@ -17,6 +17,9 @@ export const createPractitionerSchema = z.object({
   password: z.string().min(8).max(200),
   displayName: z.string().min(1).max(120),
   colour: z.string().max(20).optional(),
+  professionalTitle: z.string().max(120).optional().nullable(),
+  registrationBody: z.string().max(40).optional().nullable(),
+  registrationNumber: z.string().max(40).optional().nullable(),
   /** If omitted, Mon–Fri 09:00–17:00 */
   availability: z.array(daySchema).optional(),
 });
@@ -29,6 +32,9 @@ export const updatePractitionerSchema = z.object({
   displayName: z.string().min(1).max(120).optional(),
   colour: z.string().max(20).optional(),
   active: z.boolean().optional(),
+  professionalTitle: z.string().max(120).optional().nullable(),
+  registrationBody: z.string().max(40).optional().nullable(),
+  registrationNumber: z.string().max(40).optional().nullable(),
 });
 
 const DEFAULT_WEEKDAY_HOURS = [1, 2, 3, 4, 5].map((dayOfWeek) => ({
@@ -117,6 +123,9 @@ export async function createPractitioner(
         displayName: input.displayName.trim(),
         colour: input.colour ?? "#1E3F37",
         active: true,
+        professionalTitle: input.professionalTitle?.trim() || null,
+        registrationBody: input.registrationBody?.trim() || null,
+        registrationNumber: input.registrationNumber?.trim() || null,
         availability: {
           create: rules.map((r) => ({
             dayOfWeek: r.dayOfWeek,
@@ -161,6 +170,15 @@ export async function updatePractitioner(
         : {}),
       ...(input.colour !== undefined ? { colour: input.colour } : {}),
       ...(input.active !== undefined ? { active: input.active } : {}),
+      ...(input.professionalTitle !== undefined
+        ? { professionalTitle: input.professionalTitle?.trim() || null }
+        : {}),
+      ...(input.registrationBody !== undefined
+        ? { registrationBody: input.registrationBody?.trim() || null }
+        : {}),
+      ...(input.registrationNumber !== undefined
+        ? { registrationNumber: input.registrationNumber?.trim() || null }
+        : {}),
     },
     include: {
       availability: { orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }] },

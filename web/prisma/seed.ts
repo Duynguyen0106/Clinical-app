@@ -53,6 +53,9 @@ async function main() {
       name: "Northbank Manual Therapy",
       slug: "northbank-manual",
       timezone: "Europe/London",
+      phone: "+44 20 7946 0123",
+      email: "hello@northbank.example",
+      address: "12 Quayside, London E1W 1UN",
       audioRetentionDays: 14,
       privacyNoticeVersion: "2026-08-uk-v1",
       dataRegion: "uk-eu",
@@ -96,6 +99,9 @@ async function main() {
       membershipId: ownerMembership.id,
       displayName: "Alex Nguyen",
       colour: "#0F6B5C",
+      professionalTitle: "Chartered Physiotherapist",
+      registrationBody: "HCPC",
+      registrationNumber: "PH12345",
     },
   });
 
@@ -104,6 +110,9 @@ async function main() {
       membershipId: jordanMembership.id,
       displayName: "Jordan Lee",
       colour: "#1F5F78",
+      professionalTitle: "Osteopath",
+      registrationBody: "GOsC",
+      registrationNumber: "9876",
     },
   });
 
@@ -204,6 +213,7 @@ async function main() {
         gpName: "Dr Aisha Rahman",
         gpPractice: "Quayside Medical Centre",
         gpEmail: "aisha.rahman@quayside-medical.example",
+        nhsNumber: "943 476 5919",
       },
     }),
     prisma.patient.create({
