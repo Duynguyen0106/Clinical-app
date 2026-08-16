@@ -8,6 +8,7 @@ import type { AuthContext } from "@/server/auth";
 import { badRequest, conflict, notFound } from "@/server/errors";
 import { requirePatient } from "@/modules/patients/service";
 import { sendWaitlistOfferEmail } from "@/modules/notifications/appointments";
+import { waitlistOfferUrl } from "./waitlist-token";
 
 const waitlistInclude = {
   patient: true,
@@ -158,102 +159,122 @@ export async function offerSlotToWaitlist(opts: {
     serviceName: match.appointmentType.name,
     startsAt: opts.startsAt,
     expiresAt: offerExpiresAt,
+    offerUrl: waitlistOfferUrl(updated.id, offerExpiresAt),
   });
 
   return { offered: true as const, entry: updated };
 }
 
 export async function acceptWaitlistOffer(ctx: AuthContext, id: string) {
-  const entry = await prisma.waitlistEntry.findFirst({
-    where: { id, clinicId: ctx.clinicId },
-    include: { appointmentType: true },
-  });
-  if (!entry) throw notFound("Waitlist entry not found");
-  if (entry.status !== WaitlistStatus.OFFERED) {
-    throw badRequest("Entry is not in OFFERED status");
-  }
-  if (!entry.offeredStartsAt || !entry.offeredEndsAt) {
-    throw badRequest("Offer has no slot times");
-  }
-  if (entry.offerExpiresAt && entry.offerExpiresAt < new Date()) {
-    await prisma.waitlistEntry.update({
-      where: { id: entry.id },
-      data: {
-        status: WaitlistStatus.WAITING,
-        offeredStartsAt: null,
-        offeredEndsAt: null,
-        offeredAt: null,
-        offerExpiresAt: null,
+  return acceptWaitlistOfferForClinic(ctx.clinicId, id);
+}
+
+export async function acceptWaitlistOfferForClinic(
+  clinicId: string,
+  id: string,
+) {
+  const { withClinicTransaction } = await import("@/server/clinic-rls");
+  return withClinicTransaction(clinicId, async (tx) => {
+    const entry = await tx.waitlistEntry.findFirst({
+      where: { id, clinicId },
+      include: { appointmentType: true },
+    });
+    if (!entry) throw notFound("Waitlist entry not found");
+    if (entry.status !== WaitlistStatus.OFFERED) {
+      throw badRequest("Entry is not in OFFERED status");
+    }
+    if (!entry.offeredStartsAt || !entry.offeredEndsAt) {
+      throw badRequest("Offer has no slot times");
+    }
+    if (entry.offerExpiresAt && entry.offerExpiresAt < new Date()) {
+      await tx.waitlistEntry.update({
+        where: { id: entry.id },
+        data: {
+          status: WaitlistStatus.WAITING,
+          offeredStartsAt: null,
+          offeredEndsAt: null,
+          offeredAt: null,
+          offerExpiresAt: null,
+        },
+      });
+      throw badRequest("Offer expired — patient returned to waitlist");
+    }
+
+    const practitionerId = entry.practitionerId;
+    if (!practitionerId) throw badRequest("Offer missing practitioner");
+
+    const conflictApt = await tx.appointment.findFirst({
+      where: {
+        clinicId,
+        practitionerId,
+        status: {
+          notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW],
+        },
+        startsAt: { lt: entry.offeredEndsAt },
+        endsAt: { gt: entry.offeredStartsAt },
       },
     });
-    throw badRequest("Offer expired — patient returned to waitlist");
-  }
+    if (conflictApt) {
+      throw conflict("Slot is no longer free");
+    }
 
-  const practitionerId = entry.practitionerId;
-  if (!practitionerId) throw badRequest("Offer missing practitioner");
-
-  const conflictApt = await prisma.appointment.findFirst({
-    where: {
-      clinicId: ctx.clinicId,
-      practitionerId,
-      status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW] },
-      startsAt: { lt: entry.offeredEndsAt },
-      endsAt: { gt: entry.offeredStartsAt },
-    },
-  });
-  if (conflictApt) {
-    throw conflict("Slot is no longer free");
-  }
-
-  const { findAvailableRoom } = await import("./rooms");
-  const freeRoom = await findAvailableRoom({
-    clinicId: ctx.clinicId,
-    startsAt: entry.offeredStartsAt,
-    endsAt: entry.offeredEndsAt,
-  });
-
-  const appointment = await prisma.appointment.create({
-    data: {
-      clinicId: ctx.clinicId,
-      patientId: entry.patientId,
-      practitionerId,
-      appointmentTypeId: entry.appointmentTypeId,
-      roomId: freeRoom?.id ?? null,
+    const { findAvailableRoom } = await import("./rooms");
+    // Room finder uses global prisma; slot lock still held via waitlist checks above
+    const freeRoom = await findAvailableRoom({
+      clinicId,
       startsAt: entry.offeredStartsAt,
       endsAt: entry.offeredEndsAt,
-      status: AppointmentStatus.BOOKED,
-      notes: "Booked from waitlist offer",
-    },
-    include: {
-      patient: true,
-      practitioner: true,
-      appointmentType: true,
-      room: true,
-    },
-  });
+    });
 
-  const updated = await prisma.waitlistEntry.update({
-    where: { id: entry.id },
-    data: {
-      status: WaitlistStatus.BOOKED,
-      bookedAppointmentId: appointment.id,
-    },
-    include: waitlistInclude,
-  });
+    const appointment = await tx.appointment.create({
+      data: {
+        clinicId,
+        patientId: entry.patientId,
+        practitionerId,
+        appointmentTypeId: entry.appointmentTypeId,
+        roomId: freeRoom?.id ?? null,
+        startsAt: entry.offeredStartsAt,
+        endsAt: entry.offeredEndsAt,
+        status: AppointmentStatus.BOOKED,
+        notes: "Booked from waitlist offer",
+      },
+      include: {
+        patient: true,
+        practitioner: true,
+        appointmentType: true,
+        room: true,
+      },
+    });
 
-  return { entry: updated, appointment };
+    const updated = await tx.waitlistEntry.update({
+      where: { id: entry.id },
+      data: {
+        status: WaitlistStatus.BOOKED,
+        bookedAppointmentId: appointment.id,
+      },
+      include: waitlistInclude,
+    });
+
+    return { entry: updated, appointment };
+  });
 }
 
 export async function declineWaitlistOffer(ctx: AuthContext, id: string) {
+  return declineWaitlistOfferForClinic(ctx.clinicId, id);
+}
+
+export async function declineWaitlistOfferForClinic(
+  clinicId: string,
+  id: string,
+) {
   const entry = await prisma.waitlistEntry.findFirst({
-    where: { id, clinicId: ctx.clinicId },
+    where: { id, clinicId },
   });
   if (!entry) throw notFound("Waitlist entry not found");
   if (entry.status !== WaitlistStatus.OFFERED) {
     throw badRequest("Entry is not in OFFERED status");
   }
 
-  // Mark declined, then try next waiting patient for the same slot
   const declined = await prisma.waitlistEntry.update({
     where: { id: entry.id },
     data: {
@@ -269,7 +290,7 @@ export async function declineWaitlistOffer(ctx: AuthContext, id: string) {
   let nextOffer = null;
   if (entry.offeredStartsAt && entry.offeredEndsAt && entry.practitionerId) {
     nextOffer = await offerSlotToWaitlist({
-      clinicId: ctx.clinicId,
+      clinicId,
       appointmentTypeId: entry.appointmentTypeId,
       practitionerId: entry.practitionerId,
       startsAt: entry.offeredStartsAt,

@@ -10,6 +10,7 @@
     "test": "tsx --test tests/unit/**/*.test.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
+    "db:rls": "tsx prisma/sql/apply-rls.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
     "postinstall": "prisma generate"

@@ -1637,6 +1637,51 @@ h3 {
   border: 1px solid var(--line);
 }
 
+.timeline-item {
+  padding: 0;
+}
+
+.timeline-link {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.timeline-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.timeline-kind[data-kind="note"] {
+  background: color-mix(in srgb, #3d6b8a 14%, transparent);
+  color: #3d6b8a;
+}
+
+.timeline-kind[data-kind="invoice"] {
+  background: color-mix(in srgb, #6b5d3d 14%, transparent);
+  color: #6b5d3d;
+}
+
+.timeline-body {
+  min-width: 0;
+}
+
+.timeline-body .apt-name {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
 .prep-note {
   flex-direction: column;
 }
