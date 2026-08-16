@@ -34,7 +34,7 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | PATCH | `/patients/:id` | Update profile fields |
 | POST | `/patients/:id/consents` | `{ type, granted, method }` |
 
-Staff booking: Calendar empty cell → book sheet with patient lookup (`/app/calendar`). Directory create/edit: `/app/patients`.
+Staff booking: Calendar empty cell → book sheet with patient lookup (`/app/calendar`). New patients use the same first-time intake as online booking (name, email, phone, reason, privacy + recording consents). Directory create/edit: `/app/patients`.
 
 ## Appointments
 

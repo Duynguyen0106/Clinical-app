@@ -91,6 +91,7 @@ export default function CalendarPage() {
   const [bookSlotFixed, setBookSlotFixed] = useState(false);
 
   const [bookPatientId, setBookPatientId] = useState("");
+  const [bookIntakeNote, setBookIntakeNote] = useState<string | null>(null);
   const [bookTypeId, setBookTypeId] = useState("");
   const [bookPractitionerId, setBookPractitionerId] = useState("");
   const [bookDuration, setBookDuration] = useState(30);
@@ -201,6 +202,7 @@ export default function CalendarPage() {
     setMessage(null);
     setError(null);
     setBookPatientId("");
+    setBookIntakeNote(null);
     setBookNotes("");
     if (opts?.day != null && opts.hour != null) {
       const startsAt = setMinutes(setHours(opts.day, opts.hour), 0);
@@ -237,6 +239,12 @@ export default function CalendarPage() {
       const feeCents = bookFeePounds
         ? Math.round(Number(bookFeePounds) * 100)
         : 0;
+      const notes = [
+        bookNotes.trim() || null,
+        bookIntakeNote ? `Intake: ${bookIntakeNote}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
       await api("/appointments", {
         method: "POST",
         body: JSON.stringify({
@@ -245,12 +253,13 @@ export default function CalendarPage() {
           appointmentTypeId: bookTypeId,
           startsAt: bookSlot,
           durationMinutes: bookDuration,
-          notes: bookNotes || null,
+          notes: notes || null,
           feeCents: feeCents > 0 ? feeCents : undefined,
         }),
       });
       setBookOpen(false);
       setBookSlotFixed(false);
+      setBookIntakeNote(null);
       setMessage("Appointment booked");
       load();
     } catch (e) {
@@ -763,8 +772,16 @@ export default function CalendarPage() {
             ) : null}
             <PatientLookup
               value={bookPatientId}
-              onChange={(id) => setBookPatientId(id)}
+              onChange={(id, detail) => {
+                setBookPatientId(id);
+                setBookIntakeNote(detail?.intakeNote ?? null);
+              }}
             />
+            {bookIntakeNote ? (
+              <p className="muted book-fineprint">
+                Intake on file: {bookIntakeNote}
+              </p>
+            ) : null}
             <label className="field">
               <span>Service</span>
               <select
