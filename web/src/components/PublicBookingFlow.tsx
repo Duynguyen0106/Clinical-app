@@ -35,6 +35,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   const [privacy, setPrivacy] = useState(false);
   const [recordingPref, setRecordingPref] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [manageHref, setManageHref] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -66,7 +67,10 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await api(`/public/clinics/${slug}`, {
+      const booked = await api<{
+        appointment: { id: string };
+        manageUrl?: string;
+      }>(`/public/clinics/${slug}`, {
         method: "POST",
         auth: false,
         body: JSON.stringify({
@@ -81,6 +85,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
           },
         }),
       });
+      if (booked.manageUrl) setManageHref(booked.manageUrl);
       setStep("done");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Booking failed");
@@ -107,9 +112,15 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
           </p>
           <p>
             A confirmation is on its way to {email}
-            {phone ? " (and SMS if we have your number)" : ""}. We&apos;ll also
-            send a reminder before your visit.
+            {phone ? " (and SMS if we have your number)" : ""} with a link to
+            cancel or reschedule. We&apos;ll also send a reminder before your
+            visit.
           </p>
+          {manageHref ? (
+            <Link href={manageHref} className="btn-secondary">
+              Manage this booking
+            </Link>
+          ) : null}
           {!embed ? (
             <Link href="/login" className="btn-primary">
               Clinic sign in
