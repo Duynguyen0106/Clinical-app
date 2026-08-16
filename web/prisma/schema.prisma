@@ -183,6 +183,8 @@ model PractitionerProfile {
   registrationBody String?
   /// e.g. PH12345
   registrationNumber String?
+  /// Secret token for phone calendar subscribe (ICS / webcal)
+  calendarFeedToken String? @unique
 
   membership       Membership        @relation(fields: [membershipId], references: [id], onDelete: Cascade)
   availability     AvailabilityRule[]
