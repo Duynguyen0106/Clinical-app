@@ -6,12 +6,16 @@ import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
 
-type ClinicCompliance = {
+type ClinicProfile = {
   id: string;
-  name?: string;
+  name: string;
+  slug?: string;
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  brandColour?: string | null;
+  hasLogo?: boolean;
+  logoUrl?: string | null;
   audioRetentionDays: number;
   privacyNoticeVersion: string;
   dataRegion: string;
@@ -33,53 +37,136 @@ type BookingPolicy = {
 };
 
 export default function SettingsPage() {
-  const { me } = useAuth();
-  const [clinic, setClinic] = useState<ClinicCompliance | null>(null);
+  const { me, refresh } = useAuth();
+  const [clinic, setClinic] = useState<ClinicProfile | null>(null);
   const [support, setSupport] = useState<SupportInfo | null>(null);
   const [booking, setBooking] = useState<BookingPolicy | null>(null);
+  const [name, setName] = useState("");
   const [days, setDays] = useState(14);
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const [brandColour, setBrandColour] = useState("#1E3F37");
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [auditCount, setAuditCount] = useState<number | null>(null);
 
   useEffect(() => {
     void Promise.all([
-      api<{ clinic: ClinicCompliance }>("/clinic/compliance"),
+      api<{ clinic: ClinicProfile }>("/clinic/profile"),
       api<{ support: SupportInfo }>("/ops/support"),
       api<{ booking: BookingPolicy }>("/clinic/booking"),
     ])
       .then(([c, s, b]) => {
         setClinic(c.clinic);
+        setName(c.clinic.name);
         setDays(c.clinic.audioRetentionDays);
         setPhone(c.clinic.phone ?? "");
         setEmail(c.clinic.email ?? "");
         setAddress(c.clinic.address ?? "");
+        setBrandColour(c.clinic.brandColour ?? "#1E3F37");
         setSupport(s.support);
         setBooking(b.booking);
+        if (c.clinic.hasLogo) {
+          void loadLogoPreview();
+        } else {
+          setLogoPreview(null);
+        }
       })
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  async function save() {
+  async function loadLogoPreview() {
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("treow_token")
+          : null;
+      const res = await fetch("/api/v1/clinic/logo", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      setLogoPreview(URL.createObjectURL(blob));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function saveBrand() {
     setError(null);
     setMessage(null);
     try {
-      const d = await api<{ clinic: ClinicCompliance }>("/clinic/compliance", {
+      const d = await api<{ clinic: ClinicProfile }>("/clinic/profile", {
         method: "PATCH",
         body: JSON.stringify({
-          audioRetentionDays: days,
+          name,
           phone: phone || null,
           email: email || null,
           address: address || null,
+          brandColour: brandColour || null,
         }),
       });
       setClinic(d.clinic);
-      setMessage("Saved clinic letterhead and retention settings.");
+      setMessage("Saved clinic brand.");
+      await refresh();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Save failed");
+    }
+  }
+
+  async function saveRetention() {
+    setError(null);
+    setMessage(null);
+    try {
+      const d = await api<{ clinic: ClinicProfile }>("/clinic/compliance", {
+        method: "PATCH",
+        body: JSON.stringify({ audioRetentionDays: days }),
+      });
+      setClinic((c) =>
+        c
+          ? { ...c, audioRetentionDays: d.clinic.audioRetentionDays }
+          : c,
+      );
+      setMessage("Saved retention settings.");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Save failed");
+    }
+  }
+
+  async function onLogoSelected(file: File | null) {
+    if (!file) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const body = new FormData();
+      body.append("logo", file);
+      const d = await api<{ clinic: ClinicProfile }>("/clinic/logo", {
+        method: "POST",
+        body,
+      });
+      setClinic(d.clinic);
+      await loadLogoPreview();
+      setMessage("Clinic logo uploaded.");
+      await refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Logo upload failed");
+    }
+  }
+
+  async function removeLogo() {
+    setError(null);
+    try {
+      const d = await api<{ clinic: ClinicProfile }>("/clinic/logo", {
+        method: "DELETE",
+      });
+      setClinic(d.clinic);
+      setLogoPreview(null);
+      setMessage("Clinic logo removed.");
+      await refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not remove logo");
     }
   }
 
@@ -152,27 +239,72 @@ export default function SettingsPage() {
   return (
     <AppShell
       title="Settings"
-      subtitle="Compliance, audits, and launch support for this clinic."
+      subtitle="Clinic brand, booking policy, compliance, and launch support."
     >
       <div className="settings-grid">
         <section className="panel">
-          <h2>Privacy & data</h2>
+          <h2>Clinic brand</h2>
           {error ? <p className="form-error">{error}</p> : null}
           {message ? <p className="alert-line">{message}</p> : null}
           <p className="muted">
-            Notice version: {clinic?.privacyNoticeVersion ?? "…"} · Region:{" "}
-            {clinic?.dataRegion ?? "uk-eu"}
+            Logo, name, and letterhead appear on booking pages and printed notes.
           </p>
-          <Link href="/privacy" className="btn-ghost">
-            View privacy notice →
-          </Link>
 
-          <h3 style={{ marginTop: "1.25rem" }}>Letterhead</h3>
-          <p className="muted">
-            Shown on printed clinical notes and GP letters.
-          </p>
+          <div className="clinic-brand-row">
+            {logoPreview ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoPreview}
+                alt="Clinic logo"
+                className="clinic-logo-preview"
+              />
+            ) : (
+              <div className="clinic-logo-preview muted">No logo</div>
+            )}
+            {isOwner ? (
+              <div className="side-stack">
+                <label className="field">
+                  <span>Upload logo (PNG, JPEG, WebP, SVG · max 2MB)</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={(e) =>
+                      void onLogoSelected(e.target.files?.[0] ?? null)
+                    }
+                  />
+                </label>
+                {logoPreview ? (
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    onClick={() => void removeLogo()}
+                  >
+                    Remove logo
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
           <label className="field">
-            <span>Clinic address</span>
+            <span>Clinic name</span>
+            <input
+              value={name}
+              disabled={!isOwner}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Brand colour</span>
+            <input
+              type="color"
+              value={brandColour}
+              disabled={!isOwner}
+              onChange={(e) => setBrandColour(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Address</span>
             <input
               value={address}
               disabled={!isOwner}
@@ -197,6 +329,28 @@ export default function SettingsPage() {
               onChange={(e) => setEmail(e.target.value)}
             />
           </label>
+          {isOwner ? (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void saveBrand()}
+            >
+              Save brand
+            </button>
+          ) : (
+            <p className="muted">Only clinic owners can change brand settings.</p>
+          )}
+        </section>
+
+        <section className="panel">
+          <h2>Privacy & data</h2>
+          <p className="muted">
+            Notice version: {clinic?.privacyNoticeVersion ?? "…"} · Region:{" "}
+            {clinic?.dataRegion ?? "uk-eu"}
+          </p>
+          <Link href="/privacy" className="btn-ghost">
+            View privacy notice →
+          </Link>
 
           <label className="field" style={{ marginTop: "1rem" }}>
             <span>Audio retention (days)</span>
@@ -215,7 +369,11 @@ export default function SettingsPage() {
           </p>
           {isOwner ? (
             <div className="home-cta">
-              <button type="button" className="btn-primary" onClick={() => void save()}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void saveRetention()}
+              >
                 Save
               </button>
               <button

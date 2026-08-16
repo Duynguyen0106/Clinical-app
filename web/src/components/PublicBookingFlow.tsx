@@ -11,6 +11,12 @@ type Clinic = {
   id: string;
   name: string;
   slug: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  brandColour?: string | null;
+  hasLogo?: boolean;
+  logoUrl?: string | null;
   booking?: {
     minNoticeHours: number;
     maxAdvanceDays: number;
@@ -132,12 +138,21 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   }[];
 
   const shellClass = embed ? "book-page book-page-embed" : "book-page";
+  const accent = clinic?.brandColour || undefined;
+  const clinicLogo = clinic?.logoUrl ?? null;
 
   if (step === "done") {
     return (
       <div className={shellClass}>
         <div className="book-card">
-          {!embed ? <p className="brand-mark">{BRAND.shortName}</p> : null}
+          {!embed ? (
+            clinicLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={clinicLogo} alt="" className="book-clinic-logo" />
+            ) : (
+              <p className="brand-mark">{BRAND.shortName}</p>
+            )
+          ) : null}
           <h1>You&apos;re booked</h1>
           <p className="muted">
             {name} · {format(new Date(slot), "EEE d MMM HH:mm")}
@@ -178,13 +193,33 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
       <div className="book-shell">
         {!embed ? (
           <div className="book-brand">
-            <BrandLogo variant="mark" className="book-mark" priority />
-            <p className="brand-word">{BRAND.shortName}</p>
+            {clinicLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={clinicLogo} alt="" className="book-clinic-logo" />
+            ) : (
+              <BrandLogo variant="mark" className="book-mark" priority />
+            )}
+            <p
+              className="brand-word"
+              style={accent ? { color: accent } : undefined}
+            >
+              {clinic?.name ?? BRAND.shortName}
+            </p>
             <p className="brand-motto">{BRAND.motto}</p>
           </div>
         ) : null}
         <div className="book-card">
-          <p className="eyebrow">{clinic?.name ?? slug}</p>
+          <p
+            className="eyebrow"
+            style={accent ? { color: accent } : undefined}
+          >
+            {clinic?.name ?? slug}
+          </p>
+          {clinic?.address || clinic?.phone ? (
+            <p className="muted book-fineprint">
+              {[clinic?.address, clinic?.phone].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
           <h1>Book online</h1>
           <p className="muted">
             Physio, osteopathy, and manual therapy — short intake, then confirm.

@@ -10,6 +10,25 @@ export const loginSchema = z.object({
   clinicSlug: z.string().optional(),
 });
 
+function clinicPayload(clinic: {
+  id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  brandColour: string | null;
+  logoStorageKey: string | null;
+}) {
+  return {
+    id: clinic.id,
+    name: clinic.name,
+    slug: clinic.slug,
+    timezone: clinic.timezone,
+    brandColour: clinic.brandColour,
+    hasLogo: Boolean(clinic.logoStorageKey),
+    logoUrl: clinic.logoStorageKey ? "/api/v1/clinic/logo" : null,
+  };
+}
+
 export async function login(input: z.infer<typeof loginSchema>) {
   const user = await prisma.user.findUnique({
     where: { email: input.email.toLowerCase() },
@@ -49,12 +68,7 @@ export async function login(input: z.infer<typeof loginSchema>) {
       email: user.email,
       name: user.name,
     },
-    clinic: {
-      id: membership.clinic.id,
-      name: membership.clinic.name,
-      slug: membership.clinic.slug,
-      timezone: membership.clinic.timezone,
-    },
+    clinic: clinicPayload(membership.clinic),
     role: membership.role,
     practitionerProfileId: membership.practitionerProfile?.id ?? null,
   };
@@ -87,12 +101,7 @@ export async function getMe(userId: string, clinicId: string) {
       email: membership.user.email,
       name: membership.user.name,
     },
-    clinic: {
-      id: membership.clinic.id,
-      name: membership.clinic.name,
-      slug: membership.clinic.slug,
-      timezone: membership.clinic.timezone,
-    },
+    clinic: clinicPayload(membership.clinic),
     role: membership.role,
     practitionerProfileId: membership.practitionerProfile?.id ?? null,
   };

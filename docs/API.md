@@ -14,6 +14,12 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 
 **Demo:** `alex@northbank.example` (owner) · `jordan@northbank.example` (practitioner) · `reception@northbank.example` — password `treow-demo`
 
+| GET | `/clinic/profile` | Clinic brand (name, address, phone, email, colour, logo flags) |
+| PATCH | `/clinic/profile` | Owner: update brand fields |
+| GET | `/clinic/logo` | Authenticated clinic logo bytes (staff) |
+| POST | `/clinic/logo` | Owner: multipart `logo` upload (PNG/JPEG/WebP/SVG, max 2MB) |
+| DELETE | `/clinic/logo` | Owner: remove clinic logo |
+| GET | `/public/clinics/:slug/logo` | Public clinic logo bytes |
 | GET | `/clinic/booking` | Online booking policy (notice, deposits) |
 | PATCH | `/clinic/booking` | Owner: update booking policy |
 | POST | `/public/deposits` | `{ appointmentId }` start deposit checkout (console pays immediately; stripe returns URL) |

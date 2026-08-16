@@ -509,6 +509,14 @@ export async function getPublicClinicBySlug(slug: string) {
     name: clinic.name,
     slug: clinic.slug,
     timezone: clinic.timezone,
+    phone: clinic.phone,
+    email: clinic.email,
+    address: clinic.address,
+    brandColour: clinic.brandColour,
+    hasLogo: Boolean(clinic.logoStorageKey),
+    logoUrl: clinic.logoStorageKey
+      ? `/api/v1/public/clinics/${clinic.slug}/logo`
+      : null,
     booking: {
       minNoticeHours: clinic.bookingMinNoticeHours,
       maxAdvanceDays: clinic.bookingMaxAdvanceDays,
