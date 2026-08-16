@@ -76,6 +76,7 @@ export function PatientPrepPanel({
   const [noteBodies, setNoteBodies] = useState<Record<string, NoteBody>>({});
   const [loadingBodyId, setLoadingBodyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [nowMs] = useState(() => Date.now());
   const loadedBodies = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -157,13 +158,16 @@ export function PatientPrepPanel({
   );
   const past = history.filter(
     (a) =>
-      new Date(a.startsAt).getTime() <= Date.now() ||
+      new Date(a.startsAt).getTime() <= nowMs ||
       ["COMPLETED", "CANCELLED", "NO_SHOW"].includes(a.status),
   );
   const upcoming = history.filter((a) => !past.includes(a));
   const canViewNotes = prep.canViewClinicalNotes !== false;
   const signedNotes = prep.notes.filter((n) => n.status === "SIGNED");
-  const otherNotes = prep.notes.filter((n) => n.status !== "SIGNED");
+  const voidedNotes = prep.notes.filter((n) => n.status === "VOIDED");
+  const otherNotes = prep.notes.filter(
+    (n) => n.status !== "SIGNED" && n.status !== "VOIDED",
+  );
 
   return (
     <div className={`prep-panel ${compact ? "prep-compact" : ""} ${className ?? ""}`}>
@@ -220,11 +224,15 @@ export function PatientPrepPanel({
           <p className="muted">
             Clinical note history is restricted to practitioners and owners.
           </p>
-        ) : signedNotes.length === 0 && otherNotes.length === 0 ? (
+        ) : signedNotes.length === 0 &&
+          otherNotes.length === 0 &&
+          voidedNotes.length === 0 ? (
           <p className="muted">No clinical notes yet — first visit or notes unsigned.</p>
         ) : (
           <ul className="prep-list">
-            {[...signedNotes, ...otherNotes].slice(0, compact ? 4 : 8).map((n) => {
+            {[...signedNotes, ...otherNotes, ...voidedNotes]
+              .slice(0, compact ? 4 : 8)
+              .map((n) => {
               const open = expandedNoteId === n.id;
               const body = noteBodies[n.id];
               const when = n.appointmentStartsAt ?? n.signedAt ?? n.createdAt;

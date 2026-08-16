@@ -10,6 +10,8 @@ import { badRequest, conflict, notFound } from "@/server/errors";
 import { requirePatient } from "@/modules/patients/service";
 import { assertWithinAvailability } from "./availability";
 import { listClinicSlots } from "./slots";
+import { intervalsOverlap, withBuffers } from "./conflict";
+import { withScheduleLocks } from "./locks";
 
 const appointmentStatuses = [
   "BOOKED",
@@ -179,36 +181,45 @@ export async function createAppointment(
     roomId = free?.id ?? null;
   }
 
-  await assertNoConflict({
-    clinicId: ctx.clinicId,
-    practitionerId: input.practitionerId,
-    roomId,
-    startsAt,
-    endsAt,
-    bufferBefore: type.bufferBefore,
-    bufferAfter: type.bufferAfter,
-  });
+  const appointment = await withScheduleLocks(
+    prisma,
+    { practitionerId: input.practitionerId, roomId },
+    async (tx) => {
+      await assertNoConflict(
+        {
+          clinicId: ctx.clinicId,
+          practitionerId: input.practitionerId,
+          roomId,
+          startsAt,
+          endsAt,
+          bufferBefore: type.bufferBefore,
+          bufferAfter: type.bufferAfter,
+        },
+        tx as typeof prisma,
+      );
 
-  const appointment = await prisma.appointment.create({
-    data: {
-      clinicId: ctx.clinicId,
-      patientId: input.patientId,
-      practitionerId: input.practitionerId,
-      appointmentTypeId: input.appointmentTypeId,
-      locationId: input.locationId ?? null,
-      roomId,
-      startsAt,
-      endsAt,
-      notes: input.notes ?? null,
-      status: AppointmentStatus.BOOKED,
+      return tx.appointment.create({
+        data: {
+          clinicId: ctx.clinicId,
+          patientId: input.patientId,
+          practitionerId: input.practitionerId,
+          appointmentTypeId: input.appointmentTypeId,
+          locationId: input.locationId ?? null,
+          roomId,
+          startsAt,
+          endsAt,
+          notes: input.notes ?? null,
+          status: AppointmentStatus.BOOKED,
+        },
+        include: {
+          patient: true,
+          practitioner: true,
+          appointmentType: true,
+          room: true,
+        },
+      });
     },
-    include: {
-      patient: true,
-      practitioner: true,
-      appointmentType: true,
-      room: true,
-    },
-  });
+  );
 
   const feeCents =
     input.feeCents ??
@@ -302,33 +313,45 @@ export async function rescheduleAppointment(
     endsAt,
   });
 
-  await assertNoConflict({
-    clinicId: ctx.clinicId,
-    practitionerId: appointment.practitionerId,
-    roomId: appointment.roomId,
-    startsAt,
-    endsAt,
-    bufferBefore: appointment.appointmentType.bufferBefore,
-    bufferAfter: appointment.appointmentType.bufferAfter,
-    excludeAppointmentId: appointment.id,
-  });
+  const updated = await withScheduleLocks(
+    prisma,
+    {
+      practitionerId: appointment.practitionerId,
+      roomId: appointment.roomId,
+    },
+    async (tx) => {
+      await assertNoConflict(
+        {
+          clinicId: ctx.clinicId,
+          practitionerId: appointment.practitionerId,
+          roomId: appointment.roomId,
+          startsAt,
+          endsAt,
+          bufferBefore: appointment.appointmentType.bufferBefore,
+          bufferAfter: appointment.appointmentType.bufferAfter,
+          excludeAppointmentId: appointment.id,
+        },
+        tx as typeof prisma,
+      );
 
-  const updated = await prisma.appointment.update({
-    where: { id: appointment.id },
-    data: {
-      startsAt,
-      endsAt,
-      // New time should get a fresh reminder window
-      reminderSentAt: null,
-      smsReminderSentAt: null,
+      return tx.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          startsAt,
+          endsAt,
+          // New time should get a fresh reminder window
+          reminderSentAt: null,
+          smsReminderSentAt: null,
+        },
+        include: {
+          patient: true,
+          practitioner: true,
+          appointmentType: true,
+          room: true,
+        },
+      });
     },
-    include: {
-      patient: true,
-      practitioner: true,
-      appointmentType: true,
-      room: true,
-    },
-  });
+  );
 
   try {
     const { sendAppointmentRescheduled } = await import(
@@ -405,36 +428,56 @@ export async function updateAppointment(
       startsAt,
       endsAt,
     });
-    await assertNoConflict({
-      clinicId: ctx.clinicId,
-      practitionerId: appointment.practitionerId,
-      roomId: appointment.roomId,
-      startsAt,
-      endsAt,
-      bufferBefore: type.bufferBefore,
-      bufferAfter: type.bufferAfter,
-      excludeAppointmentId: appointment.id,
-    });
   }
 
-  let updated = await prisma.appointment.update({
-    where: { id: appointment.id },
-    data: {
-      startsAt,
-      endsAt,
-      notes,
-      ...(input.appointmentTypeId
-        ? { appointmentTypeId: input.appointmentTypeId }
-        : {}),
-      ...(input.status ? { status: input.status } : {}),
+  let updated = await withScheduleLocks(
+    prisma,
+    {
+      practitionerId: appointment.practitionerId,
+      roomId: appointment.roomId,
     },
-    include: {
-      patient: true,
-      practitioner: true,
-      appointmentType: true,
-      room: true,
+    async (tx) => {
+      if (
+        startsAt.getTime() !== appointment.startsAt.getTime() ||
+        endsAt.getTime() !== appointment.endsAt.getTime() ||
+        (input.appointmentTypeId &&
+          input.appointmentTypeId !== appointment.appointmentTypeId)
+      ) {
+        await assertNoConflict(
+          {
+            clinicId: ctx.clinicId,
+            practitionerId: appointment.practitionerId,
+            roomId: appointment.roomId,
+            startsAt,
+            endsAt,
+            bufferBefore: type.bufferBefore,
+            bufferAfter: type.bufferAfter,
+            excludeAppointmentId: appointment.id,
+          },
+          tx as typeof prisma,
+        );
+      }
+
+      return tx.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          startsAt,
+          endsAt,
+          notes,
+          ...(input.appointmentTypeId
+            ? { appointmentTypeId: input.appointmentTypeId }
+            : {}),
+          ...(input.status ? { status: input.status } : {}),
+        },
+        include: {
+          patient: true,
+          practitioner: true,
+          appointmentType: true,
+          room: true,
+        },
+      });
     },
-  });
+  );
 
   if (
     input.status === AppointmentStatus.CANCELLED &&
@@ -706,15 +749,6 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     endsAt,
   });
 
-  await assertNoConflict({
-    clinicId: clinic.id,
-    practitionerId: input.practitionerId,
-    startsAt,
-    endsAt,
-    bufferBefore: type.bufferBefore,
-    bufferAfter: type.bufferAfter,
-  });
-
   const { findAvailableRoom } = await import("./rooms");
   const freeRoom = await findAvailableRoom({
     clinicId: clinic.id,
@@ -729,30 +763,52 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     isOnline: true,
   });
 
-  const appointment = await prisma.appointment.create({
-    data: {
-      clinicId: clinic.id,
-      patientId: patient.id,
+  const appointment = await withScheduleLocks(
+    prisma,
+    {
       practitionerId: input.practitionerId,
-      appointmentTypeId: type.id,
       roomId: freeRoom?.id ?? null,
-      startsAt,
-      endsAt,
-      status: AppointmentStatus.BOOKED,
-      notes: intakeNote || null,
-      depositCents: deposit.required ? deposit.cents : 0,
-      depositStatus: deposit.required
-        ? DepositStatus.REQUIRED
-        : DepositStatus.NONE,
     },
-    include: {
-      patient: true,
-      practitioner: true,
-      appointmentType: true,
-      room: true,
-      clinic: true,
+    async (tx) => {
+      await assertNoConflict(
+        {
+          clinicId: clinic.id,
+          practitionerId: input.practitionerId,
+          roomId: freeRoom?.id ?? null,
+          startsAt,
+          endsAt,
+          bufferBefore: type.bufferBefore,
+          bufferAfter: type.bufferAfter,
+        },
+        tx as typeof prisma,
+      );
+
+      return tx.appointment.create({
+        data: {
+          clinicId: clinic.id,
+          patientId: patient.id,
+          practitionerId: input.practitionerId,
+          appointmentTypeId: type.id,
+          roomId: freeRoom?.id ?? null,
+          startsAt,
+          endsAt,
+          status: AppointmentStatus.BOOKED,
+          notes: intakeNote || null,
+          depositCents: deposit.required ? deposit.cents : 0,
+          depositStatus: deposit.required
+            ? DepositStatus.REQUIRED
+            : DepositStatus.NONE,
+        },
+        include: {
+          patient: true,
+          practitioner: true,
+          appointmentType: true,
+          room: true,
+          clinic: true,
+        },
+      });
     },
-  });
+  );
 
   try {
     const { sendBookingConfirmation } = await import(
@@ -798,24 +854,27 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
   };
 }
 
-export async function assertNoConflict(args: {
-  clinicId: string;
-  practitionerId: string;
-  roomId?: string | null;
-  startsAt: Date;
-  endsAt: Date;
-  bufferBefore: number;
-  bufferAfter: number;
-  excludeAppointmentId?: string;
-}) {
-  const windowStart = new Date(
-    args.startsAt.getTime() - args.bufferBefore * 60_000,
-  );
-  const windowEnd = new Date(
-    args.endsAt.getTime() + args.bufferAfter * 60_000,
+export async function assertNoConflict(
+  args: {
+    clinicId: string;
+    practitionerId: string;
+    roomId?: string | null;
+    startsAt: Date;
+    endsAt: Date;
+    bufferBefore: number;
+    bufferAfter: number;
+    excludeAppointmentId?: string;
+  },
+  db: typeof prisma = prisma,
+) {
+  const { windowStart, windowEnd } = withBuffers(
+    args.startsAt,
+    args.endsAt,
+    args.bufferBefore,
+    args.bufferAfter,
   );
 
-  const practitionerClash = await prisma.appointment.findFirst({
+  const practitionerClash = await db.appointment.findFirst({
     where: {
       clinicId: args.clinicId,
       practitionerId: args.practitionerId,
@@ -833,11 +892,21 @@ export async function assertNoConflict(args: {
   });
 
   if (practitionerClash) {
-    throw conflict("Practitioner already has an appointment in this slot");
+    // Harden detection with pure overlap helper (same semantics as query)
+    if (
+      intervalsOverlap(
+        windowStart,
+        windowEnd,
+        practitionerClash.startsAt,
+        practitionerClash.endsAt,
+      )
+    ) {
+      throw conflict("Practitioner already has an appointment in this slot");
+    }
   }
 
   if (args.roomId) {
-    const roomClash = await prisma.appointment.findFirst({
+    const roomClash = await db.appointment.findFirst({
       where: {
         clinicId: args.clinicId,
         roomId: args.roomId,
@@ -853,7 +922,15 @@ export async function assertNoConflict(args: {
         ],
       },
     });
-    if (roomClash) {
+    if (
+      roomClash &&
+      intervalsOverlap(
+        windowStart,
+        windowEnd,
+        roomClash.startsAt,
+        roomClash.endsAt,
+      )
+    ) {
       throw conflict("Room is already booked in this slot");
     }
   }

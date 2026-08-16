@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
+
+      # Full eslint currently flags pre-existing react-hooks setState-in-effect
+      # patterns across pages; keep typecheck + unit tests as the merge gate.
+      - name: Lint (targeted)
+        run: npx eslint "src/modules/scheduling/conflict.ts" "src/modules/scheduling/locks.ts" "src/modules/notes/hash.ts" "src/modules/notes/service.ts" "src/app/api/v1/notes/[id]/void/route.ts" "src/app/api/v1/notes/[id]/addendum/route.ts"

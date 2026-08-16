@@ -1,10 +1,12 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import { NoteStatus, Prisma } from "@/generated/prisma/client";
 import type { AuthContext } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
 import type { NoteContent } from "@/modules/ai/providers";
+import { hashNoteContent } from "@/modules/notes/hash";
+
+export { hashNoteContent } from "@/modules/notes/hash";
 
 export async function listNoteTemplates(ctx: AuthContext) {
   return prisma.noteTemplate.findMany({
@@ -35,9 +37,11 @@ export async function listNotes(
       status: true,
       source: true,
       signedAt: true,
+      voidedAt: true,
       createdAt: true,
       updatedAt: true,
       visitId: true,
+      parentNoteId: true,
       patient: { select: { id: true, firstName: true, lastName: true } },
       template: { select: { id: true, name: true } },
       visit: { select: { id: true } },
@@ -55,6 +59,11 @@ export async function getNote(ctx: AuthContext, id: string) {
       template: true,
       audits: { orderBy: { createdAt: "desc" }, take: 50 },
       visit: { select: { id: true, appointmentId: true } },
+      parentNote: { select: { id: true, status: true, signedAt: true } },
+      addenda: {
+        select: { id: true, status: true, signedAt: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
   if (!note) throw notFound("Note not found");
@@ -175,9 +184,7 @@ export async function signNote(ctx: AuthContext, id: string) {
     throw badRequest("Only draft notes can be signed");
   }
 
-  const contentHash = createHash("sha256")
-    .update(JSON.stringify(note.content))
-    .digest("hex");
+  const contentHash = hashNoteContent(note.content);
 
   return prisma.clinicalNote.update({
     where: { id },
@@ -191,6 +198,97 @@ export async function signNote(ctx: AuthContext, id: string) {
           actorId: ctx.userId,
           action: "signed",
           meta: { contentHash },
+        },
+      },
+    },
+  });
+}
+
+export const voidNoteSchema = z.object({
+  reason: z.string().trim().min(3).max(1000),
+});
+
+/** Clinically correct a signed note — original retained as VOIDED with reason. */
+export async function voidSignedNote(
+  ctx: AuthContext,
+  id: string,
+  input: z.infer<typeof voidNoteSchema>,
+) {
+  const note = await prisma.clinicalNote.findFirst({
+    where: { id, patient: { clinicId: ctx.clinicId } },
+  });
+  if (!note) throw notFound("Note not found");
+  if (note.status !== NoteStatus.SIGNED) {
+    throw badRequest("Only signed notes can be voided");
+  }
+
+  return prisma.clinicalNote.update({
+    where: { id },
+    data: {
+      status: NoteStatus.VOIDED,
+      voidedAt: new Date(),
+      voidReason: input.reason,
+      audits: {
+        create: {
+          actorId: ctx.userId,
+          action: "voided",
+          meta: { reason: input.reason },
+        },
+      },
+    },
+  });
+}
+
+export const addendumSchema = z.object({
+  text: z.string().trim().min(1).max(8000),
+});
+
+/**
+ * Create a draft addendum linked to a signed note (same patient/visit).
+ * Clinician reviews and signs separately — signed body stays immutable.
+ */
+export async function createAddendumDraft(
+  ctx: AuthContext,
+  parentId: string,
+  input: z.infer<typeof addendumSchema>,
+) {
+  const parent = await prisma.clinicalNote.findFirst({
+    where: { id: parentId, patient: { clinicId: ctx.clinicId } },
+  });
+  if (!parent) throw notFound("Note not found");
+  if (parent.status !== NoteStatus.SIGNED) {
+    throw badRequest("Addenda can only be attached to signed notes");
+  }
+
+  const existingDraft = await prisma.clinicalNote.findFirst({
+    where: {
+      parentNoteId: parent.id,
+      status: NoteStatus.DRAFT,
+    },
+  });
+  if (existingDraft) {
+    throw badRequest("An unsigned addendum already exists for this note");
+  }
+
+  return prisma.clinicalNote.create({
+    data: {
+      patientId: parent.patientId,
+      visitId: parent.visitId,
+      templateId: parent.templateId,
+      parentNoteId: parent.id,
+      status: NoteStatus.DRAFT,
+      source: "addendum",
+      content: {
+        addendum: input.text,
+        clinician_review_flags: [
+          "Addendum to a signed note — review carefully before signing.",
+        ],
+      } as Prisma.InputJsonValue,
+      audits: {
+        create: {
+          actorId: ctx.userId,
+          action: "created",
+          meta: { source: "addendum", parentNoteId: parent.id },
         },
       },
     },
