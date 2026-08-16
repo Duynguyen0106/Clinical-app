@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { addDays, format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
@@ -342,6 +343,12 @@ export default function TeamPage() {
       title="Team"
       subtitle="Practitioner profiles, weekly hours, registration, and leave."
     >
+      {isOwner ? (
+        <p className="alert-line">
+          Staff rates and month pay summary:{" "}
+          <Link href="/app/team/pay">Open staff pay →</Link>
+        </p>
+      ) : null}
       <div className="settings-grid">
         <section className="panel">
           <div className="panel-head">

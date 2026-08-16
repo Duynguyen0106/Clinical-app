@@ -117,6 +117,30 @@ async function main() {
     },
   });
 
+  const payFrom = new Date();
+  payFrom.setUTCDate(1);
+  payFrom.setUTCHours(0, 0, 0, 0);
+
+  await prisma.practitionerPayRate.createMany({
+    data: [
+      {
+        practitionerId: practitioner.id,
+        employmentType: "EMPLOYED",
+        payMode: "NONE",
+        effectiveFrom: payFrom,
+        notes: "Clinic owner — pay not tracked",
+      },
+      {
+        practitionerId: jordanProfile.id,
+        employmentType: "SELF_EMPLOYED",
+        payMode: "FEE_SHARE",
+        feeSharePercent: 50,
+        effectiveFrom: payFrom,
+        notes: "Associate 50% of appointment fee",
+      },
+    ],
+  });
+
   // Mon–Fri 09:00–17:00 for both clinicians
   for (const profileId of [practitioner.id, jordanProfile.id]) {
     for (const dayOfWeek of [1, 2, 3, 4, 5]) {

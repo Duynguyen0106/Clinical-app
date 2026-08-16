@@ -38,6 +38,7 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 - SMS reminders — done (`SMS_PROVIDER=console|twilio`)
 - Team practitioners + weekly hours — done (`/app/team`, `/api/v1/team`)
 - Practitioner profile/registration + leave ranges — done (self-edit for clinicians; owner activate/deactivate)
+- Staff pay (rates + month summary CSV) — done (`/app/team/pay`, owner-only; not payroll)
 - Booking scenarios — staff book/block/fees/duration; patient manage links — done
 - Patient prep context — calendar/visit history + prior notes — done
 - Booking policies + deposits + day calendar — done

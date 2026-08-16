@@ -96,6 +96,20 @@ enum DepositMode {
   NEW_PATIENTS
 }
 
+enum EmploymentType {
+  EMPLOYED
+  SELF_EMPLOYED
+  CONTRACTOR
+}
+
+/// How practitioner pay is calculated for the month summary
+enum PractitionerPayMode {
+  NONE
+  SESSION
+  DAY
+  FEE_SHARE
+}
+
 model Clinic {
   id        String   @id @default(cuid())
   name      String
@@ -175,6 +189,29 @@ model PractitionerProfile {
   exceptions       AvailabilityException[]
   appointments     Appointment[]
   waitlistEntries  WaitlistEntry[]
+  payRates         PractitionerPayRate[]
+}
+
+/// Rate card history — month summary uses the rate effective on each session date
+model PractitionerPayRate {
+  id               String             @id @default(cuid())
+  practitionerId   String
+  employmentType   EmploymentType     @default(SELF_EMPLOYED)
+  payMode          PractitionerPayMode @default(NONE)
+  /// Flat £ per attended session (pence)
+  sessionRateCents Int?
+  /// Flat £ per calendar day with ≥1 attended session (pence)
+  dayRateCents     Int?
+  /// Share of linked invoice / list fee (0–100)
+  feeSharePercent  Int?
+  effectiveFrom    DateTime           @db.Date
+  notes            String?
+  createdAt        DateTime           @default(now())
+
+  practitioner PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+
+  @@unique([practitionerId, effectiveFrom])
+  @@index([practitionerId, effectiveFrom])
 }
 
 model Location {
@@ -348,6 +385,7 @@ model Appointment {
   room            Room?              @relation(fields: [roomId], references: [id])
   appointmentType AppointmentType    @relation(fields: [appointmentTypeId], references: [id])
   visit           Visit?
+  invoices        Invoice[]
 
   @@index([clinicId, startsAt])
   @@index([practitionerId, startsAt])
@@ -482,12 +520,14 @@ model Invoice {
   paidAt        DateTime?
   createdAt     DateTime      @default(now())
 
-  clinic   Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  payments Payment[]
+  clinic      Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+  payments    Payment[]
 
   @@index([clinicId, status])
   @@index([patientId])
+  @@index([appointmentId])
 }
 
 model Payment {
