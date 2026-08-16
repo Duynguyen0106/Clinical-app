@@ -36,6 +36,7 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 - Practice pulse (5 metrics) — done
 - Rooms/resources — done (`Room` model, conflict checks, `/app/rooms`)
 - SMS reminders — done (`SMS_PROVIDER=console|twilio`)
+- Booking scenarios — staff book/block/fees/duration; patient manage links — done
 - Webhooks — not started
 
 ### Launch readiness

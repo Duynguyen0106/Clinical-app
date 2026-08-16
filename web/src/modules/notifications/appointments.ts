@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { sendEmail } from "./email";
 import { sendSms } from "./sms";
 import { AppointmentStatus } from "@/generated/prisma/client";
+import { manageUrl } from "@/modules/scheduling/manage";
 
 function formatWhen(date: Date, timezone: string) {
   try {
@@ -27,6 +28,7 @@ export async function sendBookingConfirmation(appointmentId: string) {
 
   const when = formatWhen(apt.startsAt, apt.clinic.timezone);
   const roomLine = apt.room ? `Room: ${apt.room.name}` : null;
+  const manageLink = manageUrl(apt.id);
   let emailSent = false;
   let smsSent = false;
 
@@ -42,7 +44,10 @@ export async function sendBookingConfirmation(appointmentId: string) {
       `Service: ${apt.appointmentType.name}`,
       roomLine,
       "",
-      "If you need to change this booking, please contact the clinic.",
+      "Manage your booking (cancel or reschedule):",
+      manageLink,
+      "",
+      "Online changes close within 2 hours of the appointment.",
       "",
       "— Treow Clinic",
     ]
@@ -59,6 +64,7 @@ export async function sendBookingConfirmation(appointmentId: string) {
       when,
       `with ${apt.practitioner.displayName}`,
       apt.room ? `Room ${apt.room.name}` : null,
+      `Manage: ${manageLink}`,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -73,7 +79,7 @@ export async function sendBookingConfirmation(appointmentId: string) {
     });
   }
 
-  return { emailSent, smsSent };
+  return { emailSent, smsSent, manageLink };
 }
 
 export async function sendUpcomingReminders(withinHours = 24) {
@@ -109,6 +115,8 @@ export async function sendUpcomingReminders(withinHours = 24) {
     const when = formatWhen(apt.startsAt, apt.clinic.timezone);
     const roomBit = apt.room ? ` Room ${apt.room.name}.` : "";
 
+    const manageLink = manageUrl(apt.id);
+
     if (!apt.reminderSentAt && apt.patient.email) {
       await sendEmail({
         to: apt.patient.email,
@@ -121,6 +129,9 @@ export async function sendUpcomingReminders(withinHours = 24) {
           `With: ${apt.practitioner.displayName}`,
           `Service: ${apt.appointmentType.name}`,
           apt.room ? `Room: ${apt.room.name}` : null,
+          "",
+          "Need to change it?",
+          manageLink,
           "",
           "— Treow Clinic",
         ]
@@ -137,7 +148,7 @@ export async function sendUpcomingReminders(withinHours = 24) {
     if (!apt.smsReminderSentAt && apt.patient.phone) {
       await sendSms({
         to: apt.patient.phone,
-        body: `${apt.clinic.name} reminder: ${when} with ${apt.practitioner.displayName}.${roomBit}`.trim(),
+        body: `${apt.clinic.name} reminder: ${when} with ${apt.practitioner.displayName}.${roomBit} Manage: ${manageLink}`.trim(),
       });
       await prisma.appointment.update({
         where: { id: apt.id },
