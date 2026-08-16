@@ -4,6 +4,7 @@ import type { AuthContext } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
 import { requirePatient } from "@/modules/patients/service";
+import { clinicLogoDataUrl } from "@/modules/clinic/profile";
 
 export const createInvoiceSchema = z.object({
   patientId: z.string().min(1),
@@ -27,6 +28,99 @@ export async function listInvoices(
     },
     orderBy: { createdAt: "desc" },
   });
+}
+
+export async function getInvoice(ctx: AuthContext, id: string) {
+  const invoice = await prisma.invoice.findFirst({
+    where: { id, clinicId: ctx.clinicId },
+    include: {
+      patient: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+        },
+      },
+      payments: { orderBy: { paidAt: "desc" } },
+      appointment: {
+        include: {
+          appointmentType: { select: { name: true } },
+          practitioner: { select: { displayName: true } },
+        },
+      },
+    },
+  });
+  if (!invoice) throw notFound("Invoice not found");
+  return invoice;
+}
+
+/**
+ * Ensure a SENT/PAID invoice exists for an appointment (uses type default price).
+ * Idempotent — returns the existing linked invoice when present.
+ */
+export async function ensureInvoiceForAppointment(
+  ctx: AuthContext,
+  appointmentId: string,
+) {
+  const appointment = await prisma.appointment.findFirst({
+    where: { id: appointmentId, clinicId: ctx.clinicId },
+    include: {
+      appointmentType: true,
+      patient: { select: { id: true, firstName: true, lastName: true } },
+    },
+  });
+  if (!appointment) throw notFound("Appointment not found");
+
+  const existing = await prisma.invoice.findFirst({
+    where: {
+      clinicId: ctx.clinicId,
+      appointmentId: appointment.id,
+      status: { not: InvoiceStatus.VOID },
+    },
+    include: {
+      patient: { select: { id: true, firstName: true, lastName: true } },
+      payments: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (existing) return existing;
+
+  const amountCents = appointment.appointmentType.defaultPriceCents;
+  if (!amountCents || amountCents <= 0) {
+    throw badRequest(
+      "No fee on this appointment type — set a default price or create an invoice on Money",
+    );
+  }
+
+  return prisma.invoice.create({
+    data: {
+      clinicId: ctx.clinicId,
+      patientId: appointment.patientId,
+      appointmentId: appointment.id,
+      amountCents,
+      currency: "GBP",
+      status: InvoiceStatus.SENT,
+      issuedAt: new Date(),
+    },
+    include: {
+      patient: { select: { id: true, firstName: true, lastName: true } },
+      payments: true,
+    },
+  });
+}
+
+export async function ensureInvoiceForVisit(ctx: AuthContext, visitId: string) {
+  const visit = await prisma.visit.findFirst({
+    where: {
+      id: visitId,
+      appointment: { clinicId: ctx.clinicId },
+    },
+    select: { appointmentId: true },
+  });
+  if (!visit) throw notFound("Visit not found");
+  return ensureInvoiceForAppointment(ctx, visit.appointmentId);
 }
 
 export async function createInvoice(
@@ -140,4 +234,78 @@ export async function markInvoiceUnpaid(ctx: AuthContext, id: string) {
       },
     });
   });
+}
+
+export type ReceiptDocument = {
+  kind: "receipt";
+  invoiceId: string;
+  reference: string;
+  clinic: {
+    name: string;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    brandColour: string | null;
+    logoDataUrl: string | null;
+  };
+  patient: { fullName: string; email: string | null; phone: string | null };
+  serviceName: string | null;
+  practitionerName: string | null;
+  appointmentStartsAt: string | null;
+  amountCents: number;
+  currency: string;
+  status: string;
+  issuedAt: string | null;
+  paidAt: string | null;
+  payments: Array<{
+    amountCents: number;
+    method: string;
+    paidAt: string;
+  }>;
+  printedAt: string;
+};
+
+export async function buildReceiptDocument(
+  ctx: AuthContext,
+  invoiceId: string,
+): Promise<ReceiptDocument> {
+  const invoice = await getInvoice(ctx, invoiceId);
+  const clinic = await prisma.clinic.findFirstOrThrow({
+    where: { id: ctx.clinicId },
+  });
+  const logoDataUrl = await clinicLogoDataUrl(clinic.id);
+  const ref = `INV-${invoice.id.slice(-8).toUpperCase()}`;
+
+  return {
+    kind: "receipt",
+    invoiceId: invoice.id,
+    reference: ref,
+    clinic: {
+      name: clinic.name,
+      phone: clinic.phone,
+      email: clinic.email,
+      address: clinic.address,
+      brandColour: clinic.brandColour,
+      logoDataUrl,
+    },
+    patient: {
+      fullName: `${invoice.patient.firstName} ${invoice.patient.lastName}`,
+      email: invoice.patient.email,
+      phone: invoice.patient.phone,
+    },
+    serviceName: invoice.appointment?.appointmentType.name ?? null,
+    practitionerName: invoice.appointment?.practitioner.displayName ?? null,
+    appointmentStartsAt: invoice.appointment?.startsAt?.toISOString() ?? null,
+    amountCents: invoice.amountCents,
+    currency: invoice.currency,
+    status: invoice.status,
+    issuedAt: invoice.issuedAt?.toISOString() ?? null,
+    paidAt: invoice.paidAt?.toISOString() ?? null,
+    payments: invoice.payments.map((p) => ({
+      amountCents: p.amountCents,
+      method: p.method,
+      paidAt: p.paidAt.toISOString(),
+    })),
+    printedAt: new Date().toISOString(),
+  };
 }
