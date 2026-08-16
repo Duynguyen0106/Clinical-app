@@ -3,12 +3,18 @@ import { jsonOk } from "@/server/http";
 import { requireStaff } from "@/server/rbac";
 import {
   getPatient,
+  getPatientPrep,
   updatePatient,
   updatePatientSchema,
 } from "@/modules/patients/service";
 
-export const GET = withAuth(async (_req, ctx, params) => {
+export const GET = withAuth(async (req, ctx, params) => {
   requireStaff(ctx);
+  const url = new URL(req.url);
+  if (url.searchParams.get("prep") === "1") {
+    const prep = await getPatientPrep(ctx, params.id);
+    return jsonOk({ prep });
+  }
   const patient = await getPatient(ctx, params.id);
   return jsonOk({ patient });
 });

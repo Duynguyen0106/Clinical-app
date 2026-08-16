@@ -23,6 +23,7 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | GET | `/patients?q=&take=` | Search / list |
 | POST | `/patients` | Create |
 | GET | `/patients/:id` | Profile + timeline |
+| GET | `/patients/:id?prep=1` | Prep pack: booking history + prior notes (summaries + sections) |
 | PATCH | `/patients/:id` | Update |
 | POST | `/patients/:id/consents` | `{ type, granted, method }` |
 

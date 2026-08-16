@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Mic, Square, Check, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
+import { PatientPrepPanel } from "@/components/PatientPrepPanel";
 
 type Phase =
   | "loading"
@@ -19,7 +20,7 @@ type VisitPayload = {
   id: string;
   recordingConsentAt: string | null;
   appointment: {
-    patient: { firstName: string; lastName: string };
+    patient: { id: string; firstName: string; lastName: string };
     appointmentType: { name: string };
   };
   notes: Array<{
@@ -219,7 +220,15 @@ export function VisitRecorder({ visitId }: Props) {
   const fields = Object.keys(content).filter((k) => k !== "clinician_review_flags");
 
   return (
-    <div className="visit-layout">
+    <div className="visit-stack">
+      {visit?.appointment.patient.id ? (
+        <PatientPrepPanel
+          patientId={visit.appointment.patient.id}
+          compact
+          className="visit-prep"
+        />
+      ) : null}
+      <div className="visit-layout">
       <section className="visit-panel">
         <p className="eyebrow">Visit mode</p>
         <h2>{patientName}</h2>
@@ -406,6 +415,7 @@ export function VisitRecorder({ visitId }: Props) {
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }
