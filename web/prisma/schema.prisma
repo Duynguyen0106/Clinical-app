@@ -51,13 +51,27 @@ enum RecordingStatus {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   memberships Membership[]
+  sessions    Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Clinic {
@@ -75,6 +89,7 @@ model Clinic {
   appointments     Appointment[]
   noteTemplates    NoteTemplate[]
   waitlistEntries  WaitlistEntry[]
+  invoices         Invoice[]
 }
 
 model Membership {
@@ -335,7 +350,7 @@ model NoteAuditEvent {
 
 model Invoice {
   id            String        @id @default(cuid())
-  clinicId      String?
+  clinicId      String
   patientId     String
   appointmentId String?
   amountCents   Int
@@ -345,9 +360,11 @@ model Invoice {
   paidAt        DateTime?
   createdAt     DateTime      @default(now())
 
+  clinic   Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
   payments Payment[]
 
+  @@index([clinicId, status])
   @@index([patientId])
 }
 
