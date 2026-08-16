@@ -416,9 +416,6 @@ export function VisitRecorder({ visitId }: Props) {
                 Sign note
               </button>
             )}
-            {phase === "signed" && noteId ? (
-              <NotePrintActions noteId={noteId} />
-            ) : null}
           </div>
         )}
       </section>
