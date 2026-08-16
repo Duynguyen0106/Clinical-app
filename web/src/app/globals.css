@@ -1010,8 +1010,10 @@ h3 {
   cursor: pointer;
 }
 
-.week-cell-bookable:hover {
-  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+.feed-hint-list {
+  margin: 0.75rem 0 1rem;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
 }
 
 .pay-history-title {

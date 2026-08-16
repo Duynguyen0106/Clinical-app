@@ -102,6 +102,11 @@ export default function CalendarPage() {
   const [bookSlot, setBookSlot] = useState("");
   const [bookNotes, setBookNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const [feedOpen, setFeedOpen] = useState(false);
+  const [feedUrl, setFeedUrl] = useState<string | null>(null);
+  const [feedWebcal, setFeedWebcal] = useState<string | null>(null);
+  const [feedHint, setFeedHint] = useState<string[] | null>(null);
+  const [feedMessage, setFeedMessage] = useState<string | null>(null);
 
   const [blockPractitionerId, setBlockPractitionerId] = useState("");
   const [blockDate, setBlockDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -316,6 +321,54 @@ export default function CalendarPage() {
     }
   }
 
+  async function openPhoneFeed() {
+    setFeedOpen(true);
+    setFeedMessage(null);
+    setError(null);
+    try {
+      const d = await api<{
+        feed: {
+          httpsUrl: string;
+          webcalUrl: string;
+          instructions: string[];
+        };
+      }>("/calendar/feed");
+      setFeedUrl(d.feed.httpsUrl);
+      setFeedWebcal(d.feed.webcalUrl);
+      setFeedHint(d.feed.instructions);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not load calendar feed");
+      setFeedOpen(false);
+    }
+  }
+
+  async function rotatePhoneFeed() {
+    setBusy(true);
+    setFeedMessage(null);
+    try {
+      const d = await api<{
+        feed: { httpsUrl: string; webcalUrl: string; instructions: string[] };
+      }>("/calendar/feed", { method: "POST" });
+      setFeedUrl(d.feed.httpsUrl);
+      setFeedWebcal(d.feed.webcalUrl);
+      setFeedHint(d.feed.instructions);
+      setFeedMessage("New link created — update the subscription on your phone.");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not rotate feed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyFeed(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setFeedMessage("Link copied.");
+    } catch {
+      setFeedMessage(url);
+    }
+  }
+
   async function openVisit(apt: Appointment) {
     if (apt.visit) {
       router.push(`/app/visits/${apt.visit.id}`);
@@ -428,6 +481,15 @@ export default function CalendarPage() {
             </button>
           </div>
           <div className="week-actions">
+            {me?.practitionerProfileId ? (
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => void openPhoneFeed()}
+              >
+                Phone calendar
+              </button>
+            ) : null}
             {canEditSchedule ? (
               <>
                 <button
@@ -997,6 +1059,83 @@ export default function CalendarPage() {
               onClick={() => void createBlock()}
             >
               {busy ? "Saving…" : "Save block"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {feedOpen ? (
+        <div className="sheet-backdrop" onClick={() => setFeedOpen(false)}>
+          <div
+            className="sheet-card"
+            role="dialog"
+            aria-label="Phone calendar"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-head">
+              <h2>Phone calendar</h2>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => setFeedOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <p className="muted">
+              Subscribe your Treow diary on iPhone, Google Calendar, or Outlook.
+              The link is private — treat it like a password.
+            </p>
+            {feedMessage ? <p className="alert-line">{feedMessage}</p> : null}
+            {feedWebcal ? (
+              <label className="field">
+                <span>Subscribe link (iPhone)</span>
+                <div className="inline-row">
+                  <input readOnly value={feedWebcal} />
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => void copyFeed(feedWebcal)}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </label>
+            ) : null}
+            {feedUrl ? (
+              <label className="field">
+                <span>HTTPS link (Google / Outlook)</span>
+                <div className="inline-row">
+                  <input readOnly value={feedUrl} />
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => void copyFeed(feedUrl)}
+                  >
+                    Copy
+                  </button>
+                  <a className="btn-ghost btn-sm" href={feedUrl}>
+                    Download .ics
+                  </a>
+                </div>
+              </label>
+            ) : (
+              <p className="muted">Loading feed…</p>
+            )}
+            {feedHint ? (
+              <ul className="muted feed-hint-list">
+                {feedHint.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            ) : null}
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              disabled={busy}
+              onClick={() => void rotatePhoneFeed()}
+            >
+              Rotate link (revoke old phones)
             </button>
           </div>
         </div>

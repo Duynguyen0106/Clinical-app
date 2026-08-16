@@ -44,6 +44,14 @@ Staff booking: Calendar empty cell → book sheet with patient lookup (`/app/cal
 | PATCH | `/appointments/:id` | Schedule changes (`startsAt`, `durationMinutes`, `appointmentTypeId`, `CANCELLED`, `NO_SHOW`): **OWNER/RECEPTION only**. Fees: OWNER/RECEPTION. Notes: any staff. Practitioners cannot modify the diary. Reschedule/cancel email+SMS the patient and email the practitioner. |
 | GET | `/slots?appointmentTypeId=&practitionerId=&durationMinutes=&days=` | Staff open slots (honours weekly hours + blocks) |
 
+## Calendar feed (phone)
+
+| GET | `/calendar/feed` | Practitioner (own diary): subscribe URLs (`https` + `webcal`) |
+| POST | `/calendar/feed` | Rotate feed token (invalidates old phone subscriptions) |
+| GET | `/calendar/feed/:token.ics` | Public ICS feed (secret token; no Bearer) — Apple / Google / Outlook |
+
+UI: Calendar → **Phone calendar**. Read-only sync of upcoming appointments (not two-way Google OAuth).
+
 ## Blocks (diary unavailable)
 
 | GET | `/blocks?from=&to=&practitionerId=` | List blocked periods |
