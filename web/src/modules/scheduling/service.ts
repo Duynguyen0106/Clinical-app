@@ -627,6 +627,7 @@ export const publicBookSchema = z.object({
       recordingConsentPreferred: z.boolean().optional(),
     })
     .optional(),
+  captchaToken: z.string().min(1).optional(),
 });
 
 export async function publicBook(slug: string, input: z.infer<typeof publicBookSchema>) {

@@ -2,8 +2,10 @@ import { withPublic } from "@/server/api";
 import { jsonOk } from "@/server/http";
 import { badRequest } from "@/server/errors";
 import { listPublicSlots } from "@/modules/scheduling/slots";
+import { enforcePublicSlotsLimits } from "@/server/abuse";
 
 export const GET = withPublic(async (req, params) => {
+  enforcePublicSlotsLimits(req);
   const url = new URL(req.url);
   const appointmentTypeId = url.searchParams.get("appointmentTypeId");
   const practitionerId = url.searchParams.get("practitionerId");

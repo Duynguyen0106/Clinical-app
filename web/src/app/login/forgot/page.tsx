@@ -4,6 +4,10 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { BRAND } from "@/modules/config/brand";
 import { BrandLogo } from "@/components/BrandLogo";
+import {
+  TurnstileField,
+  turnstileEnabledInBrowser,
+} from "@/components/TurnstileField";
 import { api, ApiError } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
@@ -11,9 +15,15 @@ export default function ForgotPasswordPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRequired = turnstileEnabledInBrowser();
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (captchaRequired && !captchaToken) {
+      setError("Complete the security check first.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -21,7 +31,10 @@ export default function ForgotPasswordPage() {
       const d = await api<{ message: string }>("/auth/forgot-password", {
         method: "POST",
         auth: false,
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          captchaToken: captchaToken || undefined,
+        }),
       });
       setMessage(d.message);
     } catch (err) {
@@ -53,9 +66,14 @@ export default function ForgotPasswordPage() {
             required
           />
         </label>
+        <TurnstileField onToken={setCaptchaToken} />
         {error ? <p className="form-error">{error}</p> : null}
         {message ? <p className="alert-line">{message}</p> : null}
-        <button type="submit" className="btn-primary" disabled={busy}>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={busy || (captchaRequired && !captchaToken)}
+        >
           {busy ? "Sending…" : "Send reset link"}
         </button>
         <Link href="/login" className="btn-ghost">

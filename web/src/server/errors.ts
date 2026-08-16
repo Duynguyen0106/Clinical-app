@@ -3,6 +3,8 @@ export class AppError extends Error {
     public status: number,
     message: string,
     public code?: string,
+    /** Seconds until the client may retry (429). */
+    public retryAfterSec?: number,
   ) {
     super(message);
     this.name = "AppError";
@@ -27,4 +29,11 @@ export function badRequest(message: string) {
 
 export function conflict(message: string) {
   return new AppError(409, message, "CONFLICT");
+}
+
+export function tooManyRequests(
+  message = "Too many requests. Try again shortly.",
+  retryAfterSec = 60,
+) {
+  return new AppError(429, message, "RATE_LIMITED", retryAfterSec);
 }

@@ -12,9 +12,21 @@ export function jsonCreated<T>(data: T) {
 
 export function jsonError(error: unknown) {
   if (error instanceof AppError) {
+    const headers: Record<string, string> = {};
+    if (error.retryAfterSec != null) {
+      headers["Retry-After"] = String(error.retryAfterSec);
+    }
     return NextResponse.json(
-      { error: { message: error.message, code: error.code } },
-      { status: error.status },
+      {
+        error: {
+          message: error.message,
+          code: error.code,
+          ...(error.retryAfterSec != null
+            ? { retryAfterSec: error.retryAfterSec }
+            : {}),
+        },
+      },
+      { status: error.status, headers },
     );
   }
 

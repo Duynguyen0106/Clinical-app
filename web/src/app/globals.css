@@ -321,6 +321,10 @@ h3 {
   width: fit-content;
 }
 
+.turnstile-field {
+  min-height: 65px;
+}
+
 @media (max-width: 860px) {
   .auth-page {
     grid-template-columns: 1fr;

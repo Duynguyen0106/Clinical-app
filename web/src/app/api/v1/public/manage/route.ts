@@ -9,8 +9,10 @@ import {
   manageRescheduleSchema,
   rescheduleManagedAppointment,
 } from "@/modules/scheduling/manage";
+import { enforcePublicManageLimits } from "@/server/abuse";
 
 export const GET = withPublic(async (req) => {
+  enforcePublicManageLimits(req);
   const url = new URL(req.url);
   const token = url.searchParams.get("token");
   if (!token) throw badRequest("token required");
@@ -27,6 +29,7 @@ export const GET = withPublic(async (req) => {
 });
 
 export const POST = withPublic(async (req) => {
+  enforcePublicManageLimits(req);
   const body = await req.json();
   if (body.action === "cancel") {
     const parsed = manageCancelSchema.parse(body);
