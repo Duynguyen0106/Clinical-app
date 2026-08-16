@@ -107,10 +107,14 @@ export async function getAppointment(ctx: AuthContext, id: string) {
       practitioner: true,
       appointmentType: true,
       location: true,
+      room: true,
+      // Staff diary detail: visit pointers only — no note bodies / transcripts
       visit: {
-        include: {
-          recording: { include: { transcript: true } },
-          notes: true,
+        select: {
+          id: true,
+          recordingConsentAt: true,
+          recording: { select: { id: true, status: true } },
+          notes: { select: { id: true, status: true, signedAt: true } },
         },
       },
     },

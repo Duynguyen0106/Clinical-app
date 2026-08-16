@@ -22,9 +22,9 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 
 | GET | `/patients?q=&take=` | Search / list |
 | POST | `/patients` | Create |
-| GET | `/patients/:id` | Profile + timeline |
-| GET | `/patients/:id?prep=1&source=` | Prep pack (logs `prep_opened` access event) |
-| POST | `/patients/:id` | `{ action: "note_expanded", noteId, source? }` — audit expand of prior note |
+| GET | `/patients/:id` | Profile + booking timeline (note **metadata only**, no clinical bodies) |
+| GET | `/patients/:id?prep=1&source=` | Prep pack (logs `prep_opened`). Reception: bookings/alerts only. Clinicians: note stubs; bodies load on expand |
+| POST | `/patients/:id` | Clinician: `{ action: "note_expanded", noteId, source? }` — returns note sections + audits disclosure |
 | PATCH | `/patients/:id` | Update |
 | POST | `/patients/:id/consents` | `{ type, granted, method }` |
 
@@ -32,7 +32,7 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 
 | GET | `/appointments?from=&to=&practitionerId=` | Calendar range (includes `room`) |
 | POST | `/appointments` | Create `{ patientId, practitionerId, appointmentTypeId, startsAt, durationMinutes?, feeCents?, notes? }` — conflict + hours/block checked; optional invoice; confirmation email |
-| GET | `/appointments/:id` | Detail + visit |
+| GET | `/appointments/:id` | Detail + visit pointers (no note bodies / transcripts) |
 | PATCH | `/appointments/:id` | `{ status }`, `{ startsAt }`, `{ durationMinutes }`, `{ appointmentTypeId }`, `{ additionalFeeCents, feeNote? }`, `{ notes }` |
 | GET | `/slots?appointmentTypeId=&practitionerId=&durationMinutes=&days=` | Staff open slots (honours weekly hours + blocks) |
 
@@ -71,12 +71,12 @@ Default new clinician hours: Mon–Fri 09:00–17:00. UI: `/app/team`.
 ## Visits (AI note pipeline)
 
 | POST | `/visits` | `{ appointmentId }` → start / resume visit |
-| GET | `/visits/:id` | Visit detail |
+| GET | `/visits/:id` | Visit detail (clinician) — includes notes + transcript |
 | POST | `/visits/:id/consent` | `{ granted: true, method }` |
 | POST | `/visits/:id/recording` | Start recording |
 | POST | `/visits/:id/recording/upload` | multipart `audio` file |
-| GET | `/visits/:id/rebook` | Suggest follow-up slots from Plan |
-| POST | `/visits/:id/rebook` | Book follow-up `{ startsAt }` |
+| GET | `/visits/:id/rebook` | Suggest follow-up slots from Plan (clinician) |
+| POST | `/visits/:id/rebook` | Book follow-up `{ startsAt }` (clinician) |
 | POST | `/jobs/reminders` | Email + SMS reminders (staff) |
 | POST | `/jobs/retention` | Purge expired encrypted audio (owner) |
 
@@ -105,7 +105,7 @@ Cancelling an appointment (`PATCH /appointments/:id` with `status: CANCELLED`) a
 
 Public privacy notice: `/privacy`. Booking intake links to it.
 
-Roles (enforced on routes): **OWNER** / **PRACTITIONER** for clinical mutate; **OWNER** / **RECEPTION** for invoice pay; staff for patients & diary.
+Roles (enforced on routes): **OWNER** / **PRACTITIONER** for clinical **read and write** (notes, visits, prep note bodies, rebook from plan); **OWNER** / **RECEPTION** for invoice pay; staff for patients directory & diary.
 
 ## Public booking
 
@@ -117,11 +117,11 @@ Roles (enforced on routes): **OWNER** / **PRACTITIONER** for clinical mutate; **
 
 ## Notes
 
-| GET | `/notes?status=DRAFT` | List |
-| GET | `/notes?templates=1` | Templates |
-| GET | `/notes/:id` | Detail (+ audit view event) |
-| PATCH | `/notes/:id` | Update draft `{ content }` |
-| POST | `/notes/:id/sign` | Sign & lock |
+| GET | `/notes?status=DRAFT` | List metadata only (clinician; **no content**) |
+| GET | `/notes?templates=1` | Templates (clinician) |
+| GET | `/notes/:id` | Full note + audit `viewed` (clinician) |
+| PATCH | `/notes/:id` | Update draft `{ content }` (clinician) |
+| POST | `/notes/:id/sign` | Sign & lock (clinician) |
 
 ## Invoices (mark paid only)
 

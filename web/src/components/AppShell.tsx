@@ -25,7 +25,7 @@ const nav = [
   { href: "/app/rooms", label: "Rooms", icon: DoorOpen },
   { href: "/app/team", label: "Team", icon: UserRoundPlus },
   { href: "/app/patients", label: "Patients", icon: Users },
-  { href: "/app/notes", label: "Notes", icon: ClipboardList },
+  { href: "/app/notes", label: "Notes", icon: ClipboardList, clinicianOnly: true },
   { href: "/app/tasks", label: "Tasks", icon: ListTodo },
   { href: "/app/waitlist", label: "Waitlist", icon: Hourglass },
   { href: "/app/money", label: "Money", icon: Wallet },
@@ -47,6 +47,8 @@ export function AppShell({
   const clinicName = me?.clinic.name ?? DEMO_CLINIC.name;
   const userName = me?.user.name ?? DEMO_CLINIC.practitioner;
   const bookHref = `/book/${me?.clinic.slug ?? DEMO_CLINIC.slug}`;
+  const isClinician = me?.role === "OWNER" || me?.role === "PRACTITIONER";
+  const visibleNav = nav.filter((item) => !item.clinicianOnly || isClinician);
 
   return (
     <div className="app-shell min-h-screen">
@@ -59,7 +61,7 @@ export function AppShell({
           </div>
         </Link>
         <nav className="nav-list" aria-label="Clinic">
-          {nav.map(({ href, label, icon: Icon }) => {
+          {visibleNav.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/app" ? pathname === "/app" : pathname.startsWith(href);
             return (

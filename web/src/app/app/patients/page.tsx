@@ -33,7 +33,7 @@ export default function PatientsPage() {
   return (
     <AppShell
       title="Patients"
-      subtitle="Search the directory and review booking history plus prior notes before a visit."
+      subtitle="Search the directory and review booking history (clinical notes are clinician-only)."
     >
       <div className="patients-layout">
         <div className="panel">

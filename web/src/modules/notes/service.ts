@@ -17,12 +17,20 @@ export async function listNotes(
   ctx: AuthContext,
   opts: { status?: NoteStatus; take?: number } = {},
 ) {
+  // Metadata only — never ship clinical content on list endpoints
   return prisma.clinicalNote.findMany({
     where: {
       patient: { clinicId: ctx.clinicId },
       ...(opts.status ? { status: opts.status } : {}),
     },
-    include: {
+    select: {
+      id: true,
+      status: true,
+      source: true,
+      signedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      visitId: true,
       patient: { select: { id: true, firstName: true, lastName: true } },
       template: { select: { id: true, name: true } },
       visit: { select: { id: true } },

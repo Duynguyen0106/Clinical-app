@@ -13,6 +13,7 @@ export type PatientPrep = {
   phone: string | null;
   dateOfBirth: string | null;
   alerts: string | null;
+  canViewClinicalNotes?: boolean;
   appointments: Array<{
     id: string;
     startsAt: string;
@@ -36,6 +37,11 @@ export type PatientPrep = {
     summary: string;
     sections: { key: string; value: string }[];
   }>;
+};
+
+type NoteBody = {
+  summary: string;
+  sections: { key: string; value: string }[];
 };
 
 type Props = {
@@ -66,34 +72,37 @@ export function PatientPrepPanel({
   const [prep, setPrep] = useState<PatientPrep | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
+  const [noteBodies, setNoteBodies] = useState<Record<string, NoteBody>>({});
+  const [loadingBodyId, setLoadingBodyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const loggedExpands = useRef<Set<string>>(new Set());
+  const loadedBodies = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    loggedExpands.current = new Set();
+    setExpandedNoteId(null);
+    setNoteBodies({});
+    loadedBodies.current = new Set();
     void api<{ prep: PatientPrep }>(
       `/patients/${patientId}?prep=1&source=${encodeURIComponent(source)}`,
     )
       .then((d) => {
         setPrep(d.prep);
-        const firstSigned = d.prep.notes.find((n) => n.status === "SIGNED");
-        const initial = firstSigned?.id ?? d.prep.notes[0]?.id ?? null;
-        setExpandedNoteId(initial);
-        if (initial) {
-          void logExpand(initial);
-        }
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, [patientId, source]);
 
-  async function logExpand(noteId: string) {
-    if (loggedExpands.current.has(noteId)) return;
-    loggedExpands.current.add(noteId);
+  async function loadNoteBody(noteId: string) {
+    if (loadedBodies.current.has(noteId)) return;
+    loadedBodies.current.add(noteId);
+    setLoadingBodyId(noteId);
     try {
-      await api(`/patients/${patientId}`, {
+      const result = await api<{
+        ok: boolean;
+        summary: string;
+        sections: { key: string; value: string }[];
+      }>(`/patients/${patientId}`, {
         method: "POST",
         body: JSON.stringify({
           action: "note_expanded",
@@ -101,9 +110,18 @@ export function PatientPrepPanel({
           source: `${source}_expand`,
         }),
       });
-    } catch {
-      // Audit failure should not block reading clinical history
-      loggedExpands.current.delete(noteId);
+      setNoteBodies((prev) => ({
+        ...prev,
+        [noteId]: {
+          summary: result.summary ?? "",
+          sections: result.sections ?? [],
+        },
+      }));
+    } catch (e) {
+      loadedBodies.current.delete(noteId);
+      setError(e instanceof Error ? e.message : "Could not open note");
+    } finally {
+      setLoadingBodyId(null);
     }
   }
 
@@ -114,7 +132,7 @@ export function PatientPrepPanel({
       return;
     }
     setExpandedNoteId(noteId);
-    void logExpand(noteId);
+    void loadNoteBody(noteId);
   }
 
   if (loading) {
@@ -142,6 +160,7 @@ export function PatientPrepPanel({
       ["COMPLETED", "CANCELLED", "NO_SHOW"].includes(a.status),
   );
   const upcoming = history.filter((a) => !past.includes(a));
+  const canViewNotes = prep.canViewClinicalNotes !== false;
   const signedNotes = prep.notes.filter((n) => n.status === "SIGNED");
   const otherNotes = prep.notes.filter((n) => n.status !== "SIGNED");
 
@@ -150,7 +169,9 @@ export function PatientPrepPanel({
       <div className="prep-head">
         <h3>Prepare for visit</h3>
         <p className="muted">
-          Prior bookings and clinical notes for {prep.firstName} {prep.lastName}
+          {canViewNotes
+            ? `Prior bookings and clinical notes for ${prep.firstName} ${prep.lastName}`
+            : `Booking history for ${prep.firstName} ${prep.lastName} (clinical notes are clinician-only)`}
         </p>
       </div>
 
@@ -181,7 +202,7 @@ export function PatientPrepPanel({
                   </span>
                   {a.notes ? <p className="prep-excerpt">{a.notes}</p> : null}
                 </div>
-                {a.visitId ? (
+                {a.visitId && canViewNotes ? (
                   <Link href={`/app/visits/${a.visitId}`} className="btn-ghost btn-sm">
                     Visit
                   </Link>
@@ -194,12 +215,17 @@ export function PatientPrepPanel({
 
       <section className="prep-section">
         <h4>Previous notes</h4>
-        {signedNotes.length === 0 && otherNotes.length === 0 ? (
+        {!canViewNotes ? (
+          <p className="muted">
+            Clinical note history is restricted to practitioners and owners.
+          </p>
+        ) : signedNotes.length === 0 && otherNotes.length === 0 ? (
           <p className="muted">No clinical notes yet — first visit or notes unsigned.</p>
         ) : (
           <ul className="prep-list">
             {[...signedNotes, ...otherNotes].slice(0, compact ? 4 : 8).map((n) => {
               const open = expandedNoteId === n.id;
+              const body = noteBodies[n.id];
               const when = n.appointmentStartsAt ?? n.signedAt ?? n.createdAt;
               return (
                 <li key={n.id} className="prep-item prep-note">
@@ -215,19 +241,25 @@ export function PatientPrepPanel({
                       <span className="muted">
                         {" "}
                         · {n.serviceName ?? n.templateName ?? "Note"} · {n.status}
+                        {n.practitionerName ? ` · ${n.practitionerName}` : ""}
                       </span>
-                      {!open && n.summary ? (
-                        <p className="prep-excerpt">{n.summary}</p>
-                      ) : null}
                     </span>
-                    <span className="muted">{open ? "Hide" : "Read"}</span>
+                    <span className="muted">
+                      {loadingBodyId === n.id
+                        ? "Loading…"
+                        : open
+                          ? "Hide"
+                          : "Read"}
+                    </span>
                   </button>
                   {open ? (
                     <div className="prep-note-body">
-                      {n.sections.length === 0 ? (
+                      {!body ? (
+                        <p className="muted">Loading note…</p>
+                      ) : body.sections.length === 0 ? (
                         <p className="muted">No readable sections in this note.</p>
                       ) : (
-                        n.sections.map((s) => (
+                        body.sections.map((s) => (
                           <div key={s.key} className="prep-section-block">
                             <strong>{titleCase(s.key)}</strong>
                             <p>{s.value}</p>

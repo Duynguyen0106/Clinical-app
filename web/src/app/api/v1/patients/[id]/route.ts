@@ -1,6 +1,9 @@
 import { withAuth } from "@/server/api";
 import { jsonOk } from "@/server/http";
-import { requireStaff } from "@/server/rbac";
+import {
+  assertCanAccessClinicalRecord,
+  requireStaff,
+} from "@/server/rbac";
 import {
   getPatient,
   getPatientPrep,
@@ -36,9 +39,9 @@ const expandSchema = z.object({
   source: z.string().max(80).optional(),
 });
 
-/** Audit: practitioner expanded a prior note in prep / history UI */
+/** Clinician expands a prior note — returns body + audits the disclosure */
 export const POST = withAuth(async (req, ctx, params) => {
-  requireStaff(ctx);
+  assertCanAccessClinicalRecord(ctx);
   const body = expandSchema.parse(await req.json());
   const result = await recordNoteHistoryExpand(ctx, params.id, body.noteId, {
     source: body.source,

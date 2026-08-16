@@ -6,10 +6,9 @@ import {
   updateNoteSchema,
 } from "@/modules/notes/service";
 import { requireClinician } from "@/server/rbac";
-import { requireStaff } from "@/server/rbac";
 
 export const GET = withAuth(async (_req, ctx, params) => {
-  requireStaff(ctx);
+  requireClinician(ctx);
   const note = await getNote(ctx, params.id);
   return jsonOk({ note });
 });
