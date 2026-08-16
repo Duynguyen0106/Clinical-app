@@ -898,6 +898,60 @@ h3 {
   background: white;
 }
 
+.team-reg-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 720px) {
+  .team-reg-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.colour-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.35rem;
+}
+
+.colour-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.colour-swatch.selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px var(--surface-solid);
+}
+
+.team-leave-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.team-leave-list {
+  margin-top: 1rem;
+}
+
+.team-leave-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
 .empty-panel {
   text-align: left;
   max-width: 520px;

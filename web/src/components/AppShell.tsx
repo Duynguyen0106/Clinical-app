@@ -35,7 +35,7 @@ const nav: NavItem[] = [
   { href: "/app", label: "Today", myDayLabel: "My day", icon: LayoutDashboard },
   { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/app/rooms", label: "Rooms", icon: DoorOpen, staffOps: true },
-  { href: "/app/team", label: "Team", icon: UserRoundPlus, ownerOnly: true },
+  { href: "/app/team", label: "Team", icon: UserRoundPlus, clinicianOnly: true },
   { href: "/app/patients", label: "Patients", icon: Users },
   { href: "/app/notes", label: "Notes", icon: ClipboardList, clinicianOnly: true },
   { href: "/app/tasks", label: "Tasks", icon: ListTodo },

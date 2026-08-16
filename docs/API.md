@@ -67,12 +67,12 @@ Bookings conflict-check **practitioner and room**. Online book auto-picks the fi
 
 ## Team (practitioners)
 
-| GET | `/team` | Practitioners + weekly availability |
-| POST | `/team` | Owner: add practitioner `{ email, name, password, displayName, colour?, availability? }` |
-| PATCH | `/team/:id` | Owner: `{ displayName?, colour?, active? }` |
-| PUT | `/team/:id/availability` | Owner: replace weekly rules `{ rules: [{ dayOfWeek, startMinute, endMinute }] }` |
+| GET | `/team` | Practitioners + weekly availability + registration |
+| POST | `/team` | Owner: add practitioner `{ email, name, password, displayName, colour?, professionalTitle?, registrationBody?, registrationNumber?, availability? }` |
+| PATCH | `/team/:id` | Owner (anyone) or practitioner (self): `{ displayName?, colour?, professionalTitle?, registrationBody?, registrationNumber? }` — `active` owner-only |
+| PUT | `/team/:id/availability` | Owner (anyone) or practitioner (self): replace weekly rules `{ rules: [{ dayOfWeek, startMinute, endMinute }] }` |
 
-Default new clinician hours: Mon–Fri 09:00–17:00. UI: `/app/team`.
+Default new clinician hours: Mon–Fri 09:00–17:00. UI: `/app/team` (owners + practitioners). Leave/blocked time uses `/blocks`.
 
 ## Visits (AI note pipeline)
 
