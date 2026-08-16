@@ -103,6 +103,7 @@ model Clinic {
   waitlistEntries  WaitlistEntry[]
   invoices         Invoice[]
   rooms            Room[]
+  patientAccessEvents PatientAccessEvent[]
 }
 
 model Membership {
@@ -185,8 +186,28 @@ model Patient {
   notes           ClinicalNote[]
   invoices        Invoice[]
   waitlistEntries WaitlistEntry[]
+  accessEvents    PatientAccessEvent[]
 
   @@index([clinicId, lastName, firstName])
+}
+
+/// Who opened a patient's prep / note history (UK access accountability)
+model PatientAccessEvent {
+  id        String   @id @default(cuid())
+  clinicId  String
+  patientId String
+  actorId   String?
+  /// prep_opened | note_expanded
+  action    String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId, createdAt])
+  @@index([patientId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model PatientConsent {

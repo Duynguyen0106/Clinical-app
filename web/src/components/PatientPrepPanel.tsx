@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { api } from "@/lib/api";
@@ -44,6 +44,8 @@ type Props = {
   excludeAppointmentId?: string;
   compact?: boolean;
   className?: string;
+  /** Audit source label: calendar | visit | patients */
+  source?: string;
 };
 
 function titleCase(key: string) {
@@ -59,24 +61,61 @@ export function PatientPrepPanel({
   excludeAppointmentId,
   compact = false,
   className,
+  source = "unknown",
 }: Props) {
   const [prep, setPrep] = useState<PatientPrep | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const loggedExpands = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    void api<{ prep: PatientPrep }>(`/patients/${patientId}?prep=1`)
+    loggedExpands.current = new Set();
+    void api<{ prep: PatientPrep }>(
+      `/patients/${patientId}?prep=1&source=${encodeURIComponent(source)}`,
+    )
       .then((d) => {
         setPrep(d.prep);
         const firstSigned = d.prep.notes.find((n) => n.status === "SIGNED");
-        setExpandedNoteId(firstSigned?.id ?? d.prep.notes[0]?.id ?? null);
+        const initial = firstSigned?.id ?? d.prep.notes[0]?.id ?? null;
+        setExpandedNoteId(initial);
+        if (initial) {
+          void logExpand(initial);
+        }
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [patientId]);
+  }, [patientId, source]);
+
+  async function logExpand(noteId: string) {
+    if (loggedExpands.current.has(noteId)) return;
+    loggedExpands.current.add(noteId);
+    try {
+      await api(`/patients/${patientId}`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "note_expanded",
+          noteId,
+          source: `${source}_expand`,
+        }),
+      });
+    } catch {
+      // Audit failure should not block reading clinical history
+      loggedExpands.current.delete(noteId);
+    }
+  }
+
+  function toggleNote(noteId: string) {
+    const open = expandedNoteId === noteId;
+    if (open) {
+      setExpandedNoteId(null);
+      return;
+    }
+    setExpandedNoteId(noteId);
+    void logExpand(noteId);
+  }
 
   if (loading) {
     return (
@@ -167,7 +206,7 @@ export function PatientPrepPanel({
                   <button
                     type="button"
                     className="prep-note-toggle"
-                    onClick={() => setExpandedNoteId(open ? null : n.id)}
+                    onClick={() => toggleNote(n.id)}
                   >
                     <span>
                       <strong>

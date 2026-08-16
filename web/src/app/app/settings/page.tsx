@@ -94,10 +94,12 @@ export default function SettingsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `treow-note-audits-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `treow-access-audits-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      setMessage(`Exported ${d.count} audit events.`);
+      setMessage(
+        `Exported ${d.count} audit events (note views + patient prep access).`,
+      );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Export failed");
     }
@@ -166,11 +168,15 @@ export default function SettingsPage() {
             className="btn-primary"
             onClick={() => void exportAudits()}
           >
-            Export note audits
+            Export access audits
           </button>
           {auditCount !== null ? (
             <p className="muted">{auditCount} events in last export</p>
-          ) : null}
+          ) : (
+            <p className="muted">
+              Includes note views and who opened patient prep / note history.
+            </p>
+          )}
         </section>
 
         <section className="panel">

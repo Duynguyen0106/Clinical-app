@@ -71,7 +71,7 @@ export default function PatientsPage() {
         </div>
         {selected ? (
           <div className="panel">
-            <PatientPrepPanel patientId={selected.id} />
+            <PatientPrepPanel patientId={selected.id} source="patients" />
           </div>
         ) : (
           <div className="panel empty-panel">
