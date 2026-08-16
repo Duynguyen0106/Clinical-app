@@ -15,7 +15,7 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 | Template-aware organise | Done |
 | PWA shell | Done (manifest + SW) |
 
-**Next product focus:** Rooms/resources and webhooks (remaining P3), then partner feedback. Waitlist auto-offer, task inbox, and practice pulse are in product.
+**Next product focus:** Design-partner **launch** — see `docs/LAUNCH.md` (merge RC, UK/EU host, DPAs, pilot 5 visits). Rooms/webhooks wait unless a partner asks.
 
 ### P1 status
 - Week calendar + drag reschedule — done
@@ -36,6 +36,13 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 - Practice pulse (5 metrics) — done
 - Rooms/resources — not started
 - Webhooks — not started
+
+### Launch readiness
+- Checklist — `docs/LAUNCH.md`
+- Deploy guide — `docs/DEPLOY.md`
+- Health — `GET /api/v1/health`
+- Production secret boot guard — `web/src/server/env.ts`
+- Settings → Launch support — done
 ---
 
 ## Product goal for the next milestone
@@ -153,4 +160,4 @@ Reuse product plan targets, measured on design partners:
 
 ## Immediate recommendation
 
-**Next build:** rooms/resources on the calendar, or webhooks for cancel/book/note-signed — pick from partner demand. Keep AI vendor DPA as the gate before real STT/LLM on live patients.
+**Next:** execute `docs/LAUNCH.md` — freeze RC, UK/EU staging, privacy/DPA checklist, Resend on, AI mock, then 5 pilot visits. Enable real STT/LLM only after signed AI DPA.
