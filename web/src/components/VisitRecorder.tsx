@@ -45,6 +45,8 @@ type VisitPayload = {
     id: string;
     status: string;
     content: Record<string, unknown>;
+    parentNoteId?: string | null;
+    voidReason?: string | null;
   }>;
 };
 
@@ -70,6 +72,12 @@ export function VisitRecorder({ visitId }: Props) {
   } | null>(null);
   const [rebookBusy, setRebookBusy] = useState(false);
   const [rebookDone, setRebookDone] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [addendumText, setAddendumText] = useState("");
+  const [correctionOpen, setCorrectionOpen] = useState<
+    null | "void" | "addendum"
+  >(null);
+  const [correctionBusy, setCorrectionBusy] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -79,68 +87,73 @@ export function VisitRecorder({ visitId }: Props) {
   const elapsedRef = useRef(0);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function bootstrap() {
+      try {
+        const { visit: v } = await api<{ visit: VisitPayload }>(
+          `/visits/${visitId}`,
+        );
+        if (cancelled) return;
+        setVisit(v);
+        const draft = v.notes.find((n) => n.status === "DRAFT");
+        const signed = v.notes.find((n) => n.status === "SIGNED");
+        if (signed) {
+          setNoteId(signed.id);
+          setContent(stringifyContent(signed.content));
+          setPhase("signed");
+          return;
+        }
+        if (draft) {
+          setNoteId(draft.id);
+          setContent(stringifyContent(draft.content));
+          setFlags(asFlags(draft.content));
+          setPhase("review");
+          return;
+        }
+
+        const local = await loadVisitAudioBuffer(visitId);
+        if (cancelled) return;
+        const rec = v.recording;
+        const failed =
+          rec &&
+          (rec.status === "FAILED" ||
+            rec.status === "UPLOADING" ||
+            rec.status === "TRANSCRIBING" ||
+            rec.status === "ORGANISING");
+
+        if (failed || local) {
+          setRecoverHint(
+            rec?.error
+              ? rec.error
+              : local
+                ? "Audio is saved on this device — you can upload and organise without recording again."
+                : "Recording is incomplete. Retry organise if audio reached the server, or record again.",
+          );
+          if (local) setElapsed(local.durationSec || 0);
+          setPhase("recover");
+          return;
+        }
+
+        if (v.recordingConsentAt) {
+          setPhase("ready");
+        } else {
+          setPhase("consent");
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "Could not load visit");
+        setPhase("error");
+      }
+    }
+
     void bootstrap();
     return () => {
+      cancelled = true;
       if (timerRef.current) clearInterval(timerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount once per visit
   }, [visitId]);
-
-  async function bootstrap() {
-    try {
-      const { visit: v } = await api<{ visit: VisitPayload }>(
-        `/visits/${visitId}`,
-      );
-      setVisit(v);
-      const draft = v.notes.find((n) => n.status === "DRAFT");
-      const signed = v.notes.find((n) => n.status === "SIGNED");
-      if (signed) {
-        setNoteId(signed.id);
-        setContent(stringifyContent(signed.content));
-        setPhase("signed");
-        return;
-      }
-      if (draft) {
-        setNoteId(draft.id);
-        setContent(stringifyContent(draft.content));
-        setFlags(asFlags(draft.content));
-        setPhase("review");
-        return;
-      }
-
-      const local = await loadVisitAudioBuffer(visitId);
-      const rec = v.recording;
-      const failed =
-        rec &&
-        (rec.status === "FAILED" ||
-          rec.status === "UPLOADING" ||
-          rec.status === "TRANSCRIBING" ||
-          rec.status === "ORGANISING");
-
-      if (failed || local) {
-        setRecoverHint(
-          rec?.error
-            ? rec.error
-            : local
-              ? "Audio is saved on this device — you can upload and organise without recording again."
-              : "Recording is incomplete. Retry organise if audio reached the server, or record again.",
-        );
-        if (local) setElapsed(local.durationSec || 0);
-        setPhase("recover");
-        return;
-      }
-
-      if (v.recordingConsentAt) {
-        setPhase("ready");
-      } else {
-        setPhase("consent");
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load visit");
-      setPhase("error");
-    }
-  }
 
   async function continueAfterConsent() {
     await api(`/visits/${visitId}/consent`, {
@@ -372,6 +385,54 @@ export function VisitRecorder({ visitId }: Props) {
     }
   }
 
+  async function voidNote() {
+    if (!noteId || voidReason.trim().length < 3) return;
+    setCorrectionBusy(true);
+    setError(null);
+    try {
+      await api(`/notes/${noteId}/void`, {
+        method: "POST",
+        body: JSON.stringify({ reason: voidReason.trim() }),
+      });
+      setCorrectionOpen(null);
+      setVoidReason("");
+      setNoteId(null);
+      setContent({});
+      setFlags([]);
+      setPhase("ready");
+      setRebook(null);
+      setRebookDone(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not void note");
+    } finally {
+      setCorrectionBusy(false);
+    }
+  }
+
+  async function createAddendum() {
+    if (!noteId || !addendumText.trim()) return;
+    setCorrectionBusy(true);
+    setError(null);
+    try {
+      const { note } = await api<{
+        note: { id: string; content: Record<string, unknown> };
+      }>(`/notes/${noteId}/addendum`, {
+        method: "POST",
+        body: JSON.stringify({ text: addendumText.trim() }),
+      });
+      setNoteId(note.id);
+      setContent(stringifyContent(note.content));
+      setFlags(asFlags(note.content));
+      setCorrectionOpen(null);
+      setAddendumText("");
+      setPhase("review");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create addendum");
+    } finally {
+      setCorrectionBusy(false);
+    }
+  }
+
   async function bookFollowUp(startsAt: string) {
     setRebookBusy(true);
     try {
@@ -518,6 +579,95 @@ export function VisitRecorder({ visitId }: Props) {
               </p>
 
               {noteId ? <NotePrintActions noteId={noteId} /> : null}
+
+              <div className="rebook-box">
+                <h4>Correct record</h4>
+                <p className="muted">
+                  Signed notes stay immutable. Void with a reason, or add a
+                  signed addendum.
+                </p>
+                <div className="apt-actions" style={{ marginTop: "0.5rem" }}>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => setCorrectionOpen("addendum")}
+                  >
+                    Add addendum
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    onClick={() => setCorrectionOpen("void")}
+                  >
+                    Void note
+                  </button>
+                </div>
+                {correctionOpen === "void" ? (
+                  <div style={{ marginTop: "0.75rem" }}>
+                    <label className="note-field">
+                      <span>Reason for voiding</span>
+                      <textarea
+                        rows={3}
+                        value={voidReason}
+                        onChange={(e) => setVoidReason(e.target.value)}
+                        placeholder="e.g. Wrong patient / factual error — will re-document"
+                      />
+                    </label>
+                    <div className="apt-actions">
+                      <button
+                        type="button"
+                        className="btn-danger btn-sm"
+                        disabled={
+                          correctionBusy || voidReason.trim().length < 3
+                        }
+                        onClick={() => void voidNote()}
+                      >
+                        Confirm void
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        onClick={() => setCorrectionOpen(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {correctionOpen === "addendum" ? (
+                  <div style={{ marginTop: "0.75rem" }}>
+                    <label className="note-field">
+                      <span>Addendum text</span>
+                      <textarea
+                        rows={4}
+                        value={addendumText}
+                        onChange={(e) => setAddendumText(e.target.value)}
+                        placeholder="Additional clinical information…"
+                      />
+                    </label>
+                    <div className="apt-actions">
+                      <button
+                        type="button"
+                        className="btn-primary btn-sm"
+                        disabled={correctionBusy || !addendumText.trim()}
+                        onClick={() => void createAddendum()}
+                      >
+                        Create draft addendum
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        onClick={() => setCorrectionOpen(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {error && phase === "signed" ? (
+                  <p className="form-error">{error}</p>
+                ) : null}
+              </div>
 
               {visit?.appointment.id ? (
                 <VisitInvoiceActions

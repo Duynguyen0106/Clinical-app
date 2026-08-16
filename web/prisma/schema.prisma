@@ -479,22 +479,29 @@ model ClinicalNote {
   patientId    String
   visitId      String?
   templateId   String?
+  /// When set, this note is an addendum to a previously signed note
+  parentNoteId String?
   status       NoteStatus @default(DRAFT)
-  source       String     @default("ai") // ai | manual
+  source       String     @default("ai") // ai | manual | addendum
   content      Json
   signedAt     DateTime?
   signedById   String?
   contentHash  String?
+  voidedAt     DateTime?
+  voidReason   String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  patient  Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  visit    Visit?        @relation(fields: [visitId], references: [id])
-  template NoteTemplate? @relation(fields: [templateId], references: [id])
-  audits   NoteAuditEvent[]
+  patient    Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  visit      Visit?         @relation(fields: [visitId], references: [id])
+  template   NoteTemplate?  @relation(fields: [templateId], references: [id])
+  parentNote ClinicalNote?  @relation("NoteAddenda", fields: [parentNoteId], references: [id])
+  addenda    ClinicalNote[] @relation("NoteAddenda")
+  audits     NoteAuditEvent[]
 
   @@index([patientId, createdAt])
   @@index([status])
+  @@index([parentNoteId])
 }
 
 model NoteAuditEvent {

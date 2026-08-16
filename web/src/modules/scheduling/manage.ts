@@ -197,30 +197,43 @@ export async function rescheduleManagedAppointment(
   });
 
   const { assertNoConflict } = await import("./service");
-  await assertNoConflict({
-    clinicId: appointment.clinicId,
-    practitionerId: appointment.practitionerId,
-    roomId: appointment.roomId,
-    startsAt,
-    endsAt,
-    bufferBefore: appointment.appointmentType.bufferBefore,
-    bufferAfter: appointment.appointmentType.bufferAfter,
-    excludeAppointmentId: appointment.id,
-  });
-
+  const { withScheduleLocks } = await import("./locks");
   const previousStartsAt = appointment.startsAt;
 
-  const updated = await prisma.appointment.update({
-    where: { id: appointment.id },
-    data: {
-      startsAt,
-      endsAt,
-      status: AppointmentStatus.BOOKED,
-      reminderSentAt: null,
-      smsReminderSentAt: null,
+  const updated = await withScheduleLocks(
+    prisma,
+    {
+      practitionerId: appointment.practitionerId,
+      roomId: appointment.roomId,
     },
-    include: appointmentInclude,
-  });
+    async (tx) => {
+      await assertNoConflict(
+        {
+          clinicId: appointment.clinicId,
+          practitionerId: appointment.practitionerId,
+          roomId: appointment.roomId,
+          startsAt,
+          endsAt,
+          bufferBefore: appointment.appointmentType.bufferBefore,
+          bufferAfter: appointment.appointmentType.bufferAfter,
+          excludeAppointmentId: appointment.id,
+        },
+        tx as typeof prisma,
+      );
+
+      return tx.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          startsAt,
+          endsAt,
+          status: AppointmentStatus.BOOKED,
+          reminderSentAt: null,
+          smsReminderSentAt: null,
+        },
+        include: appointmentInclude,
+      });
+    },
+  );
 
   try {
     const { sendAppointmentRescheduled } = await import(
