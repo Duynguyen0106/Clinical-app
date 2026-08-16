@@ -836,12 +836,48 @@ h3 {
   font-weight: 600;
 }
 
-.room-swatch {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  margin-top: 0.35rem;
-  flex-shrink: 0;
+.team-row {
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 12px;
+}
+
+.team-row.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.team-hours {
+  font-size: 0.82rem;
+  margin-top: 0.25rem;
+}
+
+.hours-grid {
+  display: grid;
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.hours-row {
+  display: grid;
+  grid-template-columns: 88px 1fr auto 1fr;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.hours-day {
+  margin: 0;
+}
+
+.hours-row input[type="time"] {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  font: inherit;
+  background: white;
 }
 
 .empty-panel {

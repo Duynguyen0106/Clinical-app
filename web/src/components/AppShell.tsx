@@ -12,6 +12,7 @@ import {
   LogOut,
   Settings,
   Users,
+  UserRoundPlus,
   Wallet,
 } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
@@ -22,6 +23,7 @@ const nav = [
   { href: "/app", label: "Today", icon: LayoutDashboard },
   { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/app/rooms", label: "Rooms", icon: DoorOpen },
+  { href: "/app/team", label: "Team", icon: UserRoundPlus },
   { href: "/app/patients", label: "Patients", icon: Users },
   { href: "/app/notes", label: "Notes", icon: ClipboardList },
   { href: "/app/tasks", label: "Tasks", icon: ListTodo },
