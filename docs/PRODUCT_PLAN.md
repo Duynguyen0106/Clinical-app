@@ -44,6 +44,23 @@ Booking, patients, invoices, and reminders stay simple and calm. AI handles the 
 
 ---
 
+## How Treow improves on Cliniko
+
+Full research: [COMPETITIVE_CLINIKO.md](./COMPETITIVE_CLINIKO.md).
+
+**Cliniko’s moat:** calm UX, solid calendar/booking, trusted allied-health brand. **Cliniko’s gap:** no native AI scribe (Heidi etc. are extra apps), thin reporting, no tasks, few default note templates, weak rooms/resources, poll-only API.
+
+**Treow must-win:**
+1. Native **Visit mode** (record → organised note → sign) — no second AI subscription  
+2. **MSK template pack** for mixed physio / osteo / manual therapy  
+3. Stay **as friendly as Cliniko** (no feature clutter)  
+4. UK defaults (London, GBP, UK GDPR)  
+5. Next: waitlist fill, rebook-from-Plan, lightweight tasks, practice pulse metrics  
+
+Do not try to out-ecosystem Cliniko’s Connected Apps in year one — out-execute the day-of clinical workflow instead.
+
+---
+
 ## Core differentiators vs Cliniko
 
 | Area | Cliniko-like baseline | Treow advance |

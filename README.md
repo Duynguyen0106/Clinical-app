@@ -8,6 +8,7 @@ AI-first practice management for UK allied health (physio, osteopathy, manual th
 
 - [Product plan](docs/PRODUCT_PLAN.md) — vision, MVP, locked decisions
 - [Architecture](docs/ARCHITECTURE.md) — stack, AI pipeline, UK compliance
+- [Cliniko competitive research](docs/COMPETITIVE_CLINIKO.md) — how Treow improves on Cliniko
 
 ## Quick start
 
