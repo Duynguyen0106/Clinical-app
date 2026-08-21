@@ -8,8 +8,12 @@ import type { AuthContext } from "@/server/auth";
 import { badRequest, notFound } from "@/server/errors";
 import { organiseNote, transcribeAudio } from "@/modules/ai/providers";
 import { createDraftFromAi } from "@/modules/notes/service";
-import type { NoteSection } from "@/modules/notes/templates";
+import {
+  extractSectionsFromSchema,
+  matchTemplateForAppointment,
+} from "@/modules/ai/map-to-template";
 import { saveAudioUpload, readAudioFile } from "@/server/storage";
+import { NoteStatus } from "@/generated/prisma/client";
 
 export async function startVisit(ctx: AuthContext, appointmentId: string) {
   const appointment = await prisma.appointment.findFirst({
@@ -26,7 +30,10 @@ export async function startVisit(ctx: AuthContext, appointmentId: string) {
           include: { patient: true, appointmentType: true, practitioner: true },
         },
         recording: { include: { transcript: true } },
-        notes: { orderBy: { createdAt: "desc" } },
+        notes: {
+          orderBy: { createdAt: "desc" },
+          include: { template: { select: { id: true, name: true, schema: true } } },
+        },
       },
     });
   }
@@ -60,7 +67,10 @@ export async function getVisit(ctx: AuthContext, visitId: string) {
         include: { patient: true, appointmentType: true, practitioner: true },
       },
       recording: { include: { transcript: true } },
-      notes: { orderBy: { createdAt: "desc" } },
+      notes: {
+        orderBy: { createdAt: "desc" },
+        include: { template: { select: { id: true, name: true, schema: true } } },
+      },
     },
   });
   if (!visit) throw notFound("Visit not found");
@@ -251,8 +261,12 @@ export async function stopRecordingAndOrganise(
     input.templateId,
   );
 
-  const sections = extractSections(template?.schema);
+  const sections = extractSectionsFromSchema(template?.schema);
   const patientName = `${visit.appointment.patient.firstName} ${visit.appointment.patient.lastName}`;
+  const priorContext = await loadPriorNoteContext(
+    visit.appointment.patientId,
+    visit.id,
+  );
 
   let organised;
   try {
@@ -261,6 +275,8 @@ export async function stopRecordingAndOrganise(
       patientName,
       appointmentType: visit.appointment.appointmentType.name,
       sections,
+      templateName: template?.name,
+      priorContext: priorContext ?? undefined,
     });
   } catch (err) {
     await prisma.recording.update({
@@ -315,39 +331,31 @@ async function resolveTemplate(
   }
 
   const all = await prisma.noteTemplate.findMany({ where: { clinicId } });
-  const lower = appointmentTypeName.toLowerCase();
-  const matched =
-    all.find((t) => lower.includes("osteo") && t.name.toLowerCase().includes("osteo")) ??
-    all.find(
-      (t) =>
-        lower.includes("manual") && t.name.toLowerCase().includes("manual"),
-    ) ??
-    all.find(
-      (t) =>
-        lower.includes("initial") && t.name.toLowerCase().includes("initial"),
-    ) ??
-    all.find(
-      (t) =>
-        lower.includes("review") && t.name.toLowerCase().includes("review"),
-    ) ??
-    all.find((t) => t.isDefault) ??
-    all[0];
-
-  return matched ?? null;
+  const matched = matchTemplateForAppointment(appointmentTypeName, all);
+  if (!matched) return null;
+  return all.find((t) => t.id === matched.id) ?? null;
 }
 
-function extractSections(schema: unknown): NoteSection[] {
-  if (
-    schema &&
-    typeof schema === "object" &&
-    Array.isArray((schema as { sections?: unknown }).sections)
-  ) {
-    return (schema as { sections: NoteSection[] }).sections;
+/** Last signed note plan/presentation for continuity (truncated). */
+async function loadPriorNoteContext(patientId: string, currentVisitId: string) {
+  const prior = await prisma.clinicalNote.findFirst({
+    where: {
+      patientId,
+      status: NoteStatus.SIGNED,
+      visitId: { not: currentVisitId },
+    },
+    orderBy: { signedAt: "desc" },
+    select: { content: true, template: { select: { name: true } } },
+  });
+  if (!prior?.content || typeof prior.content !== "object") return null;
+  const c = prior.content as Record<string, unknown>;
+  const bits: string[] = [];
+  if (prior.template?.name) bits.push(`Prior template: ${prior.template.name}`);
+  for (const key of ["plan", "assessment", "presentation", "treatment", "response"]) {
+    const v = c[key];
+    if (typeof v === "string" && v.trim()) {
+      bits.push(`${key}: ${v.trim().slice(0, 400)}`);
+    }
   }
-  return [
-    { id: "subjective", title: "Subjective", type: "markdown" },
-    { id: "objective", title: "Objective", type: "markdown" },
-    { id: "assessment", title: "Assessment", type: "markdown" },
-    { id: "plan", title: "Plan", type: "markdown" },
-  ];
+  return bits.length ? bits.join("\n") : null;
 }

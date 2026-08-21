@@ -14,6 +14,12 @@ import {
   saveVisitAudioBuffer,
   withRetry,
 } from "@/lib/visit-audio-buffer";
+import type { NoteSection } from "@/modules/notes/templates";
+import {
+  extractSectionsFromSchema,
+  orderedSectionIds,
+  sectionLabel,
+} from "@/modules/ai/map-to-template";
 
 type Phase =
   | "loading"
@@ -47,6 +53,7 @@ type VisitPayload = {
     content: Record<string, unknown>;
     parentNoteId?: string | null;
     voidReason?: string | null;
+    template?: { id: string; name: string; schema: unknown } | null;
   }>;
 };
 
@@ -78,6 +85,10 @@ export function VisitRecorder({ visitId }: Props) {
     null | "void" | "addendum"
   >(null);
   const [correctionBusy, setCorrectionBusy] = useState(false);
+  const [templateSections, setTemplateSections] = useState<NoteSection[] | null>(
+    null,
+  );
+  const [templateName, setTemplateName] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -101,6 +112,7 @@ export function VisitRecorder({ visitId }: Props) {
         if (signed) {
           setNoteId(signed.id);
           setContent(stringifyContent(signed.content));
+          applyTemplateMeta(signed.template);
           setPhase("signed");
           return;
         }
@@ -108,6 +120,7 @@ export function VisitRecorder({ visitId }: Props) {
           setNoteId(draft.id);
           setContent(stringifyContent(draft.content));
           setFlags(asFlags(draft.content));
+          applyTemplateMeta(draft.template);
           setPhase("review");
           return;
         }
@@ -264,6 +277,7 @@ export function VisitRecorder({ visitId }: Props) {
         setNoteId(draft.id);
         setContent(stringifyContent(draft.content));
         setFlags(asFlags(draft.content));
+        applyTemplateMeta(draft.template);
         setPhase("review");
         return;
       }
@@ -315,6 +329,7 @@ export function VisitRecorder({ visitId }: Props) {
           async?: boolean;
           job?: { id: string };
           note?: { id: string; content: Record<string, unknown> };
+          template?: { id: string; name: string; schema: unknown } | null;
         }>(`/visits/${visitId}/recording`, {
           method: "PATCH",
           body: JSON.stringify({ durationSec: durationSec || 1 }),
@@ -327,6 +342,15 @@ export function VisitRecorder({ visitId }: Props) {
       setNoteId(result.note.id);
       setContent(stringifyContent(result.note.content));
       setFlags(asFlags(result.note.content));
+      if (result.template) applyTemplateMeta(result.template);
+      else {
+        const { visit: v } = await api<{ visit: VisitPayload }>(
+          `/visits/${visitId}`,
+        );
+        setVisit(v);
+        const draft = v.notes.find((n) => n.id === result.note!.id);
+        applyTemplateMeta(draft?.template);
+      }
       setPhase("review");
       return;
     }
@@ -386,6 +410,11 @@ export function VisitRecorder({ visitId }: Props) {
         setNoteId(result.note.id);
         setContent(stringifyContent(result.note.content));
         setFlags(asFlags(result.note.content));
+        const { visit: v } = await api<{ visit: VisitPayload }>(
+          `/visits/${visitId}`,
+        );
+        setVisit(v);
+        applyTemplateMeta(v.notes.find((n) => n.id === result.note!.id)?.template);
         setPhase("review");
         return;
       }
@@ -505,7 +534,15 @@ export function VisitRecorder({ visitId }: Props) {
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
 
-  const fields = Object.keys(content).filter((k) => k !== "clinician_review_flags");
+  const fields = orderedSectionIds(Object.keys(content), templateSections);
+
+  function applyTemplateMeta(
+    template?: { id: string; name: string; schema: unknown } | null,
+  ) {
+    if (!template) return;
+    setTemplateName(template.name);
+    setTemplateSections(extractSectionsFromSchema(template.schema));
+  }
 
   return (
     <div className="visit-stack">
@@ -777,7 +814,7 @@ export function VisitRecorder({ visitId }: Props) {
 
         <section className="note-panel">
           <div className="note-panel-head">
-            <h3>Clinical note</h3>
+            <h3>Clinical note{templateName ? ` · ${templateName}` : ""}</h3>
             {phase === "review" && (
               <span className="badge-draft">AI draft — review required</span>
             )}
@@ -803,7 +840,7 @@ export function VisitRecorder({ visitId }: Props) {
               )}
               {fields.map((key) => (
                 <label key={key} className="note-field">
-                  <span>{titleCase(key)}</span>
+                  <span>{sectionLabel(key, templateSections)}</span>
                   <textarea
                     value={content[key] ?? ""}
                     onChange={(e) =>
@@ -843,8 +880,4 @@ function stringifyContent(raw: Record<string, unknown>) {
 function asFlags(raw: Record<string, unknown>) {
   const f = raw.clinician_review_flags;
   return Array.isArray(f) ? f.map(String) : [];
-}
-
-function titleCase(key: string) {
-  return key.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
