@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Printer, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
@@ -58,6 +60,22 @@ function formatDateTime(iso: string | null) {
 }
 
 export default function MoneyPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell title="Money" subtitle="Loading…">
+          <p className="muted">Loading invoices…</p>
+        </AppShell>
+      }
+    >
+      <MoneyPageInner />
+    </Suspense>
+  );
+}
+
+function MoneyPageInner() {
+  const searchParams = useSearchParams();
+  const unpaidOnly = searchParams.get("status") === "unpaid";
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptDoc | null>(null);
@@ -71,6 +89,13 @@ export default function MoneyPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const visible = useMemo(() => {
+    if (!unpaidOnly) return invoices;
+    return invoices.filter(
+      (inv) => inv.status === "SENT" || inv.status === "DRAFT",
+    );
+  }, [invoices, unpaidOnly]);
 
   async function markPaid(id: string) {
     await api(`/invoices/${id}/pay`, {
@@ -104,12 +129,26 @@ export default function MoneyPage() {
     >
       <div className="panel">
         <div className="panel-head">
-          <h2>Invoices</h2>
-          <span className="count">{invoices.length}</span>
+          <h2>{unpaidOnly ? "Unpaid invoices" : "Invoices"}</h2>
+          <div className="view-toggle" role="group">
+            <Link
+              href="/app/money"
+              className={`btn-sm ${!unpaidOnly ? "btn-secondary" : "btn-ghost"}`}
+            >
+              All
+            </Link>
+            <Link
+              href="/app/money?status=unpaid"
+              className={`btn-sm ${unpaidOnly ? "btn-secondary" : "btn-ghost"}`}
+            >
+              Unpaid
+            </Link>
+          </div>
+          <span className="count">{visible.length}</span>
         </div>
         {error ? <p className="form-error">{error}</p> : null}
         <ul className="apt-list">
-          {invoices.map((inv) => (
+          {visible.map((inv) => (
             <li key={inv.id} className="apt-row money-row">
               <div className="apt-body" style={{ gridColumn: "1 / 3" }}>
                 <p className="apt-name">
@@ -152,6 +191,11 @@ export default function MoneyPage() {
             </li>
           ))}
         </ul>
+        {visible.length === 0 && !error ? (
+          <p className="muted">
+            {unpaidOnly ? "No unpaid invoices." : "No invoices yet."}
+          </p>
+        ) : null}
       </div>
 
       {receipt ? (

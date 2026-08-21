@@ -9,6 +9,7 @@ import {
   mockTranscribe,
   type OrganiseNoteInput,
 } from "./mock-pipeline";
+import { mapSoapToTemplateSections } from "./map-to-template";
 
 export type NoteContent = Record<string, string | string[]> & {
   clinician_review_flags: string[];
@@ -16,6 +17,8 @@ export type NoteContent = Record<string, string | string[]> & {
 
 export type OrganiseWithTemplateInput = OrganiseNoteInput & {
   sections: NoteSection[];
+  /** Template display name for discipline-aware prompting */
+  templateName?: string;
 };
 
 function provider() {
@@ -47,38 +50,7 @@ async function mockOrganiseWithTemplate(
   input: OrganiseWithTemplateInput,
 ): Promise<NoteContent> {
   const soap = await mockOrganiseNote(input);
-  const content: NoteContent = {
-    clinician_review_flags: [...soap.clinician_review_flags],
-  };
-
-  for (const section of input.sections) {
-    if (section.id in soap) {
-      content[section.id] = soap[section.id as keyof typeof soap] as string;
-    } else if (section.id === "red_flags") {
-      content[section.id] =
-        "Red flags discussed as applicable to presentation — confirm documentation.";
-    } else if (section.id === "presentation") {
-      content[section.id] = soap.subjective;
-    } else if (section.id === "findings") {
-      content[section.id] = soap.objective;
-    } else if (section.id === "treatment") {
-      content[section.id] =
-        "Manual / osteopathic techniques as discussed in session — review transcript.";
-    } else if (section.id === "techniques") {
-      content[section.id] =
-        "Soft tissue / joint techniques applied as discussed — edit for accuracy.";
-    } else if (section.id === "response") {
-      content[section.id] =
-        "Patient response during session — confirm from clinical observation.";
-    } else {
-      content[section.id] = "Not clearly discussed — review transcript.";
-      content.clinician_review_flags.push(
-        `Section “${section.title}” needs clinician review.`,
-      );
-    }
-  }
-
-  return content;
+  return mapSoapToTemplateSections(soap, input.sections);
 }
 
 async function whisperTranscribe(audioBytes: Buffer): Promise<string> {
@@ -113,19 +85,27 @@ async function openaiOrganise(
   const schemaHint = input.sections
     .map((s) => `- ${s.id} (${s.title}): ${s.hint ?? "clinical prose"}`)
     .join("\n");
+  const templateLine = input.templateName
+    ? `Clinic template: ${input.templateName}.`
+    : "Clinic template: MSK allied-health note.";
+  const prior = input.priorContext?.trim()
+    ? `\nPrior signed-note context (do not copy blindly):\n${input.priorContext.trim()}\n`
+    : "";
 
   const system = `You are a UK allied-health clinical scribe for physiotherapy, osteopathy, and manual therapy.
+${templateLine}
 Return ONLY valid JSON with keys: ${sectionIds.join(", ")}, clinician_review_flags (string array).
+Write each section in the clinical voice matching that section title (e.g. osteopathy “Presentation/Findings/Treatment”, physio SOAP, manual therapy Techniques/Response).
 Rules:
 - Do not invent findings, diagnoses, or numbers not present in the transcript.
 - Prefer "Not discussed" over fabrication.
 - British English spelling.
-- clinician_review_flags lists anything uncertain.`;
+- clinician_review_flags lists anything uncertain or missing for that template.`;
 
   const user = `Patient: ${input.patientName}
 Appointment type: ${input.appointmentType}
 Sections:\n${schemaHint}
-
+${prior}
 Transcript:\n${input.transcript}`;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {

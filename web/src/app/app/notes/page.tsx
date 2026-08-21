@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { api } from "@/lib/api";
@@ -18,11 +19,23 @@ type Note = {
 
 type StatusFilter = "DRAFT" | "SIGNED" | "VOIDED";
 
-export default function NotesPage() {
+function parseStatus(raw: string | null): StatusFilter {
+  if (raw === "SIGNED" || raw === "VOIDED" || raw === "DRAFT") return raw;
+  return "DRAFT";
+}
+
+function NotesPageInner() {
   const { me } = useAuth();
+  const searchParams = useSearchParams();
   const [notes, setNotes] = useState<Note[]>([]);
-  const [status, setStatus] = useState<StatusFilter>("DRAFT");
+  const [status, setStatus] = useState<StatusFilter>(() =>
+    parseStatus(searchParams.get("status")),
+  );
   const scoped = me?.role === "PRACTITIONER";
+
+  useEffect(() => {
+    setStatus(parseStatus(searchParams.get("status")));
+  }, [searchParams]);
 
   useEffect(() => {
     if (!me) return;
@@ -55,14 +68,13 @@ export default function NotesPage() {
           </h2>
           <div className="view-toggle" role="group">
             {(["DRAFT", "SIGNED", "VOIDED"] as const).map((s) => (
-              <button
+              <Link
                 key={s}
-                type="button"
+                href={`/app/notes?status=${s}`}
                 className={`btn-sm ${status === s ? "btn-secondary" : "btn-ghost"}`}
-                onClick={() => setStatus(s)}
               >
                 {s === "DRAFT" ? "Drafts" : s === "SIGNED" ? "Signed" : "Voided"}
-              </button>
+              </Link>
             ))}
           </div>
           <span className="count">{notes.length}</span>
@@ -102,5 +114,19 @@ export default function NotesPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+export default function NotesPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell title="Notes" subtitle="Loading…">
+          <p className="muted">Loading notes…</p>
+        </AppShell>
+      }
+    >
+      <NotesPageInner />
+    </Suspense>
   );
 }

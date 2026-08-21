@@ -5,6 +5,7 @@ import {
 } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import type { AuthContext } from "@/server/auth";
+import { pulseLinksPayload } from "@/modules/ops/pulse-links";
 
 function startOfWeekMonday(d = new Date()) {
   const x = new Date(d);
@@ -164,5 +165,6 @@ export async function getPracticePulse(ctx: AuthContext) {
     unpaidCents,
     newPatients,
     returningPatients,
+    links: pulseLinksPayload(),
   };
 }

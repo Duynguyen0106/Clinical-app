@@ -707,9 +707,30 @@ h3 {
   margin-top: 0.75rem;
 }
 
-.pulse-grid div {
+.pulse-grid div,
+.pulse-grid .pulse-metric {
   display: grid;
   gap: 0.15rem;
+}
+
+.pulse-grid .pulse-metric {
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.35rem 0.4rem;
+  margin: -0.35rem -0.4rem;
+  transition: background 0.15s ease;
+}
+
+.pulse-grid .pulse-metric:hover,
+.pulse-grid .pulse-metric:focus-visible {
+  background: color-mix(in srgb, var(--accent-deep) 8%, transparent);
+  outline: none;
+}
+
+.pulse-meta a {
+  color: inherit;
+  font-weight: 600;
 }
 
 .pulse-grid strong {

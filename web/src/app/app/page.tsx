@@ -37,6 +37,13 @@ type Pulse = {
   returningPatients: number;
   bookedMinutes: number;
   availableMinutes: number;
+  links?: {
+    utilisation?: string;
+    rebook?: string;
+    unsigned?: string;
+    unpaid?: string;
+    mix?: string;
+  };
 };
 
 type OpsTask = {
@@ -366,31 +373,49 @@ export default function TodayPage() {
                 </Link>
               </div>
               <div className="pulse-grid">
-                <div>
+                <Link
+                  href={pulse.links?.utilisation ?? "/app/calendar"}
+                  className="pulse-metric"
+                >
                   <strong>{pulse.utilisationPct}%</strong>
                   <span>Utilisation</span>
-                </div>
-                <div>
+                </Link>
+                <Link
+                  href={pulse.links?.rebook ?? "/app/patients"}
+                  className="pulse-metric"
+                >
                   <strong>{pulse.rebookRatePct}%</strong>
                   <span>Rebook</span>
-                </div>
-                <div>
+                </Link>
+                <Link
+                  href={pulse.links?.unsigned ?? "/app/notes?status=DRAFT"}
+                  className="pulse-metric"
+                >
                   <strong>{pulse.unsignedNotes}</strong>
                   <span>Unsigned</span>
-                </div>
-                <div>
+                </Link>
+                <Link
+                  href={pulse.links?.unpaid ?? "/app/money?status=unpaid"}
+                  className="pulse-metric"
+                >
                   <strong>{pulse.unpaidInvoices}</strong>
                   <span>Unpaid</span>
-                </div>
-                <div>
+                </Link>
+                <Link
+                  href={pulse.links?.mix ?? "/app/patients"}
+                  className="pulse-metric"
+                >
                   <strong>
                     {pulse.newPatients}/{pulse.returningPatients}
                   </strong>
                   <span>New / return</span>
-                </div>
+                </Link>
               </div>
               <p className="muted pulse-meta">
-                £{(pulse.unpaidCents / 100).toFixed(0)} outstanding ·{" "}
+                <Link href={pulse.links?.unpaid ?? "/app/money?status=unpaid"}>
+                  £{(pulse.unpaidCents / 100).toFixed(0)} outstanding
+                </Link>
+                {" · "}
                 {pulse.bookedMinutes}/{pulse.availableMinutes} min booked this
                 week
               </p>
