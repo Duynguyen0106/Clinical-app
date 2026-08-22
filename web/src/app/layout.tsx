@@ -16,7 +16,7 @@ const sourceSans = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: BRAND.name,
+  title: `${BRAND.name} — clinical notes that keep pace with the visit`,
   description: BRAND.tagline,
   applicationName: BRAND.name,
   manifest: "/manifest.webmanifest",
@@ -28,6 +28,11 @@ export const metadata: Metadata = {
   icons: {
     icon: "/icons/treow-192.png",
     apple: "/icons/treow-192.png",
+  },
+  openGraph: {
+    title: BRAND.name,
+    description: BRAND.tagline,
+    images: [{ url: "/brand/landing-hero.jpg" }],
   },
 };
 
