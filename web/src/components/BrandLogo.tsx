@@ -2,7 +2,7 @@ import Image from "next/image";
 import { BRAND } from "@/modules/config/brand";
 
 type Props = {
-  variant?: "full" | "mark" | "word";
+  variant?: "full" | "mark" | "word" | "clear";
   className?: string;
   priority?: boolean;
 };
@@ -18,7 +18,12 @@ export function BrandLogo({
     );
   }
 
-  const src = variant === "mark" ? BRAND.logo.mark : BRAND.logo.trim;
+  const src =
+    variant === "mark"
+      ? BRAND.logo.mark
+      : variant === "clear"
+        ? BRAND.logo.clear
+        : BRAND.logo.trim;
   const size =
     variant === "mark"
       ? { width: 48, height: 32 }
@@ -30,7 +35,7 @@ export function BrandLogo({
       alt={BRAND.name}
       width={size.width}
       height={size.height}
-      className={`brand-logo brand-logo-${variant} ${className}`.trim()}
+      className={`brand-logo brand-logo-${variant === "clear" ? "full" : variant} ${className}`.trim()}
       priority={priority}
     />
   );

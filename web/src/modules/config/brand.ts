@@ -10,6 +10,8 @@ export const BRAND = {
     full: "/brand/treow-logo.png",
     mark: "/brand/treow-mark.png",
     trim: "/brand/treow-logo-trim.png",
+    /** Transparent export for overlays on photography */
+    clear: "/brand/treow-logo-clear.png",
   },
   colours: {
     forest: "#1E3F37",
