@@ -14,6 +14,7 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 | AI adapters | Done (`mock` default, `openai` optional) |
 | Template-aware organise | Done |
 | PWA shell | Done (manifest + SW) |
+| Native installers | Scaffolded — Electron desktop + Capacitor Android (`native/`, `docs/NATIVE_APP.md`); iOS add on Mac |
 
 **Next product focus:** Design-partner **launch** — see `docs/LAUNCH.md` (merge RC, UK/EU host, DPAs, pilot 5 visits). Rooms/webhooks wait unless a partner asks.
 

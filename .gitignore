@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+.env
+.env.*
+
+# Native shells
+native/node_modules/
+native/desktop/node_modules/
+native/desktop/release/

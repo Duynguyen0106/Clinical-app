@@ -1,0 +1,34 @@
+{
+  "appId": "clinic.treow.app",
+  "appName": "Treow Clinic",
+  "webDir": "www",
+  "server": {
+    "url": "https://app.treow.clinic",
+    "allowNavigation": [
+      "app.treow.clinic",
+      "localhost",
+      "*.vercel.app",
+      "*.treow.clinic"
+    ],
+    "cleartext": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#EEF2EC",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#1E3F37"
+    }
+  },
+  "android": {
+    "backgroundColor": "#EEF2EC"
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "backgroundColor": "#EEF2EC",
+    "scheme": "Treow Clinic"
+  }
+}
