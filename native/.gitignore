@@ -1,0 +1,23 @@
+node_modules/
+desktop/node_modules/
+desktop/release/
+desktop/dist/
+.DS_Store
+*.log
+.env
+.env.*
+
+# Android local
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/captures/
+*.apk
+*.aab
+*.keystore
+
+# iOS local (when added on a Mac)
+ios/App/Pods/
+ios/App/Podfile.lock
+ios/DerivedData/

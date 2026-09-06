@@ -4,7 +4,8 @@
 **Launch market:** United Kingdom  
 **Primary vertical:** Mixed allied health — physiotherapy, osteopathy, manual therapy (and similar MSK / hands-on practices)  
 **MVP billing:** Invoice + mark paid / unpaid only (no payment gateway)  
-**Mobile v1:** Responsive web + PWA (browser recording; no native app yet)
+**Mobile v1:** Responsive web + PWA (browser recording)  
+**Native installers:** Capacitor (iOS/Android) + Electron (desktop) shells in `native/` — see `docs/NATIVE_APP.md`
 
 An AI-first practice management platform for UK allied health clinics. Cliniko-class scheduling, records, and simple billing — with consultation recording that drafts clinical notes so practitioners do not need to type during or after the visit.
 
@@ -40,7 +41,7 @@ Booking, patients, invoices, and reminders stay simple and calm. AI handles the 
 | Clinic mix | **Physio + osteo + manual therapy** (shared MSK workflows, SOAP-friendly notes) |
 | Brand | **Treow Clinic** |
 | MVP money | **Mark paid only** — create invoice, mark paid/unpaid, basic PDF receipt |
-| Mobile recording | **Browser / PWA** — MediaRecorder on phone & desktop; installable PWA; native apps deferred |
+| Mobile recording | **Browser / PWA + native shells** — MediaRecorder on phone & desktop; Capacitor/Electron installers in `native/` (`docs/NATIVE_APP.md`) |
 
 ---
 

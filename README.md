@@ -13,6 +13,7 @@ AI-first practice management for UK allied health (physio, osteopathy, manual th
 - [UK compliance](docs/UK_COMPLIANCE.md)
 - [Launch readiness](docs/LAUNCH.md)
 - [Deploy](docs/DEPLOY.md)
+- [Native downloadable apps](docs/NATIVE_APP.md) (Windows / Mac / Linux / Android / iOS)
 - [Website integration](docs/WEBSITE_INTEGRATION.md)
 - [Phone checklist](docs/PHONE_CHECKLIST.md)
 - [Pilot script](docs/PILOT.md)
@@ -39,3 +40,5 @@ npm run dev
 4. Public booking uses real availability slots  
 
 PWA: installable via browser; service worker caches app shell.
+
+**Downloadable native apps** (desktop installers + store shells): see [`docs/NATIVE_APP.md`](docs/NATIVE_APP.md) and the `native/` package.

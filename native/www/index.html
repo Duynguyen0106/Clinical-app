@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Treow Clinic</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --forest: #1e3f37;
+        --mist: #eef2ec;
+        --ink: #14241f;
+        --muted: #5a6b61;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 2rem 1.25rem;
+        font-family: "Source Sans 3", system-ui, sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(
+            800px 420px at 20% 0%,
+            rgba(163, 177, 138, 0.35),
+            transparent 55%
+          ),
+          linear-gradient(165deg, var(--mist), #e2e9e3);
+      }
+      main {
+        max-width: 28rem;
+        text-align: center;
+      }
+      img {
+        width: min(220px, 70vw);
+        height: auto;
+      }
+      h1 {
+        font-family: "Cormorant Garamond", Georgia, serif;
+        font-weight: 650;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 1.6rem;
+        color: var(--forest);
+        margin: 1rem 0 0.35rem;
+      }
+      p {
+        margin: 0.4rem 0;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      code {
+        font-size: 0.85em;
+        background: rgba(30, 63, 55, 0.08);
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="./icon-512.png" alt="Treow Clinic" width="512" height="512" />
+      <h1>Treow Clinic</h1>
+      <p>
+        Opening your clinic workspace… If this screen stays here, set
+        <code>TREOW_APP_URL</code> to your deployed HTTPS app and run
+        <code>npx cap sync</code>.
+      </p>
+      <p>Rooted in Osteopathy, Growing in Health.</p>
+    </main>
+    <script>
+      // Fallback when Capacitor server.url is not injected (misconfigured build)
+      (function () {
+        var configured = false;
+        try {
+          configured = !!(window.Capacitor && window.Capacitor.getServerUrl);
+        } catch (_) {}
+        if (!configured && location.protocol === "file:") {
+          document.querySelector("p").textContent =
+            "This native shell needs TREOW_APP_URL (your Vercel / production URL). Rebuild after setting it.";
+        }
+      })();
+    </script>
+  </body>
+</html>
