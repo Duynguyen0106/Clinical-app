@@ -898,7 +898,8 @@ export default function CalendarPage() {
               >
                 {catalog?.appointmentTypes.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name} ({t.durationMinutes} min)
+                    {t.name} · {t.durationMinutes} min · £
+                    {(t.defaultPriceCents / 100).toFixed(2)}
                   </option>
                 ))}
               </select>

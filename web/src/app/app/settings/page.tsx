@@ -393,7 +393,9 @@ export default function SettingsPage() {
           <h2>Online booking policy</h2>
           <p className="muted">
             Notice windows, how far ahead patients can book, and deposits (like
-            Fresha-style no-show protection).
+            Fresha-style no-show protection). Manage service names, lengths, and
+            prices under{" "}
+            <Link href="/app/services">Services</Link>.
           </p>
           {booking ? (
             <>
