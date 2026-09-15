@@ -10,10 +10,12 @@ import {
 export const GET = withAuth(async (req, ctx) => {
   requireStaff(ctx);
   const url = new URL(req.url);
+  const includeLeave = url.searchParams.get("includeLeave") === "1";
   const blocks = await listBlocks(ctx, {
     from: url.searchParams.get("from") ?? undefined,
     to: url.searchParams.get("to") ?? undefined,
     practitionerId: url.searchParams.get("practitionerId") ?? undefined,
+    calendarOnly: !includeLeave,
   });
   return jsonOk({ blocks });
 });

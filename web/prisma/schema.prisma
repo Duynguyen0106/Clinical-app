@@ -58,6 +58,13 @@ enum WaitlistStatus {
   CANCELLED
 }
 
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum AiJobStatus {
   PENDING
   RUNNING
@@ -162,6 +169,7 @@ model Clinic {
   invoices         Invoice[]
   rooms            Room[]
   patientAccessEvents PatientAccessEvent[]
+  leaveRequests    LeaveRequest[]
 }
 
 model Membership {
@@ -198,6 +206,7 @@ model PractitionerProfile {
   membership       Membership        @relation(fields: [membershipId], references: [id], onDelete: Cascade)
   availability     AvailabilityRule[]
   exceptions       AvailabilityException[]
+  leaveRequests    LeaveRequest[]
   appointments     Appointment[]
   waitlistEntries  WaitlistEntry[]
   payRates         PractitionerPayRate[]
@@ -361,10 +370,43 @@ model AvailabilityException {
   startMinute    Int?
   endMinute      Int?
   reason         String?
+  /// BLOCK = ad-hoc diary block (shown on calendar). LEAVE = approved leave (hidden on calendar, still blocks booking).
+  kind           String   @default("BLOCK")
+  leaveRequestId String?
 
   practitioner PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  leaveRequest LeaveRequest?       @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
 
   @@index([practitionerId, date])
+  @@index([leaveRequestId])
+  @@index([kind, date])
+}
+
+/// Practitioner leave / sick leave — date range with approval by owner or reception.
+model LeaveRequest {
+  id                 String             @id @default(cuid())
+  clinicId           String
+  practitionerId     String
+  startDate          DateTime           @db.Date
+  endDate            DateTime           @db.Date
+  reason             String
+  allDay             Boolean            @default(true)
+  startMinute        Int?
+  endMinute          Int?
+  status             LeaveRequestStatus @default(PENDING)
+  requestedByUserId  String
+  reviewedByUserId   String?
+  reviewedAt         DateTime?
+  reviewNote         String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  clinic       Clinic                 @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  practitioner PractitionerProfile    @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  exceptions   AvailabilityException[]
+
+  @@index([clinicId, status])
+  @@index([practitionerId, startDate])
 }
 
 model Appointment {
