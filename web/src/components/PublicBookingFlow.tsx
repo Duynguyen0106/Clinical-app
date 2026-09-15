@@ -33,6 +33,7 @@ type Clinic = {
     id: string;
     name: string;
     durationMinutes: number;
+    defaultPriceCents?: number;
     effectiveDepositCents?: number;
   }[];
   practitioners: ({ id: string; displayName: string } | null)[];
@@ -247,7 +248,10 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                 >
                   {clinic.appointmentTypes.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.durationMinutes} min)
+                      {s.name} · {s.durationMinutes} min
+                      {s.defaultPriceCents != null && s.defaultPriceCents > 0
+                        ? ` · £${(s.defaultPriceCents / 100).toFixed(2)}`
+                        : ""}
                     </option>
                   ))}
                 </select>

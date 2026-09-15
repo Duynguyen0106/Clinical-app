@@ -1024,8 +1024,10 @@ h3 {
 
 .apt-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.55rem;
+  justify-content: flex-end;
+  gap: 0.45rem;
 }
 
 .status {
@@ -1661,6 +1663,23 @@ h3 {
 .field span {
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+.field-check {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  grid-template-columns: none;
+}
+
+.field-check span {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.stack-form {
+  display: grid;
+  gap: 0.85rem;
 }
 
 .slot-fieldset {
