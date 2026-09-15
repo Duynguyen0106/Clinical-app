@@ -3,7 +3,7 @@ import { AppointmentStatus } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import type { AuthContext } from "@/server/auth";
 import { badRequest, conflict, forbidden, notFound } from "@/server/errors";
-import { isLeaveReason } from "@/modules/scheduling/leave";
+import { isLeaveReason } from "@/modules/scheduling/leave-schema";
 
 export const createBlockSchema = z.object({
   practitionerId: z.string().min(1),

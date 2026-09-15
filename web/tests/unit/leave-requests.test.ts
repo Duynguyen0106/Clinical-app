@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createLeaveRequestSchema } from "@/modules/scheduling/leave";
+import { createLeaveRequestSchema } from "@/modules/scheduling/leave-schema";
 
 describe("leave request schema", () => {
   it("accepts a date-range annual leave request", () => {
