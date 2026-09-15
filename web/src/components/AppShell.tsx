@@ -27,23 +27,47 @@ type NavItem = {
   href: string;
   label: string;
   myDayLabel?: string;
+  scheduleLabel?: string;
   icon: typeof LayoutDashboard;
   clinicianOnly?: boolean;
   ownerOnly?: boolean;
   staffOps?: boolean;
+  /** Hide from PRACTITIONER role — keep schedule + notes focused */
+  hideForPractitioner?: boolean;
 };
 
 const nav: NavItem[] = [
   { href: "/app", label: "Today", myDayLabel: "My day", icon: LayoutDashboard },
-  { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
+  {
+    href: "/app/calendar",
+    label: "Calendar",
+    scheduleLabel: "Schedule",
+    icon: CalendarDays,
+  },
   { href: "/app/rooms", label: "Rooms", icon: DoorOpen, staffOps: true },
   { href: "/app/services", label: "Services", icon: Stethoscope, staffOps: true },
-  { href: "/app/team", label: "Team", icon: UserRoundPlus, clinicianOnly: true },
+  {
+    href: "/app/team",
+    label: "Team",
+    icon: UserRoundPlus,
+    clinicianOnly: true,
+    hideForPractitioner: true,
+  },
   { href: "/app/team/pay", label: "Staff pay", icon: PoundSterling, ownerOnly: true },
   { href: "/app/patients", label: "Patients", icon: Users },
   { href: "/app/notes", label: "Notes", icon: ClipboardList, clinicianOnly: true },
-  { href: "/app/tasks", label: "Tasks", icon: ListTodo },
-  { href: "/app/waitlist", label: "Waitlist", icon: Hourglass },
+  {
+    href: "/app/tasks",
+    label: "Tasks",
+    icon: ListTodo,
+    hideForPractitioner: true,
+  },
+  {
+    href: "/app/waitlist",
+    label: "Waitlist",
+    icon: Hourglass,
+    hideForPractitioner: true,
+  },
   { href: "/app/money", label: "Money", icon: Wallet, staffOps: true },
   { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];
@@ -110,6 +134,7 @@ export function AppShell({
     if (item.ownerOnly && !isOwner) return false;
     // Practitioners focus on clinical work — money/rooms stay with front desk / owners
     if (item.staffOps && isPractitioner) return false;
+    if (item.hideForPractitioner && isPractitioner) return false;
     return true;
   });
 
@@ -138,7 +163,9 @@ export function AppShell({
             const label =
               href === "/app" && hasDiary && item.myDayLabel
                 ? item.myDayLabel
-                : item.label;
+                : href === "/app/calendar" && isPractitioner && item.scheduleLabel
+                  ? item.scheduleLabel
+                  : item.label;
             const active =
               href === "/app"
                 ? pathname === "/app"
@@ -179,9 +206,11 @@ export function AppShell({
             <h1>{title}</h1>
             {subtitle ? <p className="app-subtitle">{subtitle}</p> : null}
           </div>
-          <Link href={bookHref} className="btn-ghost">
-            Patient booking →
-          </Link>
+          {!isPractitioner ? (
+            <Link href={bookHref} className="btn-ghost">
+              Patient booking →
+            </Link>
+          ) : null}
         </header>
         <main className="app-content">{children}</main>
       </div>

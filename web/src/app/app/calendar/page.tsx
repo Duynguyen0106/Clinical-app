@@ -383,10 +383,10 @@ export default function CalendarPage() {
 
   return (
     <AppShell
-      title="Calendar"
+      title={me?.role === "PRACTITIONER" ? "Schedule" : "Calendar"}
       subtitle={
         me?.role === "PRACTITIONER"
-          ? "Your diary — reception manages schedule changes; you get notified of updates."
+          ? "Your diary — tap an appointment to open the visit and take notes."
           : "Click an empty time slot to book — look up the patient by name, phone, or NHS number."
       }
     >
@@ -412,7 +412,9 @@ export default function CalendarPage() {
                 Week
               </button>
             </div>
-            {catalog && catalog.practitioners.length > 1 ? (
+            {catalog &&
+            catalog.practitioners.length > 1 &&
+            me?.role !== "PRACTITIONER" ? (
               <div
                 className="view-toggle prac-filter"
                 role="group"
@@ -508,12 +510,14 @@ export default function CalendarPage() {
                 </button>
               </>
             ) : null}
-            <Link
-              href={`/book/${me?.clinic.slug ?? "northbank-manual"}`}
-              className="btn-ghost"
-            >
-              Online booking
-            </Link>
+            {me?.role !== "PRACTITIONER" ? (
+              <Link
+                href={`/book/${me?.clinic.slug ?? "northbank-manual"}`}
+                className="btn-ghost"
+              >
+                Online booking
+              </Link>
+            ) : null}
           </div>
         </div>
         {error ? <p className="form-error">{error}</p> : null}
@@ -704,8 +708,8 @@ export default function CalendarPage() {
                 </>
               ) : (
                 <p className="muted">
-                  Schedule changes are managed by reception. You are notified by
-                  email when appointments move or cancel.
+                  Open the visit to record and take the clinical note. Schedule
+                  changes are managed by reception.
                 </p>
               )}
             </div>

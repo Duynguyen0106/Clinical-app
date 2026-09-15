@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Mic, Square, Check, AlertTriangle, RefreshCw } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/components/AuthProvider";
 import { PatientPrepPanel } from "@/components/PatientPrepPanel";
 import { NotePrintActions } from "@/components/NotePrintActions";
 import { VisitInvoiceActions } from "@/components/VisitInvoiceActions";
@@ -60,6 +61,8 @@ type VisitPayload = {
 type Props = { visitId: string };
 
 export function VisitRecorder({ visitId }: Props) {
+  const { me } = useAuth();
+  const showMoney = me?.role === "OWNER" || me?.role === "RECEPTION";
   const [phase, setPhase] = useState<Phase>("loading");
   const [consentChecked, setConsentChecked] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -753,7 +756,7 @@ export function VisitRecorder({ visitId }: Props) {
                 ) : null}
               </div>
 
-              {visit?.appointment.id ? (
+              {showMoney && visit?.appointment.id ? (
                 <VisitInvoiceActions
                   visitId={visitId}
                   appointmentId={visit.appointment.id}
@@ -803,11 +806,13 @@ export function VisitRecorder({ visitId }: Props) {
               ) : null}
 
               <Link href="/app" className="btn-primary">
-                Back to Today
+                Back to My day
               </Link>
-              <Link href="/app/money" className="btn-secondary">
-                Money desk
-              </Link>
+              {showMoney ? (
+                <Link href="/app/money" className="btn-secondary">
+                  Money desk
+                </Link>
+              ) : null}
             </div>
           )}
         </section>

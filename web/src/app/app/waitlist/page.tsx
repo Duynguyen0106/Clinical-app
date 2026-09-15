@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
 import { api, ApiError } from "@/lib/api";
 
 type WaitlistEntry = {
@@ -25,6 +27,8 @@ type Catalog = {
 type Patient = { id: string; firstName: string; lastName: string };
 
 export default function WaitlistPage() {
+  const router = useRouter();
+  const { me, loading: authLoading } = useAuth();
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -51,9 +55,14 @@ export default function WaitlistPage() {
   }, [patientId, typeId]);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (me?.role === "PRACTITIONER") {
+      router.replace("/app");
+      return;
+    }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount
-  }, []);
+  }, [authLoading, me?.role, router]);
 
   async function addEntry() {
     setError(null);
