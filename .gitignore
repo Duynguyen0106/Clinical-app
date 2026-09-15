@@ -7,3 +7,6 @@ node_modules/
 native/node_modules/
 native/desktop/node_modules/
 native/desktop/release/
+
+# Vercel CLI link (monorepo root)
+.vercel
