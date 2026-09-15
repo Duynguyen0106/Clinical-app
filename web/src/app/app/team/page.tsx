@@ -345,7 +345,7 @@ export default function TeamPage() {
     >
       {isOwner ? (
         <p className="alert-line">
-          Staff rates and month pay summary:{" "}
+          Staff rates and month due:{" "}
           <Link href="/app/team/pay">Open staff pay →</Link>
         </p>
       ) : null}
