@@ -330,4 +330,11 @@ export async function cancelLeaveRequest(ctx: AuthContext, id: string) {
   });
 }
 
+export function isLeaveReason(reason: string | null | undefined) {
+  if (!reason) return false;
+  const normalised = reason.trim().toLowerCase();
+  if (LEAVE_REASONS.some((r) => r.toLowerCase() === normalised)) return true;
+  return /\bleave\b/i.test(reason) || /training\s*\/?\s*cpd/i.test(reason);
+}
+
 export { LEAVE_REASONS };
