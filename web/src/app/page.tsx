@@ -118,12 +118,13 @@ export default function HomePage() {
         <nav className="landing-nav-links" aria-label="Primary">
           <a href="#features">Features</a>
           <a href="#how-it-works">How it works</a>
+          <a href="#pricing">Pricing</a>
           <a href="#uk-trust">UK &amp; privacy</a>
         </nav>
         <div className="landing-nav-cta">
-          <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-ghost">
-            Book as patient
-          </Link>
+          <a href="#pilot" className="btn-ghost">
+            Start a pilot
+          </a>
           <Link href="/login" className="btn-primary">
             Clinic sign in
           </Link>
@@ -153,12 +154,12 @@ export default function HomePage() {
             records once and drafts the clinical note into your MSK template.
           </p>
           <div className="landing-cta">
-            <Link href="/login" className="btn-primary">
+            <a href="#pilot" className="btn-primary">
+              Start a pilot
+            </a>
+            <Link href="/login" className="btn-secondary">
               Try the clinic demo
             </Link>
-            <a href="#features" className="btn-secondary">
-              Explore features
-            </a>
           </div>
         </div>
       </section>
@@ -390,7 +391,88 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 8. Transparent try — Cliniko pricing/trial equivalent for beta */}
+      {/* Pricing — SaaS plans for clinics */}
+      <section
+        id="pricing"
+        className="landing-section landing-pricing"
+        aria-labelledby="pricing-heading"
+      >
+        <p className="landing-eyebrow">Simple monthly pricing</p>
+        <h2 id="pricing-heading">Hosted for you. Updated without a clinic visit.</h2>
+        <p className="landing-support">
+          We run Treow in the cloud. Your team signs in from any browser. Your
+          website gets a Book button or embed — paste once, we keep improving the
+          product.
+        </p>
+        <div className="landing-price-grid">
+          <article className="landing-price-card">
+            <h3>Starter</h3>
+            <p className="landing-price-amount">
+              £79<span>/ month</span>
+            </p>
+            <p>Solo or two-practitioner practices.</p>
+            <ul>
+              <li>Diary, notes, online booking</li>
+              <li>Website button + embed</li>
+              <li>Email support</li>
+            </ul>
+          </article>
+          <article className="landing-price-card landing-price-featured">
+            <p className="landing-price-badge">Most clinics</p>
+            <h3>Clinic</h3>
+            <p className="landing-price-amount">
+              £149<span>/ month</span>
+            </p>
+            <p>Busy multi-practitioner clinics.</p>
+            <ul>
+              <li>Everything in Starter</li>
+              <li>Rooms, waitlist, staff pay</li>
+              <li>Deposits &amp; GBP invoices</li>
+              <li>Priority onboarding</li>
+            </ul>
+          </article>
+          <article className="landing-price-card">
+            <h3>Group</h3>
+            <p className="landing-price-amount">Custom</p>
+            <p>Multi-site groups and chains.</p>
+            <ul>
+              <li>Unlimited practitioners</li>
+              <li>Guided rollout</li>
+              <li>SLA support</li>
+            </ul>
+          </article>
+        </div>
+        <p className="landing-support landing-price-note">
+          No clinic install. No surprise site-visit fees for product updates.
+          Cancel anytime from Billing in the app once Stripe is connected.
+        </p>
+      </section>
+
+      <section
+        id="pilot"
+        className="landing-section landing-pilot"
+        aria-labelledby="pilot-heading"
+      >
+        <p className="landing-eyebrow">Design partners</p>
+        <h2 id="pilot-heading">Start with a guided pilot.</h2>
+        <p className="landing-support">
+          We create your clinic tenant, owner login, and website snippets. You
+          run a short live pilot — we update Treow remotely as you give feedback.
+        </p>
+        <div className="landing-cta">
+          <a
+            className="btn-primary"
+            href="mailto:ops@northbank.example?subject=Treow%20clinic%20pilot"
+          >
+            Email to start a pilot
+          </a>
+          <Link href="/login" className="btn-secondary">
+            Explore the demo first
+          </Link>
+        </div>
+      </section>
+
+      {/* Transparent try — Cliniko pricing/trial equivalent for beta */}
       <section
         id="demo"
         className="landing-close"
@@ -429,6 +511,8 @@ export default function HomePage() {
         </p>
         <nav aria-label="Footer">
           <a href="#features">Features</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#pilot">Pilot</a>
           <Link href="/privacy">Privacy</Link>
           <Link href="/login">Sign in</Link>
           <Link href={`/book/${DEMO_CLINIC.slug}`}>Book</Link>

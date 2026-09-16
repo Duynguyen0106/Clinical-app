@@ -11,6 +11,7 @@ import {
   ListTodo,
   LogOut,
   PoundSterling,
+  CreditCard,
   Settings,
   Stethoscope,
   Users,
@@ -68,6 +69,7 @@ const nav: NavItem[] = [
     hideForPractitioner: true,
   },
   { href: "/app/money", label: "Money", icon: Wallet, staffOps: true },
+  { href: "/app/billing", label: "Billing", icon: CreditCard, ownerOnly: true },
   { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];
 

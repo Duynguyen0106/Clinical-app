@@ -1,6 +1,8 @@
 # Treow Clinic — Launch readiness
 
-Goal: **unpaid UK design-partner beta** (1–2 clinics), not full commercial GA.
+Goal: move from **unpaid UK design-partner beta** toward **sellable hosted SaaS**.
+
+Commercial packaging (website embed UI, clinic provision API, Stripe Billing, pricing page): see **`docs/SELL.md`**.
 
 Product loop already ships: book → Today → Visit (record) → sign note → mark paid · waitlist · tasks · pulse · UK privacy controls.
 
