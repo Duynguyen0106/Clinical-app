@@ -38,7 +38,9 @@ export default function LoginPage() {
       </div>
       <form className="auth-form" onSubmit={onSubmit}>
         <h1>Sign in</h1>
-        <p className="muted">Clinic staff — UK demo ready.</p>
+        <p className="muted">
+          {BRAND.name} — full clinic demo for UK staff.
+        </p>
         <div className="demo-role-chips" role="group" aria-label="Demo accounts">
           <button
             type="button"
