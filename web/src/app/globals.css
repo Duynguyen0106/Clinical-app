@@ -2603,12 +2603,184 @@ h3 {
   padding: 0.7rem;
   font: inherit;
   cursor: pointer;
+  display: grid;
+  gap: 0.2rem;
+  text-align: left;
+}
+
+.slot .slot-prac {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .slot.selected {
   border-color: var(--accent);
   background: var(--accent-soft);
   font-weight: 600;
+}
+
+.slot.selected .slot-prac {
+  color: var(--accent-deep);
+}
+
+/* Day-first availability (public book / reschedule) */
+.avail-picker {
+  gap: 0.75rem;
+}
+
+.avail-day-strip {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.15rem 0.1rem 0.35rem;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.avail-day {
+  flex: 0 0 auto;
+  width: 4.6rem;
+  scroll-snap-align: start;
+  display: grid;
+  justify-items: center;
+  gap: 0.1rem;
+  padding: 0.55rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: white;
+  font: inherit;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.avail-day:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.avail-day.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.avail-day-dow {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.avail-day.selected .avail-day-dow {
+  color: var(--accent-deep);
+}
+
+.avail-day-num {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-family: var(--font-display, Georgia, serif);
+}
+
+.avail-day-mon {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.avail-day-count {
+  margin-top: 0.2rem;
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.avail-day.selected .avail-day-count {
+  color: var(--accent-mid);
+  font-weight: 600;
+}
+
+.avail-day-heading {
+  margin: 0.15rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.avail-period {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.avail-period-label {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.avail-time-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.avail-time {
+  display: grid;
+  gap: 0.1rem;
+  justify-items: center;
+  padding: 0.55rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  font: inherit;
+  cursor: pointer;
+  min-height: 2.75rem;
+}
+
+.avail-time:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.avail-time.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.avail-time-clock {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.avail-time-prac {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avail-time.selected .avail-time-prac {
+  color: var(--accent-deep);
+}
+
+.avail-selected {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.avail-selected strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+@media (max-width: 420px) {
+  .avail-time-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .week-actions {

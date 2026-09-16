@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { BRAND } from "@/modules/config/brand";
 import { BrandLogo } from "@/components/BrandLogo";
+import {
+  AvailabilityPicker,
+  type AvailabilitySlot,
+} from "@/components/AvailabilityPicker";
 import {
   TurnstileField,
   turnstileEnabledInBrowser,
@@ -210,6 +214,17 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
     displayName: string;
   }[];
 
+  const availabilitySlots: AvailabilitySlot[] = useMemo(() => {
+    if (anyMode && anySlots.length > 0) {
+      return anySlots.map((s) => ({
+        startsAt: s.startsAt,
+        practitionerId: s.practitionerId,
+        practitionerName: s.practitionerName,
+      }));
+    }
+    return slots.map((startsAt) => ({ startsAt }));
+  }, [anyMode, anySlots, slots]);
+
   const shellClass = embed ? "book-page book-page-embed" : "book-page";
   const accent = clinic?.brandColour || undefined;
   const clinicLogo = clinic?.logoUrl ?? null;
@@ -342,44 +357,28 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                   ))}
                 </select>
               </label>
-              <fieldset className="slot-fieldset">
-                <legend>Next available</legend>
-                <div className="slot-grid">
-                  {anyMode && anySlots.length > 0
-                    ? anySlots.map((s) => (
-                        <button
-                          key={`${s.practitionerId}-${s.startsAt}`}
-                          type="button"
-                          className={`slot ${
-                            slot === s.startsAt &&
-                            practitionerId === s.practitionerId
-                              ? "selected"
-                              : ""
-                          }`}
-                          onClick={() => {
-                            setSlot(s.startsAt);
-                            setPractitionerId(s.practitionerId);
-                          }}
-                        >
-                          {format(new Date(s.startsAt), "EEE d MMM HH:mm")}
-                          <span className="slot-prac">{s.practitionerName}</span>
-                        </button>
-                      ))
-                    : slots.map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          className={`slot ${slot === s ? "selected" : ""}`}
-                          onClick={() => setSlot(s)}
-                        >
-                          {format(new Date(s), "EEE d MMM HH:mm")}
-                        </button>
-                      ))}
-                </div>
-                {(anyMode ? anySlots.length === 0 : slots.length === 0) ? (
-                  <p className="muted">No open slots in the next fortnight.</p>
-                ) : null}
-              </fieldset>
+              <AvailabilityPicker
+                slots={availabilitySlots}
+                value={slot}
+                practitionerId={practitionerId}
+                onSelect={(s) => {
+                  setSlot(s.startsAt);
+                  if (s.practitionerId) setPractitionerId(s.practitionerId);
+                }}
+                legend="Availability"
+              />
+              {slot ? (
+                <p className="avail-selected muted">
+                  Selected:{" "}
+                  <strong>
+                    {format(new Date(slot), "EEE d MMM · HH:mm")}
+                    {anyMode &&
+                    practitioners.find((p) => p.id === practitionerId)
+                      ? ` · ${practitioners.find((p) => p.id === practitionerId)?.displayName}`
+                      : ""}
+                  </strong>
+                </p>
+              ) : null}
               {clinic.booking?.depositMode &&
               clinic.booking.depositMode !== "OFF" ? (
                 <p className="muted book-fineprint">

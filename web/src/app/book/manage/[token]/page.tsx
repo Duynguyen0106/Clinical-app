@@ -1,10 +1,11 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { BRAND } from "@/modules/config/brand";
 import { BrandLogo } from "@/components/BrandLogo";
+import { AvailabilityPicker } from "@/components/AvailabilityPicker";
 import { api, ApiError } from "@/lib/api";
 
 type Managed = {
@@ -97,6 +98,11 @@ export default function ManageBookingPage({ params }: Props) {
       appointment.status,
     );
 
+  const availabilitySlots = useMemo(
+    () => slots.map((startsAt) => ({ startsAt })),
+    [slots],
+  );
+
   return (
     <div className="book-page">
       <div className="book-shell">
@@ -120,7 +126,10 @@ export default function ManageBookingPage({ params }: Props) {
                 </strong>
               </p>
               <p>
-                {format(new Date(appointment.startsAt), "EEEE d MMMM yyyy · HH:mm")}
+                {format(
+                  new Date(appointment.startsAt),
+                  "EEEE d MMMM yyyy · HH:mm",
+                )}
               </p>
               <p className="muted">
                 {appointment.appointmentType.name} ·{" "}
@@ -152,23 +161,21 @@ export default function ManageBookingPage({ params }: Props) {
 
               {!closed && mode === "reschedule" ? (
                 <>
-                  <label className="field">
-                    <span>New time</span>
-                    <select
-                      value={slot}
-                      onChange={(e) => setSlot(e.target.value)}
-                    >
-                      {slots.length === 0 ? (
-                        <option value="">No other slots available</option>
-                      ) : (
-                        slots.map((s) => (
-                          <option key={s} value={s}>
-                            {format(new Date(s), "EEE d MMM HH:mm")}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </label>
+                  <AvailabilityPicker
+                    slots={availabilitySlots}
+                    value={slot}
+                    onSelect={(s) => setSlot(s.startsAt)}
+                    legend="Pick a new day and time"
+                    emptyMessage="No other slots available."
+                  />
+                  {slot ? (
+                    <p className="avail-selected muted">
+                      Selected:{" "}
+                      <strong>
+                        {format(new Date(slot), "EEE d MMM · HH:mm")}
+                      </strong>
+                    </p>
+                  ) : null}
                   <div className="sheet-actions">
                     <button
                       type="button"
