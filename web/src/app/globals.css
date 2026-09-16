@@ -2875,7 +2875,7 @@ h3 {
     max-width: min(220px, 55vw);
   }
 
-  .nav-list {
+  .app-nav-desktop .nav-list {
     grid-auto-flow: column;
     grid-auto-columns: max-content;
     overflow-x: auto;
@@ -2883,7 +2883,7 @@ h3 {
     min-width: 0;
   }
 
-  .nav-footer {
+  .app-nav-desktop .nav-footer {
     display: none;
   }
 
@@ -3712,6 +3712,28 @@ h3 {
 
   .mobile-drawer-nav {
     flex: 1;
+    display: grid;
+    grid-auto-flow: row;
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 0.15rem;
+  }
+
+  .mobile-drawer-nav .nav-group {
+    margin-bottom: 0.85rem;
+  }
+
+  .mobile-drawer-head {
+    align-items: flex-start;
+  }
+
+  .mobile-drawer-head .brand-word {
+    max-width: 11rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .mobile-drawer-footer {
