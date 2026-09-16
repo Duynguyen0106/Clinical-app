@@ -34,5 +34,11 @@ export const PATCH = withAuth(async (req, ctx, params) => {
     requireStaff(ctx);
   }
   const appointment = await updateAppointment(ctx, params.id, parsed);
-  return jsonOk({ appointment });
+  const notification =
+    appointment &&
+    typeof appointment === "object" &&
+    "notification" in appointment
+      ? (appointment as { notification?: unknown }).notification
+      : undefined;
+  return jsonOk({ appointment, notification });
 });
