@@ -14,7 +14,7 @@ export async function sendEmail(message: EmailMessage) {
 
   if (provider === "resend" && process.env.RESEND_API_KEY) {
     const from =
-      process.env.EMAIL_FROM ?? "Treow Book <onboarding@resend.dev>";
+      process.env.EMAIL_FROM ?? "Treow Clinic <onboarding@resend.dev>";
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {

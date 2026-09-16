@@ -1,29 +1,35 @@
-# Sell Treow Book — commercial readiness
+# Sell Treow Clinic — commercial readiness
 
-**What we sell:** **Treow Book** — hosted online booking + staff diary for UK clinics.
+**What we sell:** **Treow Clinic** — a full UK clinic management system:
 
-**What is demo-only:** **Treow Clinic** (Northbank Manual Therapy seed) — a full clinic day demo so prospects can click around. It is not the commercial SKU.
+- Diary & online booking (website button / embed)
+- Clinical notes (visit record → organised draft → sign)
+- Money in GBP (invoices, deposits, receipts, staff pay)
+- Clinic day ops (Today, tasks, waitlist, rooms, team leave)
+- Hosted SaaS — you update remotely; clinics do not install software
 
-## Positioning
+**Demo:** Northbank Manual Therapy (`/login`, password `treow-demo`) is the live product tour — not a separate SKU.
 
-| Surface | Role |
-|---------|------|
-| Marketing site (`/`) | Sell Treow Book: embed, diary, reminders, deposits |
-| `/book/{slug}` · `/embed/{slug}` | Patient-facing booking product |
-| `/login` → demo clinic | Optional tour of diary + ops inside Treow Clinic demo |
-| Settings → Website booking | Copy button / iframe for the clinic’s own site |
-| Billing | Monthly subscription for Treow Book |
+## Positioning for customers
 
-Clinics do **not** download software. You host one app; each clinic is a tenant; their website only embeds your booking URL.
+**Headline:** Full clinic management for UK allied health — not another booking bolt-on.
+
+Lead with the **whole clinic day**:
+
+1. Attract patients online (embed + book page)
+2. Run the diary cleanly (multi-practitioner, rooms, waitlist)
+3. Finish notes faster (record → organise → sign)
+4. Keep money tidy (GBP invoices & deposits)
+5. Stay UK-minded (privacy, retention, EU hosting)
+
+**Objection handling:** “Is this just online booking?” → No. Booking is included and syncs to the same diary; the product is diary + notes + money + ops in one hosted app.
 
 ## What clinics get
 
-1. **Public booking** — hosted page + website embed (button or iframe).
-2. **Staff diary** — calendar, services, practitioners, rooms, waitlist, notice windows.
-3. **Remote updates** — you deploy once; every clinic receives the release.
-4. **Monthly subscription** — owner opens **Billing** (Stripe Checkout / Customer Portal when configured).
-
-The AI note / visit-recorder loop in the demo is **showcase context**, not the primary sale.
+1. **Cloud clinic app** — staff sign in at `/login` (no install).
+2. **Website integration** — Settings → **Website booking** (button + iframe).
+3. **Remote updates** — one deploy; every clinic receives the release.
+4. **Monthly subscription** — owner **Billing** (Stripe Checkout / portal when configured).
 
 ## Provision a paying / pilot clinic
 
@@ -46,31 +52,28 @@ curl -X POST "$APP_BASE_URL/api/v1/admin/clinics" \
 
 Response includes login URL, book/embed URLs, and website HTML snippets.
 
-Requires `ADMIN_PROVISION_SECRET` (≥24 characters) in the environment.
+Requires `ADMIN_PROVISION_SECRET` (≥24 characters).
 
-## Stripe Billing (clinic → Treow Book)
+## Stripe Billing (clinic → Treow)
 
 | Env | Purpose |
 |-----|---------|
-| `STRIPE_SECRET_KEY` | Shared with deposit Checkout (same Stripe account is fine for MVP) |
-| `STRIPE_PRICE_STARTER` | Price ID for Starter |
-| `STRIPE_PRICE_CLINIC` | Price ID for Clinic |
-| `STRIPE_WEBHOOK_SECRET` | Endpoint `/api/v1/billing/webhook` |
+| `STRIPE_SECRET_KEY` | Platform Stripe account |
+| `STRIPE_PRICE_STARTER` | Starter plan price ID |
+| `STRIPE_PRICE_CLINIC` | Clinic plan price ID |
+| `STRIPE_WEBHOOK_SECRET` | `/api/v1/billing/webhook` |
 
-Wire Stripe webhook events:
-- `checkout.session.completed`
-- `customer.subscription.updated`
-- `customer.subscription.deleted`
+Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`.
 
-Owner UI: `/app/billing` — subscribe, manage payment method.
+Owner UI: `/app/billing`.
 
-Patient deposits remain separate (`PAYMENT_PROVIDER` + deposit Checkout).
+Patient deposits remain separate (`PAYMENT_PROVIDER`).
 
 ## Suggested commercial path
 
-1. Lead with **Try online booking** (public book / embed demo).
-2. Pilot clinics on `PILOT` / `TRIALING` (manual provision + website snippets).
-3. Turn on Stripe prices → owners self-serve upgrade from Billing.
-4. Keep Treow Clinic demo available for deeper product tours — clearly labelled as demo.
+1. Marketing site sells the **full clinic system**.
+2. Demo login + patient booking for self-serve exploration.
+3. Guided pilot via provision API + website snippets.
+4. Stripe Billing for monthly plans.
 
 See also: `docs/WEBSITE_INTEGRATION.md`, `docs/DEPLOY.md`, `docs/PILOT.md`.

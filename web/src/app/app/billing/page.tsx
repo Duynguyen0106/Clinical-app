@@ -110,7 +110,7 @@ export default function BillingPage() {
   return (
     <AppShell
       title="Billing"
-      subtitle="Your Treow Book subscription — online booking and diary. Separate from patient invoices and deposits."
+      subtitle="Your Treow Clinic subscription — the full clinic system. Separate from patient invoices and deposits."
     >
       {error ? <p className="form-error">{error}</p> : null}
       {message ? <p className="form-ok">{message}</p> : null}

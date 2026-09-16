@@ -54,6 +54,6 @@ describe("SAAS_PLANS", () => {
     assert.ok(SAAS_PLANS.some((p) => p.id === "STARTER"));
     assert.ok(SAAS_PLANS.some((p) => p.id === "CLINIC"));
     const starter = SAAS_PLANS.find((p) => p.id === "STARTER");
-    assert.match(starter?.blurb ?? "", /booking|diary/i);
+    assert.match(starter?.blurb ?? "", /clinic|diary|notes|booking/i);
   });
 });

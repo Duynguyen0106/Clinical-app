@@ -157,12 +157,12 @@ export function AppShell({
           )}
           <div>
             <p className="brand-word">{clinicName}</p>
-            <p className="brand-sub">{BRAND.name}</p>
+            <p className="brand-sub">{BRAND.shortName}</p>
           </div>
         </Link>
         {isDemoClinic ? (
           <p className="demo-clinic-note">
-            Demo clinic — product sold is {BRAND.name}
+            Live demo · {BRAND.name} product tour
           </p>
         ) : null}
         <nav className="nav-list" aria-label="Clinic">

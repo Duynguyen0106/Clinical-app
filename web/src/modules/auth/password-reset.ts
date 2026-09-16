@@ -42,11 +42,11 @@ export async function requestPasswordReset(
     const link = `${getAppBaseUrl()}/login/reset?token=${raw}`;
     await sendEmail({
       to: user.email,
-      subject: "Reset your Treow Book password",
+      subject: "Reset your Treow Clinic password",
       text: [
         `Hi ${user.name},`,
         "",
-        "We received a request to reset your Treow Book staff password.",
+        "We received a request to reset your Treow Clinic staff password.",
         "Open this link within 1 hour to choose a new password:",
         link,
         "",

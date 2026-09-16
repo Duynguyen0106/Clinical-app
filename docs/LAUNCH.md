@@ -1,10 +1,10 @@
 # Treow Clinic — Launch readiness
 
-Goal: sell **Treow Book** (online booking + diary) as hosted SaaS. **Treow Clinic** remains the interactive demo only.
+Goal: sell **Treow Clinic** as a full UK clinic management system (diary, booking, notes, money, team).
 
 Commercial packaging: see **`docs/SELL.md`**.
 
-Product loop for the booking SKU: website embed → public book → diary → reminders · deposits · waitlist.
+Product loop: website booking → diary → visit notes → invoices · rooms · waitlist · team.
 
 ---
 
