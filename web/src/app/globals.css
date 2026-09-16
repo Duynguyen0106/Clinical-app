@@ -2710,6 +2710,13 @@ h3 {
   gap: 0.4rem;
 }
 
+.avail-period-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .avail-period-label {
   margin: 0;
   font-size: 0.78rem;
@@ -2719,10 +2726,55 @@ h3 {
   letter-spacing: 0.04em;
 }
 
+.avail-period-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-solid, #fff) 80%, transparent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.avail-period-toggle-meta {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.book-cta-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 0.25rem -0.25rem 0;
+  padding: 0.75rem 0.25rem 0.15rem;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface) 0%, transparent) 0%,
+    var(--surface) 28%
+  );
+}
+
+.book-cta-bar .btn-primary {
+  width: 100%;
+}
+
 .avail-time-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.45rem;
+}
+
+.avail-time-wrap {
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
 }
 
 .avail-time {
@@ -2736,6 +2788,7 @@ h3 {
   font: inherit;
   cursor: pointer;
   min-height: 2.75rem;
+  width: 100%;
 }
 
 .avail-time:hover {
@@ -2765,6 +2818,45 @@ h3 {
 
 .avail-time.selected .avail-time-prac {
   color: var(--accent-deep);
+}
+
+.avail-prac-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  grid-column: 1 / -1;
+}
+
+.avail-time-wrap:has(.avail-prac-chips) {
+  grid-column: 1 / -1;
+}
+
+.avail-prac-chip {
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.avail-prac-chip.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+.avail-more {
+  justify-self: start;
+  margin-top: 0.15rem;
+}
+
+.avail-day-heading-meta {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .avail-selected {

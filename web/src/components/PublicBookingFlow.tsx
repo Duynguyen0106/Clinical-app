@@ -379,6 +379,16 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                   </strong>
                 </p>
               ) : null}
+              <div className="book-cta-bar">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={!slot}
+                  onClick={() => setStep("details")}
+                >
+                  Continue to intake
+                </button>
+              </div>
               {clinic.booking?.depositMode &&
               clinic.booking.depositMode !== "OFF" ? (
                 <p className="muted book-fineprint">
@@ -398,14 +408,6 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
               {policyText ? (
                 <p className="muted book-fineprint">{policyText}</p>
               ) : null}
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={!slot}
-                onClick={() => setStep("details")}
-              >
-                Continue to intake
-              </button>
             </>
           )}
 
