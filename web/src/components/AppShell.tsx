@@ -38,7 +38,7 @@ const nav: NavItem[] = [
   { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/app/rooms", label: "Rooms", icon: DoorOpen, staffOps: true },
   { href: "/app/services", label: "Services", icon: Stethoscope, staffOps: true },
-  { href: "/app/team", label: "Team", icon: UserRoundPlus, clinicianOnly: true },
+  { href: "/app/team", label: "Team", icon: UserRoundPlus },
   { href: "/app/team/pay", label: "Staff pay", icon: PoundSterling, ownerOnly: true },
   { href: "/app/patients", label: "Patients", icon: Users },
   { href: "/app/notes", label: "Notes", icon: ClipboardList, clinicianOnly: true },
