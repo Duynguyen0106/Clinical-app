@@ -46,17 +46,12 @@ const nav: NavItem[] = [
   },
   { href: "/app/rooms", label: "Rooms", icon: DoorOpen, staffOps: true },
   { href: "/app/services", label: "Services", icon: Stethoscope, staffOps: true },
-<<<<<<< HEAD
   {
     href: "/app/team",
     label: "Team",
     icon: UserRoundPlus,
-    clinicianOnly: true,
     hideForPractitioner: true,
   },
-=======
-  { href: "/app/team", label: "Team", icon: UserRoundPlus },
->>>>>>> origin/main
   { href: "/app/team/pay", label: "Staff pay", icon: PoundSterling, ownerOnly: true },
   { href: "/app/patients", label: "Patients", icon: Users },
   { href: "/app/notes", label: "Notes", icon: ClipboardList, clinicianOnly: true },
