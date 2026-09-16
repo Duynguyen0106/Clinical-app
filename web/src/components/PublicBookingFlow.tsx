@@ -309,13 +309,14 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
             </p>
           ) : null}
           <h1>Book online</h1>
-          <p className="muted">
+          <p className="muted book-lead">
             Physio, osteopathy, and manual therapy — short intake, then confirm.
           </p>
           {error ? <p className="form-error">{error}</p> : null}
 
           {step === "pick" && clinic && (
             <>
+              <div className="book-pick-row">
               <label className="field">
                 <span>Service</span>
                 <select
@@ -357,6 +358,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                   ))}
                 </select>
               </label>
+              </div>
               <AvailabilityPicker
                 slots={availabilitySlots}
                 value={slot}
