@@ -1,10 +1,11 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Printer, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
 import { api, ApiError } from "@/lib/api";
 import { LAUNCH } from "@/modules/config/brand";
 
@@ -74,11 +75,20 @@ export default function MoneyPage() {
 }
 
 function MoneyPageInner() {
+  const router = useRouter();
+  const { me, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const unpaidOnly = searchParams.get("status") === "unpaid";
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptDoc | null>(null);
+
+  useEffect(() => {
+    if (authLoading || !me) return;
+    if (me.role === "PRACTITIONER") {
+      router.replace("/app");
+    }
+  }, [authLoading, me, router]);
 
   const load = useCallback(() => {
     void api<{ invoices: Invoice[] }>("/invoices")

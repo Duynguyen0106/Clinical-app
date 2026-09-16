@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { addDays, format } from "date-fns";
+import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
@@ -109,8 +108,7 @@ function leaveStatusLabel(status: LeaveRequest["status"]) {
 }
 
 export default function TeamPage() {
-  const router = useRouter();
-  const { me, loading: authLoading } = useAuth();
+  const { me } = useAuth();
   const isOwner = me?.role === "OWNER";
   const isReception = me?.role === "RECEPTION";
   const canReviewLeave = isOwner || isReception;
@@ -147,13 +145,6 @@ export default function TeamPage() {
   const [leaveAllDay, setLeaveAllDay] = useState(true);
   const [leaveStart, setLeaveStart] = useState("09:00");
   const [leaveEnd, setLeaveEnd] = useState("17:00");
-
-  useEffect(() => {
-    if (authLoading || !me) return;
-    if (me.role === "PRACTITIONER") {
-      router.replace("/app");
-    }
-  }, [authLoading, me, router]);
 
   const canEditSelected = useMemo(() => {
     if (!selectedId) return false;
@@ -217,6 +208,10 @@ export default function TeamPage() {
   }, []);
 
   const selected = practitioners.find((p) => p.id === selectedId) ?? null;
+  const listedPractitioners =
+    isOwner || isReception
+      ? practitioners
+      : practitioners.filter((p) => p.id === myProfileId);
 
   useEffect(() => {
     if (!selected) return;
@@ -408,7 +403,11 @@ export default function TeamPage() {
   return (
     <AppShell
       title="Team"
-      subtitle="Practitioner profiles, weekly hours, and leave requests (approval required)."
+      subtitle={
+        me?.role === "PRACTITIONER"
+          ? "Your weekly hours and leave requests (reception or an owner must approve leave)."
+          : "Profiles, weekly hours, leave approvals — staff pay under Clinic setup for owners."
+      }
     >
       {isOwner ? (
         <p className="alert-line">
@@ -467,12 +466,12 @@ export default function TeamPage() {
         <section className="panel">
           <div className="panel-head">
             <h2>Practitioners</h2>
-            <span className="count">{practitioners.length}</span>
+            <span className="count">{listedPractitioners.length}</span>
           </div>
           {error ? <p className="form-error">{error}</p> : null}
           {message ? <p className="alert-line">{message}</p> : null}
           <ul className="apt-list">
-            {practitioners.map((p) => (
+            {listedPractitioners.map((p) => (
               <li key={p.id}>
                 <button
                   type="button"

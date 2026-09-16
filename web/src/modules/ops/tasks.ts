@@ -74,12 +74,17 @@ export async function listOpsTasks(ctx: AuthContext): Promise<OpsTask[]> {
   const tasks: OpsTask[] = [];
 
   for (const note of draftNotes) {
+    // Reception cannot open clinical notes — only surface sign-off tasks to clinicians
+    if (ctx.role === "RECEPTION") continue;
+    const visitHref = note.visitId
+      ? `/app/visits/${note.visitId}`
+      : `/app/notes?status=DRAFT`;
     tasks.push({
       id: `note-${note.id}`,
       kind: "UNSIGNED_NOTE",
       title: `Sign draft — ${note.patient.firstName} ${note.patient.lastName}`,
       detail: "AI/clinical draft waiting for practitioner sign-off",
-      href: `/app/notes`,
+      href: visitHref,
       priority: 1,
       createdAt: note.updatedAt.toISOString(),
     });

@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   ListTodo,
   LogOut,
-  PoundSterling,
   Settings,
   Stethoscope,
   Users,
@@ -29,47 +28,96 @@ type NavItem = {
   myDayLabel?: string;
   scheduleLabel?: string;
   icon: typeof LayoutDashboard;
+  /** OWNER or PRACTITIONER */
   clinicianOnly?: boolean;
   ownerOnly?: boolean;
+  /** Hidden from PRACTITIONER (front desk / clinic setup) */
   staffOps?: boolean;
-  /** Hide from PRACTITIONER role — keep schedule + notes focused */
+  /** Hidden from PRACTITIONER only (Team stays for leave/hours) */
   hideForPractitioner?: boolean;
 };
 
-const nav: NavItem[] = [
-  { href: "/app", label: "Today", myDayLabel: "My day", icon: LayoutDashboard },
+type NavGroup = {
+  id: string;
+  label: string;
+  items: NavItem[];
+};
+
+const navGroups: NavGroup[] = [
   {
-    href: "/app/calendar",
-    label: "Calendar",
-    scheduleLabel: "Schedule",
-    icon: CalendarDays,
+    id: "clinical",
+    label: "Clinical",
+    items: [
+      {
+        href: "/app",
+        label: "Today",
+        myDayLabel: "My day",
+        icon: LayoutDashboard,
+      },
+      {
+        href: "/app/calendar",
+        label: "Calendar",
+        scheduleLabel: "Schedule",
+        icon: CalendarDays,
+      },
+      { href: "/app/patients", label: "Patients", icon: Users },
+      {
+        href: "/app/notes",
+        label: "Notes",
+        icon: ClipboardList,
+        clinicianOnly: true,
+      },
+    ],
   },
-  { href: "/app/rooms", label: "Rooms", icon: DoorOpen, staffOps: true },
-  { href: "/app/services", label: "Services", icon: Stethoscope, staffOps: true },
   {
-    href: "/app/team",
-    label: "Team",
-    icon: UserRoundPlus,
-    hideForPractitioner: true,
+    id: "desk",
+    label: "Front desk",
+    items: [
+      {
+        href: "/app/tasks",
+        label: "Tasks",
+        icon: ListTodo,
+        hideForPractitioner: true,
+      },
+      {
+        href: "/app/waitlist",
+        label: "Waitlist",
+        icon: Hourglass,
+        hideForPractitioner: true,
+      },
+      { href: "/app/money", label: "Money", icon: Wallet, staffOps: true },
+    ],
   },
-  { href: "/app/team/pay", label: "Staff pay", icon: PoundSterling, ownerOnly: true },
-  { href: "/app/patients", label: "Patients", icon: Users },
-  { href: "/app/notes", label: "Notes", icon: ClipboardList, clinicianOnly: true },
   {
-    href: "/app/tasks",
-    label: "Tasks",
-    icon: ListTodo,
-    hideForPractitioner: true,
+    id: "clinic",
+    label: "Clinic",
+    items: [
+      { href: "/app/team", label: "Team", icon: UserRoundPlus },
+      { href: "/app/rooms", label: "Rooms", icon: DoorOpen, staffOps: true },
+      {
+        href: "/app/services",
+        label: "Services",
+        icon: Stethoscope,
+        staffOps: true,
+      },
+      {
+        href: "/app/settings",
+        label: "Settings",
+        icon: Settings,
+        ownerOnly: true,
+      },
+    ],
   },
-  {
-    href: "/app/waitlist",
-    label: "Waitlist",
-    icon: Hourglass,
-    hideForPractitioner: true,
-  },
-  { href: "/app/money", label: "Money", icon: Wallet, staffOps: true },
-  { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];
+
+function isNavActive(pathname: string, href: string) {
+  if (href === "/app") return pathname === "/app";
+  // Staff pay lives under Team — keep Team active on /app/team/pay
+  if (href === "/app/team") {
+    return pathname === "/app/team" || pathname.startsWith("/app/team/");
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function AppShell({
   children,
@@ -128,14 +176,18 @@ export function AppShell({
     };
   }, [me?.clinic.hasLogo, me?.clinic.id]);
 
-  const visibleNav = nav.filter((item) => {
-    if (item.clinicianOnly && !isClinician) return false;
-    if (item.ownerOnly && !isOwner) return false;
-    // Practitioners focus on clinical work — money/rooms stay with front desk / owners
-    if (item.staffOps && isPractitioner) return false;
-    if (item.hideForPractitioner && isPractitioner) return false;
-    return true;
-  });
+  const visibleGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (item.clinicianOnly && !isClinician) return false;
+        if (item.ownerOnly && !isOwner) return false;
+        if (item.staffOps && isPractitioner) return false;
+        if (item.hideForPractitioner && isPractitioner) return false;
+        return true;
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <div className="app-shell min-h-screen">
@@ -157,31 +209,33 @@ export function AppShell({
           </div>
         </Link>
         <nav className="nav-list" aria-label="Clinic">
-          {visibleNav.map((item) => {
-            const { href, icon: Icon } = item;
-            const label =
-              href === "/app" && hasDiary && item.myDayLabel
-                ? item.myDayLabel
-                : href === "/app/calendar" && isPractitioner && item.scheduleLabel
-                  ? item.scheduleLabel
-                  : item.label;
-            const active =
-              href === "/app"
-                ? pathname === "/app"
-                : href === "/app/team"
-                  ? pathname === "/app/team"
-                  : pathname === href || pathname.startsWith(`${href}/`);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`nav-link ${active ? "active" : ""}`}
-              >
-                <Icon size={18} aria-hidden />
-                <span>{label}</span>
-              </Link>
-            );
-          })}
+          {visibleGroups.map((group) => (
+            <div key={group.id} className="nav-group">
+              <p className="nav-group-label">{group.label}</p>
+              {group.items.map((item) => {
+                const { href, icon: Icon } = item;
+                const label =
+                  href === "/app" && hasDiary && item.myDayLabel
+                    ? item.myDayLabel
+                    : href === "/app/calendar" &&
+                        isPractitioner &&
+                        item.scheduleLabel
+                      ? item.scheduleLabel
+                      : item.label;
+                const active = isNavActive(pathname, href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`nav-link ${active ? "active" : ""}`}
+                  >
+                    <Icon size={18} aria-hidden />
+                    <span>{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <div className="nav-footer">
           <p className="nav-clinic">{clinicName}</p>

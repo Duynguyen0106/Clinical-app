@@ -7,6 +7,7 @@ import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { api, ApiError } from "@/lib/api";
+import { pulseHrefForRole } from "@/modules/ops/pulse-links";
 
 type Appointment = {
   id: string;
@@ -395,35 +396,55 @@ export default function TodayPage() {
               </div>
               <div className="pulse-grid">
                 <Link
-                  href={pulse.links?.utilisation ?? "/app/calendar"}
+                  href={pulseHrefForRole(
+                    "utilisation",
+                    me?.role,
+                    pulse.links?.utilisation ?? "/app/calendar",
+                  )}
                   className="pulse-metric"
                 >
                   <strong>{pulse.utilisationPct}%</strong>
                   <span>Utilisation</span>
                 </Link>
                 <Link
-                  href={pulse.links?.rebook ?? "/app/patients"}
+                  href={pulseHrefForRole(
+                    "rebook",
+                    me?.role,
+                    pulse.links?.rebook ?? "/app/patients",
+                  )}
                   className="pulse-metric"
                 >
                   <strong>{pulse.rebookRatePct}%</strong>
                   <span>Rebook</span>
                 </Link>
                 <Link
-                  href={pulse.links?.unsigned ?? "/app/notes?status=DRAFT"}
+                  href={pulseHrefForRole(
+                    "unsigned",
+                    me?.role,
+                    pulse.links?.unsigned ?? "/app/notes?status=DRAFT",
+                  )}
                   className="pulse-metric"
                 >
                   <strong>{pulse.unsignedNotes}</strong>
                   <span>Unsigned</span>
                 </Link>
                 <Link
-                  href={pulse.links?.unpaid ?? "/app/money?status=unpaid"}
+                  href={pulseHrefForRole(
+                    "unpaid",
+                    me?.role,
+                    pulse.links?.unpaid ?? "/app/money?status=unpaid",
+                  )}
                   className="pulse-metric"
                 >
                   <strong>{pulse.unpaidInvoices}</strong>
                   <span>Unpaid</span>
                 </Link>
                 <Link
-                  href={pulse.links?.mix ?? "/app/patients"}
+                  href={pulseHrefForRole(
+                    "mix",
+                    me?.role,
+                    pulse.links?.mix ?? "/app/patients",
+                  )}
                   className="pulse-metric"
                 >
                   <strong>
@@ -433,7 +454,13 @@ export default function TodayPage() {
                 </Link>
               </div>
               <p className="muted pulse-meta">
-                <Link href={pulse.links?.unpaid ?? "/app/money?status=unpaid"}>
+                <Link
+                  href={pulseHrefForRole(
+                    "unpaid",
+                    me?.role,
+                    pulse.links?.unpaid ?? "/app/money?status=unpaid",
+                  )}
+                >
                   £{(pulse.unpaidCents / 100).toFixed(0)} outstanding
                 </Link>
                 {" · "}
