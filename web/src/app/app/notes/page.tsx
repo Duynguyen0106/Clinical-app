@@ -51,7 +51,7 @@ function NotesPageInner() {
       title="Notes"
       subtitle={
         scoped
-          ? "Your drafts, signed notes, and voided records."
+          ? "Drafts to finish and signed notes for your patients."
           : "Clinic drafts, signed notes, and voided records."
       }
     >

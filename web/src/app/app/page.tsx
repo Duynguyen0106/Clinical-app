@@ -67,11 +67,14 @@ export default function TodayPage() {
   const myPractitionerId = me?.practitionerProfileId ?? null;
   const isClinician =
     me?.role === "OWNER" || me?.role === "PRACTITIONER";
+  const isPractitioner = me?.role === "PRACTITIONER";
   const isPractitionerHome = Boolean(myPractitionerId && isClinician);
   const canEditSchedule =
     me?.role === "OWNER" || me?.role === "RECEPTION";
   const showPracticePulse =
     me?.role === "OWNER" || me?.role === "RECEPTION";
+  /** Practitioners stay on schedule + notes — no ops inbox */
+  const showOpsInbox = !isPractitioner;
 
   const loadDay = useCallback(() => {
     if (!me) return Promise.resolve();
@@ -98,10 +101,17 @@ export default function TodayPage() {
       api<{ appointments: Appointment[] }>(`/appointments?${aptQs}`).then(
         (a) => setAppointments(a.appointments),
       ),
-      api<{ tasks: OpsTask[] }>("/ops/tasks").then((t) =>
-        setTasks(t.tasks.slice(0, 5)),
-      ),
     ];
+
+    if (showOpsInbox) {
+      jobs.push(
+        api<{ tasks: OpsTask[] }>("/ops/tasks").then((t) =>
+          setTasks(t.tasks.slice(0, 5)),
+        ),
+      );
+    } else {
+      setTasks([]);
+    }
 
     if (isClinician) {
       jobs.push(
@@ -120,7 +130,14 @@ export default function TodayPage() {
     }
 
     return Promise.all(jobs);
-  }, [me, isPractitionerHome, myPractitionerId, isClinician, showPracticePulse]);
+  }, [
+    me,
+    isPractitionerHome,
+    myPractitionerId,
+    isClinician,
+    showPracticePulse,
+    showOpsInbox,
+  ]);
 
   useEffect(() => {
     if (authLoading || !me) return;
@@ -183,10 +200,12 @@ export default function TodayPage() {
     }
   }
 
-  const title = isPractitionerHome ? "My day" : "Today";
-  const subtitle = isPractitionerHome
-    ? "Your diary, unsigned notes, and patient prep — open a visit to record and sign."
-    : "Clinic day board — open a visit to record and sign.";
+  const title = isPractitioner ? "My day" : isPractitionerHome ? "My day" : "Today";
+  const subtitle = isPractitioner
+    ? "Your schedule and notes — open a visit to record and sign."
+    : isPractitionerHome
+      ? "Your diary, unsigned notes, and patient prep — open a visit to record and sign."
+      : "Clinic day board — open a visit to record and sign.";
 
   const nextUp = appointments.find(
     (a) =>
@@ -234,12 +253,14 @@ export default function TodayPage() {
                 >
                   Open visit
                 </button>
-                <Link
-                  href={`/app/patients`}
-                  className="btn-secondary btn-sm"
-                >
-                  Patient directory
-                </Link>
+                {!isPractitioner ? (
+                  <Link
+                    href={`/app/patients`}
+                    className="btn-secondary btn-sm"
+                  >
+                    Patient directory
+                  </Link>
+                ) : null}
               </div>
             </section>
           ) : null}
@@ -422,26 +443,28 @@ export default function TodayPage() {
             </section>
           ) : null}
 
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Open tasks</h2>
-              <Link href="/app/tasks" className="btn-ghost btn-sm">
-                All →
-              </Link>
-            </div>
-            <ul className="task-snip">
-              {tasks.map((t) => (
-                <li key={t.id}>
-                  <Link href={t.href}>{t.title}</Link>
-                </li>
-              ))}
-            </ul>
-            {tasks.length === 0 && !loading ? (
-              <p className="muted">Inbox clear.</p>
-            ) : null}
-          </section>
+          {showOpsInbox ? (
+            <section className="panel">
+              <div className="panel-head">
+                <h2>Open tasks</h2>
+                <Link href="/app/tasks" className="btn-ghost btn-sm">
+                  All →
+                </Link>
+              </div>
+              <ul className="task-snip">
+                {tasks.map((t) => (
+                  <li key={t.id}>
+                    <Link href={t.href}>{t.title}</Link>
+                  </li>
+                ))}
+              </ul>
+              {tasks.length === 0 && !loading ? (
+                <p className="muted">Inbox clear.</p>
+              ) : null}
+            </section>
+          ) : null}
 
-          {isClinician ? (
+          {isClinician && !isPractitioner ? (
             <section className="panel tip-panel">
               <h2>Visit mode</h2>
               <p>
@@ -455,7 +478,9 @@ export default function TodayPage() {
                 Patient prep →
               </Link>
             </section>
-          ) : (
+          ) : null}
+
+          {!isClinician ? (
             <section className="panel tip-panel">
               <h2>Front desk</h2>
               <p>
@@ -469,7 +494,7 @@ export default function TodayPage() {
                 Waitlist →
               </Link>
             </section>
-          )}
+          ) : null}
         </aside>
       </div>
     </AppShell>

@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
 import { api } from "@/lib/api";
 
 type OpsTask = {
@@ -21,16 +23,23 @@ const kindLabel: Record<string, string> = {
 };
 
 export default function TasksPage() {
+  const router = useRouter();
+  const { me, loading: authLoading } = useAuth();
   const [tasks, setTasks] = useState<OpsTask[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (authLoading || !me) return;
+    if (me.role === "PRACTITIONER") {
+      router.replace("/app");
+      return;
+    }
     void api<{ tasks: OpsTask[] }>("/ops/tasks")
       .then((d) => setTasks(d.tasks))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [authLoading, me, router]);
 
   return (
     <AppShell

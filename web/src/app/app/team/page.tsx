@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { addDays, format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
@@ -108,7 +109,8 @@ function leaveStatusLabel(status: LeaveRequest["status"]) {
 }
 
 export default function TeamPage() {
-  const { me } = useAuth();
+  const router = useRouter();
+  const { me, loading: authLoading } = useAuth();
   const isOwner = me?.role === "OWNER";
   const isReception = me?.role === "RECEPTION";
   const canReviewLeave = isOwner || isReception;
@@ -145,6 +147,13 @@ export default function TeamPage() {
   const [leaveAllDay, setLeaveAllDay] = useState(true);
   const [leaveStart, setLeaveStart] = useState("09:00");
   const [leaveEnd, setLeaveEnd] = useState("17:00");
+
+  useEffect(() => {
+    if (authLoading || !me) return;
+    if (me.role === "PRACTITIONER") {
+      router.replace("/app");
+    }
+  }, [authLoading, me, router]);
 
   const canEditSelected = useMemo(() => {
     if (!selectedId) return false;

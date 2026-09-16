@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
 import { api, ApiError } from "@/lib/api";
 import { PatientPrepPanel } from "@/components/PatientPrepPanel";
 
@@ -38,6 +39,8 @@ const emptyForm = {
 };
 
 export default function PatientsPage() {
+  const { me } = useAuth();
+  const isPractitioner = me?.role === "PRACTITIONER";
   const [patients, setPatients] = useState<Patient[]>([]);
   const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -137,24 +140,30 @@ export default function PatientsPage() {
     }
   }
 
-  const showForm = creating || editing;
+  const showForm = !isPractitioner && (creating || editing);
 
   return (
     <AppShell
       title="Patients"
-      subtitle="Directory, contact details, NHS/GP fields — search then book from Calendar."
+      subtitle={
+        isPractitioner
+          ? "Open a patient to read prior notes before the visit."
+          : "Directory, contact details, NHS/GP fields — search then book from Calendar."
+      }
     >
       <div className="patients-layout">
         <div className="panel">
           <div className="panel-head">
             <h2>Directory</h2>
-            <button
-              type="button"
-              className="btn-primary btn-sm"
-              onClick={startCreate}
-            >
-              + New
-            </button>
+            {!isPractitioner ? (
+              <button
+                type="button"
+                className="btn-primary btn-sm"
+                onClick={startCreate}
+              >
+                + New
+              </button>
+            ) : null}
           </div>
           <input
             className="search-input"
@@ -188,18 +197,20 @@ export default function PatientsPage() {
                       setSelectedId(p.id);
                     }}
                   >
-                    Prep
+                    {isPractitioner ? "Notes" : "Prep"}
                   </button>
-                  <button
-                    type="button"
-                    className="btn-ghost btn-sm"
-                    onClick={() => {
-                      setSelectedId(p.id);
-                      startEdit(p);
-                    }}
-                  >
-                    Edit
-                  </button>
+                  {!isPractitioner ? (
+                    <button
+                      type="button"
+                      className="btn-ghost btn-sm"
+                      onClick={() => {
+                        setSelectedId(p.id);
+                        startEdit(p);
+                      }}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
                 </div>
               </li>
             ))}
