@@ -11,6 +11,7 @@ import {
   ListTodo,
   LogOut,
   PoundSterling,
+  CreditCard,
   Settings,
   Stethoscope,
   Users,
@@ -68,6 +69,7 @@ const nav: NavItem[] = [
     hideForPractitioner: true,
   },
   { href: "/app/money", label: "Money", icon: Wallet, staffOps: true },
+  { href: "/app/billing", label: "Billing", icon: CreditCard, ownerOnly: true },
   { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];
 
@@ -137,6 +139,8 @@ export function AppShell({
     return true;
   });
 
+  const isDemoClinic = me?.clinic.slug === DEMO_CLINIC.slug;
+
   return (
     <div className="app-shell min-h-screen">
       <aside className="app-nav">
@@ -156,6 +160,11 @@ export function AppShell({
             <p className="brand-sub">{BRAND.shortName}</p>
           </div>
         </Link>
+        {isDemoClinic ? (
+          <p className="demo-clinic-note">
+            Live demo · {BRAND.name} product tour
+          </p>
+        ) : null}
         <nav className="nav-list" aria-label="Clinic">
           {visibleNav.map((item) => {
             const { href, icon: Icon } = item;
