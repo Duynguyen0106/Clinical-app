@@ -29,13 +29,17 @@ type Practitioner = {
   };
 };
 
-type LeaveBlock = {
+type LeaveRequest = {
   id: string;
-  date: string;
+  startDate: string;
+  endDate: string;
+  reason: string;
+  allDay: boolean;
   startMinute: number | null;
   endMinute: number | null;
-  reason: string | null;
-  practitioner: { id: string; displayName: string };
+  status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+  reviewNote?: string | null;
+  practitioner: { id: string; displayName: string; colour: string };
 };
 
 const DAYS = [
@@ -49,6 +53,13 @@ const DAYS = [
 ];
 
 const COLOURS = ["#1E3F37", "#0F6B5C", "#1D4E89", "#7A3E2E", "#5B4B8A", "#3D5A40"];
+
+const LEAVE_REASON_OPTIONS = [
+  "Annual leave",
+  "Sick leave",
+  "Training / CPD",
+  "Other",
+] as const;
 
 function minutesToTime(m: number) {
   const h = Math.floor(m / 60);
@@ -77,23 +88,32 @@ function dateKey(iso: string) {
   return iso.slice(0, 10);
 }
 
-function eachDateInclusive(from: string, to: string) {
-  const out: string[] = [];
-  let cur = new Date(`${from}T12:00:00`);
-  const end = new Date(`${to}T12:00:00`);
-  if (Number.isNaN(cur.getTime()) || Number.isNaN(end.getTime())) return out;
-  if (cur > end) return out;
-  while (cur <= end) {
-    out.push(format(cur, "yyyy-MM-dd"));
-    cur = addDays(cur, 1);
+function formatLeaveRange(start: string, end: string) {
+  const a = dateKey(start);
+  const b = dateKey(end);
+  if (a === b) return format(new Date(`${a}T12:00:00`), "d MMM yyyy");
+  return `${format(new Date(`${a}T12:00:00`), "d MMM")} – ${format(new Date(`${b}T12:00:00`), "d MMM yyyy")}`;
+}
+
+function leaveStatusLabel(status: LeaveRequest["status"]) {
+  switch (status) {
+    case "PENDING":
+      return "Awaiting approval";
+    case "APPROVED":
+      return "Approved";
+    case "REJECTED":
+      return "Rejected";
+    case "CANCELLED":
+      return "Cancelled";
   }
-  return out;
 }
 
 export default function TeamPage() {
   const router = useRouter();
   const { me, loading: authLoading } = useAuth();
   const isOwner = me?.role === "OWNER";
+  const isReception = me?.role === "RECEPTION";
+  const canReviewLeave = isOwner || isReception;
   const myProfileId = me?.practitionerProfileId ?? null;
   const [practitioners, setPractitioners] = useState<Practitioner[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -119,10 +139,11 @@ export default function TeamPage() {
     Record<number, { on: boolean; start: string; end: string }>
   >({});
 
-  const [leaveBlocks, setLeaveBlocks] = useState<LeaveBlock[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [pendingLeave, setPendingLeave] = useState<LeaveRequest[]>([]);
   const [leaveFrom, setLeaveFrom] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [leaveTo, setLeaveTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
-  const [leaveReason, setLeaveReason] = useState("Annual leave");
+  const [leaveReason, setLeaveReason] = useState<string>("Annual leave");
   const [leaveAllDay, setLeaveAllDay] = useState(true);
   const [leaveStart, setLeaveStart] = useState("09:00");
   const [leaveEnd, setLeaveEnd] = useState("17:00");
@@ -139,6 +160,13 @@ export default function TeamPage() {
     if (isOwner) return true;
     return Boolean(myProfileId && myProfileId === selectedId);
   }, [isOwner, myProfileId, selectedId]);
+
+  /** Practitioners request own leave; owner/reception can grant for anyone */
+  const canEditLeave = useMemo(() => {
+    if (!selectedId) return false;
+    if (canReviewLeave) return true;
+    return Boolean(myProfileId && myProfileId === selectedId);
+  }, [canReviewLeave, myProfileId, selectedId]);
 
   const load = useCallback(() => {
     void api<{ practitioners: Practitioner[] }>("/team")
@@ -157,17 +185,31 @@ export default function TeamPage() {
 
   const loadLeave = useCallback((practitionerId: string | null) => {
     if (!practitionerId) {
-      setLeaveBlocks([]);
+      setLeaveRequests([]);
       return;
     }
-    const from = format(new Date(), "yyyy-MM-dd");
-    const to = format(addDays(new Date(), 90), "yyyy-MM-dd");
-    void api<{ blocks: LeaveBlock[] }>(
-      `/blocks?from=${from}&to=${to}&practitionerId=${practitionerId}`,
+    void api<{ requests: LeaveRequest[] }>(
+      `/leave-requests?practitionerId=${practitionerId}`,
     )
-      .then((d) => setLeaveBlocks(d.blocks))
-      .catch(() => setLeaveBlocks([]));
+      .then((d) =>
+        setLeaveRequests(
+          d.requests.filter(
+            (r) => r.status === "PENDING" || r.status === "APPROVED",
+          ),
+        ),
+      )
+      .catch(() => setLeaveRequests([]));
   }, []);
+
+  const loadPendingLeave = useCallback(() => {
+    if (!canReviewLeave) {
+      setPendingLeave([]);
+      return;
+    }
+    void api<{ requests: LeaveRequest[] }>("/leave-requests?pending=1")
+      .then((d) => setPendingLeave(d.requests))
+      .catch(() => setPendingLeave([]));
+  }, [canReviewLeave]);
 
   useEffect(() => {
     load();
@@ -290,75 +332,138 @@ export default function TeamPage() {
   }
 
   async function addLeave() {
-    if (!canEditSelected || !selected) return;
+    if (!canEditLeave || !selected) return;
     setBusy(true);
     setError(null);
     setMessage(null);
-    const days = eachDateInclusive(leaveFrom, leaveTo || leaveFrom);
-    if (!days.length) {
-      setError("Choose a valid leave date range");
-      setBusy(false);
-      return;
-    }
-    if (days.length > 31) {
-      setError("Leave range is limited to 31 days at a time");
+    if (!leaveFrom) {
+      setError("Choose a start date");
       setBusy(false);
       return;
     }
     try {
-      let created = 0;
-      for (const date of days) {
-        await api("/blocks", {
-          method: "POST",
-          body: JSON.stringify({
-            practitionerId: selected.id,
-            date,
-            reason: leaveReason || null,
-            ...(leaveAllDay
-              ? {}
-              : {
-                  startMinute: timeToMinutes(leaveStart),
-                  endMinute: timeToMinutes(leaveEnd),
-                }),
-          }),
-        });
-        created += 1;
+      const d = await api<{ request: LeaveRequest }>("/leave-requests", {
+        method: "POST",
+        body: JSON.stringify({
+          practitionerId: selected.id,
+          startDate: leaveFrom,
+          endDate: leaveTo || leaveFrom,
+          reason: leaveReason || "Annual leave",
+          allDay: leaveAllDay,
+          ...(leaveAllDay
+            ? {}
+            : {
+                startMinute: timeToMinutes(leaveStart),
+                endMinute: timeToMinutes(leaveEnd),
+              }),
+        }),
+      });
+      if (d.request.status === "PENDING") {
+        setMessage(
+          "Leave request submitted — reception or an owner must approve before the diary is blocked.",
+        );
+      } else {
+        setMessage(
+          "Leave approved. Online booking and reception booking will skip this practitioner for those dates.",
+        );
       }
-      setMessage(
-        `Blocked ${created} day${created === 1 ? "" : "s"} — diary and online booking will skip this time.`,
-      );
       loadLeave(selected.id);
+      loadPendingLeave();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not add leave");
+      setError(e instanceof ApiError ? e.message : "Could not submit leave");
     } finally {
       setBusy(false);
     }
   }
 
-  async function removeLeave(id: string) {
-    if (!canEditSelected) return;
+  async function reviewLeave(
+    id: string,
+    action: "approve" | "reject" | "cancel",
+  ) {
     setError(null);
+    setMessage(null);
     try {
-      await api(`/blocks/${id}`, { method: "DELETE" });
-      setMessage("Leave block removed.");
+      await api(`/leave-requests/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action }),
+      });
+      setMessage(
+        action === "approve"
+          ? "Leave approved — practitioner is unavailable for booking on those dates."
+          : action === "reject"
+            ? "Leave request rejected."
+            : "Leave cancelled.",
+      );
+      loadPendingLeave();
       if (selected) loadLeave(selected.id);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not remove leave");
+      setError(e instanceof ApiError ? e.message : "Could not update leave");
     }
   }
+
+  useEffect(() => {
+    loadPendingLeave();
+  }, [loadPendingLeave]);
 
   return (
     <AppShell
       title="Team"
-      subtitle="Practitioner profiles, weekly hours, registration, and leave."
+      subtitle="Practitioner profiles, weekly hours, and leave requests (approval required)."
     >
       {isOwner ? (
         <p className="alert-line">
-          Staff rates and month pay summary:{" "}
+          Staff rates and month due:{" "}
           <Link href="/app/team/pay">Open staff pay →</Link>
         </p>
       ) : null}
       <div className="settings-grid">
+        {canReviewLeave && pendingLeave.length > 0 ? (
+          <section className="panel" style={{ gridColumn: "1 / -1" }}>
+            <div className="panel-head">
+              <h2>Leave awaiting approval</h2>
+              <span className="count">{pendingLeave.length}</span>
+            </div>
+            <p className="muted">
+              Approve before the diary is blocked. Approved leave stays off the
+              calendar view — booking simply will not offer those times.
+            </p>
+            <ul className="apt-list team-leave-list">
+              {pendingLeave.map((r) => (
+                <li key={r.id} className="team-leave-item">
+                  <div>
+                    <p className="apt-name">
+                      {r.practitioner.displayName} ·{" "}
+                      {formatLeaveRange(r.startDate, r.endDate)}
+                    </p>
+                    <p className="muted">
+                      {r.reason}
+                      {r.allDay
+                        ? " · All day"
+                        : ` · ${minutesToTime(r.startMinute ?? 0)}–${minutesToTime(r.endMinute ?? 0)}`}
+                    </p>
+                  </div>
+                  <div className="apt-actions">
+                    <button
+                      type="button"
+                      className="btn-primary btn-sm"
+                      onClick={() => void reviewLeave(r.id, "approve")}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost btn-sm"
+                      onClick={() => void reviewLeave(r.id, "reject")}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         <section className="panel">
           <div className="panel-head">
             <h2>Practitioners</h2>
@@ -569,12 +674,16 @@ export default function TeamPage() {
         </section>
 
         <section className="panel">
-          <h2>Leave & blocked time</h2>
+          <h2>Leave</h2>
           {selected ? (
             <>
               <p className="muted">
-                Blocks the diary for leave, courses, or admin — same as Calendar
-                “Block time”, with optional date ranges.
+                Request a date range (not one row per day).{" "}
+                {canReviewLeave
+                  ? "Owner and reception grants are applied immediately."
+                  : "Your request needs reception or owner approval before booking is blocked."}{" "}
+                Approved leave does not clutter the calendar — reception simply
+                cannot book patients with you on those dates.
               </p>
               <div className="team-leave-form">
                 <label className="field">
@@ -582,7 +691,7 @@ export default function TeamPage() {
                   <input
                     type="date"
                     value={leaveFrom}
-                    disabled={!canEditSelected}
+                    disabled={!canEditLeave}
                     onChange={(e) => setLeaveFrom(e.target.value)}
                   />
                 </label>
@@ -591,25 +700,30 @@ export default function TeamPage() {
                   <input
                     type="date"
                     value={leaveTo}
-                    disabled={!canEditSelected}
+                    disabled={!canEditLeave}
                     onChange={(e) => setLeaveTo(e.target.value)}
                   />
                 </label>
                 <label className="field">
-                  <span>Reason</span>
-                  <input
+                  <span>Type</span>
+                  <select
                     value={leaveReason}
-                    disabled={!canEditSelected}
+                    disabled={!canEditLeave}
                     onChange={(e) => setLeaveReason(e.target.value)}
-                    placeholder="Annual leave"
-                  />
+                  >
+                    {LEAVE_REASON_OPTIONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
               <label className="consent-label">
                 <input
                   type="checkbox"
                   checked={leaveAllDay}
-                  disabled={!canEditSelected}
+                  disabled={!canEditLeave}
                   onChange={(e) => setLeaveAllDay(e.target.checked)}
                 />
                 <span>All day</span>
@@ -621,7 +735,7 @@ export default function TeamPage() {
                     <input
                       type="time"
                       value={leaveStart}
-                      disabled={!canEditSelected}
+                      disabled={!canEditLeave}
                       onChange={(e) => setLeaveStart(e.target.value)}
                     />
                   </label>
@@ -630,44 +744,58 @@ export default function TeamPage() {
                     <input
                       type="time"
                       value={leaveEnd}
-                      disabled={!canEditSelected}
+                      disabled={!canEditLeave}
                       onChange={(e) => setLeaveEnd(e.target.value)}
                     />
                   </label>
                 </div>
               ) : null}
-              {canEditSelected ? (
+              {canEditLeave ? (
                 <button
                   type="button"
                   className="btn-primary"
                   disabled={busy}
                   onClick={() => void addLeave()}
                 >
-                  {busy ? "Saving…" : "Add leave"}
+                  {busy
+                    ? "Saving…"
+                    : canReviewLeave
+                      ? "Grant leave"
+                      : "Request leave"}
                 </button>
               ) : null}
               <ul className="apt-list team-leave-list">
-                {leaveBlocks.length === 0 ? (
-                  <li className="muted">No leave in the next 90 days.</li>
+                {leaveRequests.length === 0 ? (
+                  <li className="muted">No upcoming leave requests.</li>
                 ) : (
-                  leaveBlocks.map((b) => (
-                    <li key={b.id} className="team-leave-item">
+                  leaveRequests.map((r) => (
+                    <li key={r.id} className="team-leave-item">
                       <div>
-                        <p className="apt-name">{dateKey(b.date)}</p>
+                        <p className="apt-name">
+                          {formatLeaveRange(r.startDate, r.endDate)}
+                        </p>
                         <p className="muted">
-                          {b.startMinute == null
-                            ? "All day"
-                            : `${minutesToTime(b.startMinute)}–${minutesToTime(b.endMinute ?? 0)}`}
-                          {b.reason ? ` · ${b.reason}` : ""}
+                          {r.reason}
+                          {r.allDay
+                            ? " · All day"
+                            : ` · ${minutesToTime(r.startMinute ?? 0)}–${minutesToTime(r.endMinute ?? 0)}`}
+                          {" · "}
+                          <span
+                            className={`leave-status leave-status-${r.status.toLowerCase()}`}
+                          >
+                            {leaveStatusLabel(r.status)}
+                          </span>
                         </p>
                       </div>
-                      {canEditSelected ? (
+                      {canEditLeave &&
+                      (r.status === "PENDING" ||
+                        (canReviewLeave && r.status === "APPROVED")) ? (
                         <button
                           type="button"
                           className="btn-ghost btn-sm"
-                          onClick={() => void removeLeave(b.id)}
+                          onClick={() => void reviewLeave(r.id, "cancel")}
                         >
-                          Remove
+                          Cancel
                         </button>
                       ) : null}
                     </li>
@@ -676,7 +804,7 @@ export default function TeamPage() {
               </ul>
             </>
           ) : (
-            <p className="muted">Select a practitioner.</p>
+            <p className="muted">Select a practitioner to manage leave.</p>
           )}
         </section>
 

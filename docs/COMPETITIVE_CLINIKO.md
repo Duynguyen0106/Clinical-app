@@ -163,8 +163,15 @@ Mitigation: ship Visit mode + booking excellence first; steal Cliniko’s simpli
 
 ---
 
+## Landing page section map
+
+Homepage + Features hub inventory (section order, CTAs, UK adaptation, booking checklist): see **`docs/CLINIKO_LANDING_SECTIONS.md`** (updated 2026-09-15 from cliniko.com).
+
+---
+
 ## Source notes
 
+- Cliniko homepage / features / pricing: https://www.cliniko.com/ (section map in `CLINIKO_LANDING_SECTIONS.md`)  
 - Cliniko features: https://www.cliniko.com/features/  
 - Limitations (reporting, tasks, templates, draft collaboration): Pabau / Medesk / Wisevu Cliniko reviews (2026)  
 - No native AI; Connected Apps / Heidi: Cliniko AI ecosystem analyses; Heidi Cliniko integration (UK)  

@@ -794,7 +794,11 @@ export default function CalendarPage() {
 
             {blocks.some((b) => b.practitioner.id === selected.practitioner.id) ? (
               <div className="block-list">
-                <h3>Blocks this week</h3>
+                <h3>Diary blocks this week</h3>
+                <p className="muted" style={{ margin: "0 0 0.5rem" }}>
+                  Ad-hoc blocks only. Approved leave is hidden here but still
+                  blocks booking slots.
+                </p>
                 {blocks
                   .filter((b) => b.practitioner.id === selected.practitioner.id)
                   .map((b) => (
@@ -1052,7 +1056,7 @@ export default function CalendarPage() {
               <span>Reason</span>
               <input
                 type="text"
-                placeholder="Lunch, admin, leave…"
+                placeholder="Lunch, admin, meeting…"
                 value={blockReason}
                 onChange={(e) => setBlockReason(e.target.value)}
               />

@@ -3,6 +3,7 @@ import { AppointmentStatus } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import type { AuthContext } from "@/server/auth";
 import { badRequest, conflict, forbidden, notFound } from "@/server/errors";
+import { isLeaveReason } from "@/modules/scheduling/leave-schema";
 
 export const createBlockSchema = z.object({
   practitionerId: z.string().min(1),
@@ -31,10 +32,35 @@ function utcDateKey(d: Date) {
 
 export async function listBlocks(
   ctx: AuthContext,
-  opts: { from?: string; to?: string; practitionerId?: string } = {},
+  opts: {
+    from?: string;
+    to?: string;
+    practitionerId?: string;
+    /** Calendar UI hides leave; booking availability still uses loadExceptions */
+    calendarOnly?: boolean;
+  } = {},
 ) {
   const from = opts.from ? parseDateOnly(opts.from.slice(0, 10)) : undefined;
   const to = opts.to ? parseDateOnly(opts.to.slice(0, 10)) : undefined;
+  const calendarOnly = opts.calendarOnly !== false;
+
+  // Legacy day-list leave was stored as BLOCK + "Annual leave" reason — hide those too
+  if (calendarOnly) {
+    await prisma.availabilityException.updateMany({
+      where: {
+        kind: "BLOCK",
+        practitioner: {
+          membership: { clinicId: ctx.clinicId },
+        },
+        OR: [
+          { reason: { contains: "leave", mode: "insensitive" } },
+          { reason: { contains: "CPD", mode: "insensitive" } },
+          { reason: { equals: "Training / CPD" } },
+        ],
+      },
+      data: { kind: "LEAVE" },
+    });
+  }
 
   return prisma.availabilityException.findMany({
     where: {
@@ -43,6 +69,7 @@ export async function listBlocks(
         ...(opts.practitionerId ? { id: opts.practitionerId } : {}),
       },
       isAvailable: false,
+      ...(calendarOnly ? { kind: "BLOCK" } : {}),
       ...(from || to
         ? {
             date: {
@@ -123,6 +150,13 @@ export async function createBlock(
     }
   }
 
+  const reason = input.reason?.trim() || null;
+  if (isLeaveReason(reason)) {
+    throw badRequest(
+      "Use Team → Leave for annual/sick leave (needs approval). Diary blocks are for lunch, admin, and meetings only.",
+    );
+  }
+
   return prisma.availabilityException.create({
     data: {
       practitionerId: practitioner.id,
@@ -130,7 +164,8 @@ export async function createBlock(
       isAvailable: false,
       startMinute,
       endMinute,
-      reason: input.reason?.trim() || null,
+      reason,
+      kind: "BLOCK",
     },
     include: {
       practitioner: { select: { id: true, displayName: true, colour: true } },
@@ -249,7 +284,9 @@ export async function assertWithinAvailability(args: {
     const bStart = b.startMinute ?? 0;
     const bEnd = b.endMinute ?? 24 * 60;
     if (startMinute < bEnd && endMinute > bStart) {
-      throw conflict("This time is blocked on the practitioner diary");
+      throw conflict(
+        "Practitioner is unavailable (leave or blocked time)",
+      );
     }
   }
 

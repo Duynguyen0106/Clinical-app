@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import {
   createAppointmentTypeSchema,
   updateAppointmentTypeSchema,
-} from "@/modules/scheduling/appointment-types";
+} from "@/modules/scheduling/appointment-type-schema";
 
 describe("appointment type schemas", () => {
   it("accepts a clinic service with length and GBP price in pence", () => {

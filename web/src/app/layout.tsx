@@ -16,7 +16,7 @@ const sourceSans = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: `${BRAND.name} — clinical notes that keep pace with the visit`,
+  title: `${BRAND.name} — practice software for UK clinics`,
   description: BRAND.tagline,
   applicationName: BRAND.name,
   manifest: "/manifest.webmanifest",
@@ -42,7 +42,9 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="en-GB"
