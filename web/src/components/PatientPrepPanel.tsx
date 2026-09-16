@@ -58,6 +58,8 @@ type Props = {
   className?: string;
   /** Audit source label: calendar | visit | patients */
   source?: string;
+  /** Open the most recent signed note as soon as prep loads */
+  autoExpandLatest?: boolean;
 };
 
 function titleCase(key: string) {
@@ -74,6 +76,7 @@ export function PatientPrepPanel({
   compact = false,
   className,
   source = "unknown",
+  autoExpandLatest = false,
 }: Props) {
   const [prep, setPrep] = useState<PatientPrep | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -83,22 +86,7 @@ export function PatientPrepPanel({
   const [loading, setLoading] = useState(true);
   const [nowMs] = useState(() => Date.now());
   const loadedBodies = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    setExpandedNoteId(null);
-    setNoteBodies({});
-    loadedBodies.current = new Set();
-    void api<{ prep: PatientPrep }>(
-      `/patients/${patientId}?prep=1&source=${encodeURIComponent(source)}`,
-    )
-      .then((d) => {
-        setPrep(d.prep);
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [patientId, source]);
+  const autoExpandedFor = useRef<string | null>(null);
 
   async function loadNoteBody(noteId: string) {
     if (loadedBodies.current.has(noteId)) return;
@@ -131,6 +119,36 @@ export function PatientPrepPanel({
       setLoadingBodyId(null);
     }
   }
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    setExpandedNoteId(null);
+    setNoteBodies({});
+    loadedBodies.current = new Set();
+    autoExpandedFor.current = null;
+    void api<{ prep: PatientPrep }>(
+      `/patients/${patientId}?prep=1&source=${encodeURIComponent(source)}`,
+    )
+      .then((d) => {
+        setPrep(d.prep);
+        if (autoExpandLatest) {
+          const latest =
+            d.prep.notes.find((n) => n.status === "SIGNED") ??
+            d.prep.notes[0] ??
+            null;
+          if (latest && autoExpandedFor.current !== patientId) {
+            autoExpandedFor.current = patientId;
+            setExpandedNoteId(latest.id);
+            void loadNoteBody(latest.id);
+          }
+        }
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+    // loadNoteBody closes over patientId/source; re-run when those change
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [patientId, source, autoExpandLatest]);
 
   function toggleNote(noteId: string) {
     const open = expandedNoteId === noteId;
@@ -177,10 +195,12 @@ export function PatientPrepPanel({
   return (
     <div className={`prep-panel ${compact ? "prep-compact" : ""} ${className ?? ""}`}>
       <div className="prep-head">
-        <h3>Prepare for visit</h3>
+        <h3>{autoExpandLatest ? "Previous notes" : "Prepare for visit"}</h3>
         <p className="muted">
           {canViewNotes
-            ? `Prior bookings and clinical notes for ${prep.firstName} ${prep.lastName}`
+            ? autoExpandLatest
+              ? `Signed notes and booking history for ${prep.firstName} ${prep.lastName}`
+              : `Prior bookings and clinical notes for ${prep.firstName} ${prep.lastName}`
             : `Booking history for ${prep.firstName} ${prep.lastName} (clinical notes are clinician-only)`}
         </p>
       </div>

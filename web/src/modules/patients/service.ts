@@ -35,40 +35,129 @@ export const createPatientSchema = z.object({
 
 export const updatePatientSchema = createPatientSchema.partial();
 
+function patientSearchWhere(q: string | undefined) {
+  const trimmed = q?.trim();
+  if (!trimmed) return {};
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  if (tokens.length > 1) {
+    return {
+      AND: tokens.map((token) => ({
+        OR: [
+          { firstName: { contains: token, mode: "insensitive" as const } },
+          { lastName: { contains: token, mode: "insensitive" as const } },
+          { email: { contains: token, mode: "insensitive" as const } },
+          { phone: { contains: token } },
+          { nhsNumber: { contains: token } },
+        ],
+      })),
+    };
+  }
+  return {
+    OR: [
+      { firstName: { contains: trimmed, mode: "insensitive" as const } },
+      { lastName: { contains: trimmed, mode: "insensitive" as const } },
+      { email: { contains: trimmed, mode: "insensitive" as const } },
+      { phone: { contains: trimmed } },
+      { nhsNumber: { contains: trimmed } },
+    ],
+  };
+}
+
+/** Local calendar day bounds for YYYY-MM-DD (matches Today diary windowing). */
+export function dayBoundsFromYmd(ymd: string): { from: Date; to: Date } {
+  const from = new Date(`${ymd}T00:00:00`);
+  const to = new Date(`${ymd}T23:59:59.999`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    throw badRequest("Invalid appointmentOn date");
+  }
+  return { from, to };
+}
+
+export function todayYmd(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export async function listPatients(
   ctx: AuthContext,
-  opts: { q?: string; take?: number } = {},
+  opts: {
+    q?: string;
+    take?: number;
+    appointmentOn?: string;
+    practitionerId?: string;
+  } = {},
 ) {
   const take = Math.min(opts.take ?? 50, 100);
   const q = opts.q?.trim();
-  const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
+  const search = patientSearchWhere(q);
+
+  // Day-scoped list: patients with a non-cancelled appointment that day
+  if (opts.appointmentOn) {
+    const { from, to } = dayBoundsFromYmd(opts.appointmentOn);
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        clinicId: ctx.clinicId,
+        startsAt: { gte: from, lte: to },
+        status: { not: "CANCELLED" },
+        ...(opts.practitionerId
+          ? { practitionerId: opts.practitionerId }
+          : {}),
+        ...(Object.keys(search).length
+          ? { patient: { clinicId: ctx.clinicId, ...search } }
+          : {}),
+      },
+      include: {
+        patient: true,
+        appointmentType: { select: { id: true, name: true, durationMinutes: true } },
+        visit: { select: { id: true } },
+      },
+      orderBy: { startsAt: "asc" },
+      take: Math.min(take * 4, 200),
+    });
+
+    const byPatient = new Map<
+      string,
+      (typeof appointments)[number]["patient"] & {
+        todayAppointments: Array<{
+          id: string;
+          startsAt: Date;
+          endsAt: Date;
+          status: string;
+          appointmentType: { id: string; name: string; durationMinutes: number };
+          visit: { id: string } | null;
+        }>;
+      }
+    >();
+
+    for (const apt of appointments) {
+      const existing = byPatient.get(apt.patientId);
+      const slot = {
+        id: apt.id,
+        startsAt: apt.startsAt,
+        endsAt: apt.endsAt,
+        status: apt.status,
+        appointmentType: apt.appointmentType,
+        visit: apt.visit,
+      };
+      if (existing) {
+        existing.todayAppointments.push(slot);
+      } else if (byPatient.size < take) {
+        byPatient.set(apt.patientId, {
+          ...apt.patient,
+          todayAppointments: [slot],
+        });
+      }
+    }
+
+    return Array.from(byPatient.values());
+  }
 
   return prisma.patient.findMany({
     where: {
       clinicId: ctx.clinicId,
-      ...(q
-        ? tokens.length > 1
-          ? {
-              AND: tokens.map((token) => ({
-                OR: [
-                  { firstName: { contains: token, mode: "insensitive" as const } },
-                  { lastName: { contains: token, mode: "insensitive" as const } },
-                  { email: { contains: token, mode: "insensitive" as const } },
-                  { phone: { contains: token } },
-                  { nhsNumber: { contains: token } },
-                ],
-              })),
-            }
-          : {
-              OR: [
-                { firstName: { contains: q, mode: "insensitive" as const } },
-                { lastName: { contains: q, mode: "insensitive" as const } },
-                { email: { contains: q, mode: "insensitive" as const } },
-                { phone: { contains: q } },
-                { nhsNumber: { contains: q } },
-              ],
-            }
-        : {}),
+      ...search,
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     take,
@@ -412,5 +501,12 @@ export function parseListQuery(url: URL) {
   if (take !== undefined && (!Number.isFinite(take) || take < 1)) {
     throw badRequest("Invalid take");
   }
-  return { q, take };
+  const appointmentOnRaw = url.searchParams.get("appointmentOn") ?? undefined;
+  const appointmentOn = appointmentOnRaw?.trim() || undefined;
+  if (appointmentOn && !/^\d{4}-\d{2}-\d{2}$/.test(appointmentOn)) {
+    throw badRequest("appointmentOn must be YYYY-MM-DD");
+  }
+  const practitionerId =
+    url.searchParams.get("practitionerId")?.trim() || undefined;
+  return { q, take, appointmentOn, practitionerId };
 }

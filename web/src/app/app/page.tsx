@@ -254,14 +254,12 @@ export default function TodayPage() {
                 >
                   Open visit
                 </button>
-                {!isPractitioner ? (
-                  <Link
-                    href={`/app/patients`}
-                    className="btn-secondary btn-sm"
-                  >
-                    Patient directory
-                  </Link>
-                ) : null}
+                <Link
+                  href={`/app/patients?id=${encodeURIComponent(nextUp.patient.id)}`}
+                  className="btn-secondary btn-sm"
+                >
+                  {isPractitioner ? "Prior notes" : "Patient directory"}
+                </Link>
               </div>
             </section>
           ) : null}
@@ -321,6 +319,14 @@ export default function TodayPage() {
                         Open visit
                       </button>
                     ) : null}
+                    {isClinician ? (
+                      <Link
+                        href={`/app/patients?id=${encodeURIComponent(apt.patient.id)}`}
+                        className="btn-ghost btn-sm"
+                      >
+                        Prior notes
+                      </Link>
+                    ) : null}
                     {canEditSchedule &&
                     !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
                       apt.status,
@@ -374,9 +380,11 @@ export default function TodayPage() {
                           {n.template?.name ? ` · ${n.template.name}` : ""}
                         </Link>
                       ) : (
-                        <Link href={`/app/patients`}>
-                          {n.patient.firstName} {n.patient.lastName} · open
-                          prep
+                        <Link
+                          href={`/app/patients?id=${encodeURIComponent(n.patient.id)}`}
+                        >
+                          {n.patient.firstName} {n.patient.lastName} · prior
+                          notes
                         </Link>
                       )}
                     </li>
