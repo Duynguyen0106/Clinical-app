@@ -54,7 +54,7 @@ export function AvailabilityPicker({
   onSelect,
   emptyMessage = "No open slots in the next fortnight.",
   legend = "Choose a day",
-  initialVisiblePerPeriod = 6,
+  initialVisiblePerPeriod = 4,
 }: Props) {
   const days = useMemo(() => {
     const map = new Map<

@@ -2836,8 +2836,8 @@ h3 {
 
 .avail-time-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.45rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
 }
 
 .avail-time-wrap {
@@ -2940,7 +2940,7 @@ h3 {
 
 @media (max-width: 420px) {
   .avail-time-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

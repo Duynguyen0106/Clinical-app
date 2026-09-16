@@ -363,6 +363,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                 slots={availabilitySlots}
                 value={slot}
                 practitionerId={practitionerId}
+                initialVisiblePerPeriod={4}
                 onSelect={(s) => {
                   setSlot(s.startsAt);
                   if (s.practitionerId) setPractitionerId(s.practitionerId);
