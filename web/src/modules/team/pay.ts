@@ -153,9 +153,10 @@ export async function getPractitionerPay(
     where: { practitionerId: profile.id },
     orderBy: { effectiveFrom: "desc" },
   });
+  const asOfToday = pickRateForDate(rates, new Date());
   return {
     practitioner: profile,
-    current: rates[0] ? serializeRate(rates[0]) : null,
+    current: asOfToday ? serializeRate(asOfToday) : null,
     history: rates.map(serializeRate),
   };
 }
@@ -294,7 +295,7 @@ export async function listStaffPaySummary(ctx: AuthContext, month: string) {
 
   const rows = practitioners.map((p) => {
     const rates = p.payRates;
-    const current = rates.length ? rates[rates.length - 1]! : null;
+    const current = pickRateForDate(rates, new Date());
     const sessions = byPractitioner.get(p.id) ?? [];
     const summary = computeDue(rates, sessions);
 
