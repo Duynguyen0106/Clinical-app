@@ -15,6 +15,11 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
 import { PatientPrepPanel } from "@/components/PatientPrepPanel";
 import { PatientLookup } from "@/components/PatientLookup";
+import {
+  appointmentOccupiesSlot,
+  calendarEventStatusClass,
+  humanStatusLabel,
+} from "@/modules/scheduling/calendar-ui";
 
 type Appointment = {
   id: string;
@@ -64,6 +69,24 @@ function durationOf(apt: Appointment) {
     (new Date(apt.endsAt).getTime() - new Date(apt.startsAt).getTime()) /
       60_000,
   );
+}
+
+function sameDayHour(iso: string, day: Date, hour: number) {
+  const s = new Date(iso);
+  return (
+    s.getFullYear() === day.getFullYear() &&
+    s.getMonth() === day.getMonth() &&
+    s.getDate() === day.getDate() &&
+    s.getHours() === hour
+  );
+}
+
+function blockCoversHour(b: Block, dayKey: string, hour: number) {
+  if (b.date.slice(0, 10) !== dayKey) return false;
+  if (b.startMinute == null) return hour >= 8 && hour < 18;
+  const hStart = Math.floor((b.startMinute ?? 0) / 60);
+  const hEnd = Math.ceil((b.endMinute ?? 24 * 60) / 60);
+  return hour >= hStart && hour < hEnd;
 }
 
 export default function CalendarPage() {
@@ -235,7 +258,43 @@ export default function CalendarPage() {
     setFeeNote("");
   }, [selected]);
 
-  function openBookSheet(opts?: { day?: Date; hour?: number }) {
+  /** Practitioners already occupied (appointment or block) in this hour. */
+  function busyPractitionerIdsAt(day: Date, hour: number): Set<string> {
+    const busy = new Set<string>();
+    const dayKey = format(day, "yyyy-MM-dd");
+    for (const a of appointments) {
+      if (!appointmentOccupiesSlot(a.status)) continue;
+      if (sameDayHour(a.startsAt, day, hour)) busy.add(a.practitioner.id);
+    }
+    for (const b of blocks) {
+      if (blockCoversHour(b, dayKey, hour)) busy.add(b.practitioner.id);
+    }
+    return busy;
+  }
+
+  function pickFreePractitioner(
+    day: Date,
+    hour: number,
+    preferId?: string | null,
+  ): string | null {
+    const busy = busyPractitionerIdsAt(day, hour);
+    const list = catalog?.practitioners ?? [];
+    if (preferId && list.some((p) => p.id === preferId) && !busy.has(preferId)) {
+      return preferId;
+    }
+    if (filterPractitionerId) {
+      if (busy.has(filterPractitionerId)) return null;
+      return filterPractitionerId;
+    }
+    return list.find((p) => !busy.has(p.id))?.id ?? null;
+  }
+
+  function openBookSheet(opts?: {
+    day?: Date;
+    hour?: number;
+    /** Prefer this practitioner if free; otherwise first free. */
+    practitionerId?: string;
+  }) {
     setSelected(null);
     setMessage(null);
     setError(null);
@@ -246,12 +305,30 @@ export default function CalendarPage() {
       const startsAt = setMinutes(setHours(opts.day, opts.hour), 0);
       setBookSlot(startsAt.toISOString());
       setBookSlotFixed(true);
-      if (filterPractitionerId) setBookPractitionerId(filterPractitionerId);
+      const free = pickFreePractitioner(
+        opts.day,
+        opts.hour,
+        opts.practitionerId ?? (filterPractitionerId || null),
+      );
+      if (free) setBookPractitionerId(free);
+      else if (opts.practitionerId) setBookPractitionerId(opts.practitionerId);
+      else if (filterPractitionerId) setBookPractitionerId(filterPractitionerId);
     } else {
       setBookSlotFixed(false);
       setBookSlot("");
     }
     setBookOpen(true);
+  }
+
+  function openBookAlongside(apt: Appointment) {
+    const day = new Date(apt.startsAt);
+    const hour = day.getHours();
+    const free = pickFreePractitioner(day, hour, null);
+    if (!free) {
+      setError("No other practitioner is free at this time");
+      return;
+    }
+    openBookSheet({ day, hour, practitionerId: free });
   }
 
   async function reschedule(id: string, day: Date, hour: number) {
@@ -418,7 +495,7 @@ export default function CalendarPage() {
       subtitle={
         me?.role === "PRACTITIONER"
           ? "Your diary — tap an appointment to open the visit and take notes."
-          : "Click an empty time slot to book — look up the patient by name, phone, or NHS number."
+          : "Click a time slot to book. Parallel bookings are allowed when another practitioner is free."
       }
     >
       <div className="panel calendar-panel">
@@ -594,6 +671,23 @@ export default function CalendarPage() {
         {error ? <p className="form-error">{error}</p> : null}
         {message ? <p className="form-ok">{message}</p> : null}
 
+        {canEditSchedule || appointments.length > 0 ? (
+          <div className="cal-legend" aria-label="Appointment status colours">
+            <span className="cal-legend-item">
+              <i className="cal-swatch status-booked" aria-hidden /> Booked
+            </span>
+            <span className="cal-legend-item">
+              <i className="cal-swatch status-completed" aria-hidden /> Completed
+            </span>
+            <span className="cal-legend-item">
+              <i className="cal-swatch status-no_show" aria-hidden /> No-show
+            </span>
+            <span className="cal-legend-item">
+              <i className="cal-swatch status-in_progress" aria-hidden /> In progress
+            </span>
+          </div>
+        ) : null}
+
         <div
           className={`week-grid ${viewMode === "day" ? "week-grid-day" : ""}`}
           role="grid"
@@ -614,37 +708,30 @@ export default function CalendarPage() {
             <div key={hour} className="week-hour-row">
               <div className="week-hour">{`${String(hour).padStart(2, "0")}:00`}</div>
               {days.map((day) => {
-                const cellAppts = appointments.filter((a) => {
-                  const s = new Date(a.startsAt);
-                  return (
-                    s.getFullYear() === day.getFullYear() &&
-                    s.getMonth() === day.getMonth() &&
-                    s.getDate() === day.getDate() &&
-                    s.getHours() === hour
-                  );
-                });
+                const cellAppts = appointments.filter((a) =>
+                  sameDayHour(a.startsAt, day, hour),
+                );
                 const dayKey = format(day, "yyyy-MM-dd");
-                const cellBlocks = blocks.filter((b) => {
-                  const bDate = b.date.slice(0, 10);
-                  if (bDate !== dayKey) return false;
-                  if (b.startMinute == null) return hour >= 8 && hour < 18;
-                  const hStart = Math.floor((b.startMinute ?? 0) / 60);
-                  const hEnd = Math.ceil((b.endMinute ?? 24 * 60) / 60);
-                  return hour >= hStart && hour < hEnd;
-                });
+                const cellBlocks = blocks.filter((b) =>
+                  blockCoversHour(b, dayKey, hour),
+                );
+                const freePracId = canEditSchedule
+                  ? pickFreePractitioner(day, hour, filterPractitionerId || null)
+                  : null;
+                const canBookHere = Boolean(canEditSchedule && freePracId);
                 return (
                   <div
                     key={`${day.toISOString()}-${hour}`}
                     className={`week-cell ${draggingId ? "droppable" : ""} ${
-                      canEditSchedule &&
-                      cellAppts.length === 0 &&
-                      cellBlocks.length === 0
-                        ? "week-cell-bookable"
-                        : ""
+                      canBookHere ? "week-cell-bookable" : ""
                     }`}
                     role="button"
-                    tabIndex={canEditSchedule ? 0 : -1}
-                    aria-label={`Book ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`}
+                    tabIndex={canBookHere ? 0 : -1}
+                    aria-label={
+                      canBookHere
+                        ? `Book ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
+                        : `${format(day, "EEE d MMM")} ${String(hour).padStart(2, "0")}:00`
+                    }
                     onDragOver={(e) => {
                       if (canEditSchedule) e.preventDefault();
                     }}
@@ -658,21 +745,23 @@ export default function CalendarPage() {
                       setDraggingId(null);
                     }}
                     onClick={() => {
-                      if (!canEditSchedule) return;
-                      if (cellAppts.length > 0 || cellBlocks.length > 0) return;
+                      if (!canBookHere) return;
                       openBookSheet({ day, hour });
                     }}
                     onKeyDown={(e) => {
-                      if (!canEditSchedule) return;
+                      if (!canBookHere) return;
                       if (e.key !== "Enter" && e.key !== " ") return;
-                      if (cellAppts.length > 0 || cellBlocks.length > 0) return;
                       e.preventDefault();
                       openBookSheet({ day, hour });
                     }}
                   >
                     {cellBlocks.map((b) => (
-                      <div key={b.id} className="cal-block" title={b.reason ?? "Blocked"}>
-                        Blocked
+                      <div
+                        key={b.id}
+                        className="cal-block"
+                        title={b.reason ?? "Blocked"}
+                      >
+                        Blocked · {b.practitioner.displayName}
                         {b.reason ? ` · ${b.reason}` : ""}
                       </div>
                     ))}
@@ -680,7 +769,7 @@ export default function CalendarPage() {
                       <button
                         key={apt.id}
                         type="button"
-                        className="cal-event week-event"
+                        className={`cal-event week-event ${calendarEventStatusClass(apt.status)}`}
                         draggable={canEditSchedule}
                         onDragStart={(e) => {
                           if (!canEditSchedule) return;
@@ -694,6 +783,7 @@ export default function CalendarPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           setMessage(null);
+                          setError(null);
                           setSelected(apt);
                         }}
                         title={
@@ -705,12 +795,16 @@ export default function CalendarPage() {
                         <strong>
                           {apt.patient.firstName} {apt.patient.lastName}
                         </strong>
+                        <span className="cal-prac">{apt.practitioner.displayName}</span>
                         <span>{apt.appointmentType.name}</span>
                         {apt.room ? (
                           <span className="cal-room">{apt.room.name}</span>
                         ) : null}
                       </button>
                     ))}
+                    {canBookHere && cellAppts.length > 0 ? (
+                      <span className="cal-slot-hint">+ Book another</span>
+                    ) : null}
                   </div>
                 );
               })}
@@ -744,7 +838,18 @@ export default function CalendarPage() {
               {durationOf(selected)} min · {selected.appointmentType.name}
               {selected.room ? ` · ${selected.room.name}` : ""}
             </p>
-            <p className="muted">Status: {selected.status}</p>
+            <p className="muted">
+              Practitioner:{" "}
+              <strong>{selected.practitioner.displayName}</strong>
+            </p>
+            <p className="muted">
+              Status:{" "}
+              <span
+                className={`status-pill ${calendarEventStatusClass(selected.status)}`}
+              >
+                {humanStatusLabel(selected.status)}
+              </span>
+            </p>
 
             <div className="sheet-actions">
               {(me?.role === "OWNER" ||
@@ -759,6 +864,21 @@ export default function CalendarPage() {
               ) : null}
               {canEditSchedule ? (
                 <>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={
+                      busy ||
+                      !pickFreePractitioner(
+                        new Date(selected.startsAt),
+                        new Date(selected.startsAt).getHours(),
+                        null,
+                      )
+                    }
+                    onClick={() => openBookAlongside(selected)}
+                  >
+                    Book another practitioner
+                  </button>
                   <button
                     type="button"
                     className="btn-secondary"
@@ -948,6 +1068,12 @@ export default function CalendarPage() {
                 </button>
               </p>
             ) : null}
+            {bookSlotFixed && bookSlot ? (
+              <p className="muted book-fineprint">
+                Other practitioners can be booked at the same time if they are
+                free. Busy practitioners are disabled below.
+              </p>
+            ) : null}
             <PatientLookup
               value={bookPatientId}
               onChange={(id, detail) => {
@@ -992,11 +1118,21 @@ export default function CalendarPage() {
                 value={bookPractitionerId}
                 onChange={(e) => setBookPractitionerId(e.target.value)}
               >
-                {catalog?.practitioners.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.displayName}
-                  </option>
-                ))}
+                {catalog?.practitioners.map((p) => {
+                  const busyAtFixed =
+                    bookSlotFixed && bookSlot
+                      ? busyPractitionerIdsAt(
+                          new Date(bookSlot),
+                          new Date(bookSlot).getHours(),
+                        ).has(p.id)
+                      : false;
+                  return (
+                    <option key={p.id} value={p.id} disabled={busyAtFixed}>
+                      {p.displayName}
+                      {busyAtFixed ? " (busy)" : ""}
+                    </option>
+                  );
+                })}
               </select>
             </label>
             <label className="field">
