@@ -1588,6 +1588,148 @@ h3 {
   font-size: 0.85rem;
 }
 
+.cal-event .cal-prac {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+/* Status colours on diary events */
+.cal-event.status-booked,
+.cal-event.status-confirmed {
+  background: #e7f3ff;
+  border-left-color: #2f6fed;
+  color: #0f2f66;
+}
+
+.cal-event.status-booked span,
+.cal-event.status-confirmed span {
+  color: #3b5f96;
+}
+
+.cal-event.status-completed {
+  background: #e6f6ec;
+  border-left-color: #1f8a4c;
+  color: #0d4a28;
+}
+
+.cal-event.status-completed span {
+  color: #2f6b48;
+}
+
+.cal-event.status-no_show {
+  background: #fde8e6;
+  border-left-color: var(--danger);
+  color: #7a1f18;
+}
+
+.cal-event.status-no_show span {
+  color: #a33a32;
+}
+
+.cal-event.status-in_progress,
+.cal-event.status-checked_in {
+  background: var(--accent-soft);
+  border-left-color: var(--accent-deep);
+  color: var(--accent-deep);
+}
+
+.cal-event.status-cancelled {
+  background: #f1f1ef;
+  border-left-color: #9a9a92;
+  color: var(--muted);
+  opacity: 0.85;
+  text-decoration: line-through;
+}
+
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.1rem;
+  margin: 0 0 0.85rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cal-swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 4px;
+  border-left: 3px solid transparent;
+  display: inline-block;
+}
+
+.cal-swatch.status-booked {
+  background: #e7f3ff;
+  border-left-color: #2f6fed;
+}
+
+.cal-swatch.status-completed {
+  background: #e6f6ec;
+  border-left-color: #1f8a4c;
+}
+
+.cal-swatch.status-no_show {
+  background: #fde8e6;
+  border-left-color: var(--danger);
+}
+
+.cal-swatch.status-in_progress {
+  background: var(--accent-soft);
+  border-left-color: var(--accent-deep);
+}
+
+.cal-slot-hint {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent-mid);
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  justify-self: start;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.status-pill.status-booked,
+.status-pill.status-confirmed {
+  background: #e7f3ff;
+  color: #0f2f66;
+}
+
+.status-pill.status-completed {
+  background: #e6f6ec;
+  color: #0d4a28;
+}
+
+.status-pill.status-no_show {
+  background: #fde8e6;
+  color: #7a1f18;
+}
+
+.status-pill.status-in_progress,
+.status-pill.status-checked_in {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.status-pill.status-cancelled {
+  background: #f1f1ef;
+  color: var(--muted);
+}
+
 .cal-room {
   font-size: 0.78rem !important;
   color: var(--accent-mid) !important;

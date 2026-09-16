@@ -50,6 +50,11 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   const [serviceId, setServiceId] = useState("");
   const [practitionerId, setPractitionerId] = useState("");
   const [slots, setSlots] = useState<string[]>([]);
+  /** When browsing “any practitioner”, slots carry who is free. */
+  const [anySlots, setAnySlots] = useState<
+    { startsAt: string; practitionerId: string; practitionerName: string }[]
+  >([]);
+  const [anyMode, setAnyMode] = useState(true);
   const [slot, setSlot] = useState("");
   const [step, setStep] = useState<"pick" | "details" | "done">("pick");
   const [name, setName] = useState("");
@@ -75,23 +80,79 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
       .then((d) => {
         setClinic(d.clinic);
         setServiceId(d.clinic.appointmentTypes[0]?.id ?? "");
-        const prac = d.clinic.practitioners.filter(Boolean)[0];
-        setPractitionerId(prac?.id ?? "");
+        const pracs = d.clinic.practitioners.filter(Boolean);
+        setAnyMode(pracs.length > 1);
+        setPractitionerId(pracs.length === 1 ? (pracs[0]?.id ?? "") : "");
         setPolicyText(d.clinic.booking?.policyText ?? null);
       })
       .catch((e: Error) => setError(e.message));
   }, [slug]);
 
   useEffect(() => {
-    if (!serviceId || !practitionerId) return;
+    if (!serviceId || !clinic || !anyMode) return;
+    const pracs = (clinic.practitioners ?? []).filter(Boolean) as {
+      id: string;
+      displayName: string;
+    }[];
+    if (pracs.length < 2) return;
+    let cancelled = false;
+    void Promise.all(
+      pracs.map((p) =>
+        api<{ slots: string[] }>(
+          `/public/clinics/${slug}/slots?appointmentTypeId=${serviceId}&practitionerId=${p.id}`,
+          { auth: false },
+        ).then((d) =>
+          d.slots.map((startsAt) => ({
+            startsAt,
+            practitionerId: p.id,
+            practitionerName: p.displayName,
+          })),
+        ),
+      ),
+    )
+      .then((groups) => {
+        if (cancelled) return;
+        const merged = groups
+          .flat()
+          .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+        setAnySlots(merged);
+        setSlots([]);
+        const first = merged[0];
+        if (first) {
+          setSlot(first.startsAt);
+          setPractitionerId(first.practitionerId);
+        } else {
+          setSlot("");
+        }
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, serviceId, anyMode, clinic]);
+
+  useEffect(() => {
+    if (!serviceId || anyMode || !practitionerId) return;
+    let cancelled = false;
     void api<{ slots: string[] }>(
       `/public/clinics/${slug}/slots?appointmentTypeId=${serviceId}&practitionerId=${practitionerId}`,
       { auth: false },
-    ).then((d) => {
-      setSlots(d.slots);
-      setSlot(d.slots[0] ?? "");
-    });
-  }, [slug, serviceId, practitionerId]);
+    )
+      .then((d) => {
+        if (cancelled) return;
+        setSlots(d.slots);
+        setAnySlots([]);
+        setSlot(d.slots[0] ?? "");
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, serviceId, practitionerId, anyMode]);
 
   async function confirm() {
     if (!clinic || !privacy) return;
@@ -259,9 +320,21 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
               <label className="field">
                 <span>Practitioner</span>
                 <select
-                  value={practitionerId}
-                  onChange={(e) => setPractitionerId(e.target.value)}
+                  value={anyMode ? "__any__" : practitionerId}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "__any__") {
+                      setAnyMode(true);
+                      setPractitionerId("");
+                    } else {
+                      setAnyMode(false);
+                      setPractitionerId(v);
+                    }
+                  }}
                 >
+                  {practitioners.length > 1 ? (
+                    <option value="__any__">Any available</option>
+                  ) : null}
                   {practitioners.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.displayName}
@@ -272,18 +345,38 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
               <fieldset className="slot-fieldset">
                 <legend>Next available</legend>
                 <div className="slot-grid">
-                  {slots.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      className={`slot ${slot === s ? "selected" : ""}`}
-                      onClick={() => setSlot(s)}
-                    >
-                      {format(new Date(s), "EEE d MMM HH:mm")}
-                    </button>
-                  ))}
+                  {anyMode && anySlots.length > 0
+                    ? anySlots.map((s) => (
+                        <button
+                          key={`${s.practitionerId}-${s.startsAt}`}
+                          type="button"
+                          className={`slot ${
+                            slot === s.startsAt &&
+                            practitionerId === s.practitionerId
+                              ? "selected"
+                              : ""
+                          }`}
+                          onClick={() => {
+                            setSlot(s.startsAt);
+                            setPractitionerId(s.practitionerId);
+                          }}
+                        >
+                          {format(new Date(s.startsAt), "EEE d MMM HH:mm")}
+                          <span className="slot-prac">{s.practitionerName}</span>
+                        </button>
+                      ))
+                    : slots.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          className={`slot ${slot === s ? "selected" : ""}`}
+                          onClick={() => setSlot(s)}
+                        >
+                          {format(new Date(s), "EEE d MMM HH:mm")}
+                        </button>
+                      ))}
                 </div>
-                {slots.length === 0 ? (
+                {(anyMode ? anySlots.length === 0 : slots.length === 0) ? (
                   <p className="muted">No open slots in the next fortnight.</p>
                 ) : null}
               </fieldset>
