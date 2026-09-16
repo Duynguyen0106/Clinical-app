@@ -2885,6 +2885,10 @@ h3 {
 }
 
 @media (max-width: 720px) {
+  .demo-clinic-note {
+    display: none;
+  }
+
   .calendar-panel {
     padding: 0.65rem 0.55rem 0.85rem;
     border-radius: 14px;
