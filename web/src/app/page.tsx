@@ -4,49 +4,52 @@ import {
   CalendarDays,
   ClipboardList,
   ShieldCheck,
-  Wallet,
-  LayoutDashboard,
-  Mic,
-  Sparkles,
-  PenLine,
   Globe2,
   DoorOpen,
   Hourglass,
   Lock,
-  MapPin,
+  Link2,
+  Bell,
+  LayoutDashboard,
 } from "lucide-react";
 import { BRAND, DEMO_CLINIC, LAUNCH } from "@/modules/config/brand";
 import { BrandLogo } from "@/components/BrandLogo";
 
 const PILLARS = [
   {
-    id: "booking",
-    title: "Diary & booking",
-    line: "Calendar, online book, waitlist, rooms, and your own services.",
+    id: "embed",
+    title: "Website embed",
+    line: "Paste a Book button or iframe — patients book on your site.",
+    Icon: Globe2,
+  },
+  {
+    id: "diary",
+    title: "Staff diary",
+    line: "Day and week calendar with practitioners, services, and rooms.",
     Icon: CalendarDays,
   },
   {
-    id: "notes",
-    title: "Clinical notes",
-    line: "Record the visit. Treow drafts into MSK templates you can sign.",
+    id: "services",
+    title: "Your services",
+    line: "Lengths, GBP prices, and notice windows you control.",
     Icon: ClipboardList,
   },
   {
-    id: "money",
-    title: "Money in GBP",
-    line: "Mark-paid invoices, deposits, receipts, and team pay summaries.",
-    Icon: Wallet,
+    id: "waitlist",
+    title: "Waitlist & rooms",
+    line: "Fill cancellations; book couches without fake diary users.",
+    Icon: DoorOpen,
   },
   {
-    id: "ops",
-    title: "Clinic day",
-    line: "Today view, unsigned-note tasks, and reception workflows.",
-    Icon: LayoutDashboard,
+    id: "reminders",
+    title: "Reminders",
+    line: "Patients get manage links to cancel or reschedule in time.",
+    Icon: Bell,
   },
   {
     id: "trust",
-    title: "UK trust",
-    line: "Europe/London, consent audits, retention controls, EU-ready hosting.",
+    title: "UK-hosted",
+    line: "Europe/London defaults, privacy notice, EU-ready Postgres.",
     Icon: ShieldCheck,
   },
 ] as const;
@@ -54,49 +57,26 @@ const PILLARS = [
 const LOOP = [
   {
     step: "01",
-    title: "Consent",
-    line: "Capture recording consent on the visit — logged for UK audits.",
-    Icon: ShieldCheck,
+    title: "Embed",
+    line: "Copy the Book button or iframe from Settings onto your website.",
+    Icon: Link2,
   },
   {
     step: "02",
-    title: "Record",
-    line: "Ambient audio on phone, tablet, or laptop in the treatment room.",
-    Icon: Mic,
-  },
-  {
-    step: "03",
-    title: "Organise",
-    line: "AI drafts into physio, osteopathy, or manual therapy templates.",
-    Icon: Sparkles,
-  },
-  {
-    step: "04",
-    title: "Sign",
-    line: "Review, sign, rebook, and mark the invoice without leaving the visit.",
-    Icon: PenLine,
-  },
-] as const;
-
-const BOOKING_POINTS = [
-  {
-    title: "Online booking & embed",
-    line: "Hosted book page or site embed — synced to the diary.",
+    title: "Patients book",
+    line: "They pick a service, practitioner, and time — including any available.",
     Icon: Globe2,
   },
   {
-    title: "Services you define",
-    line: "Add appointment types with length and GBP price.",
-    Icon: ClipboardList,
+    step: "03",
+    title: "Diary updates",
+    line: "Reception and clinicians see the appointment on the shared calendar.",
+    Icon: CalendarDays,
   },
   {
-    title: "Rooms & waitlist",
-    line: "Book couches as resources; fill cancellations from the waitlist.",
-    Icon: DoorOpen,
-  },
-  {
-    title: "Reminders & manage links",
-    line: "Patients can cancel or reschedule within your notice windows.",
+    step: "04",
+    title: "Remind & manage",
+    line: "Automatic reminders; patients cancel or reschedule within your rules.",
     Icon: Hourglass,
   },
 ] as const;
@@ -119,20 +99,19 @@ export default function HomePage() {
           <a href="#features">Features</a>
           <a href="#how-it-works">How it works</a>
           <a href="#pricing">Pricing</a>
-          <a href="#uk-trust">UK &amp; privacy</a>
+          <a href="#demo">Clinic demo</a>
         </nav>
         <div className="landing-nav-cta">
-          <a href="#pilot" className="btn-ghost">
+          <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-ghost">
+            Try booking
+          </Link>
+          <a href="#pilot" className="btn-primary">
             Start a pilot
           </a>
-          <Link href="/login" className="btn-primary">
-            Clinic sign in
-          </Link>
         </div>
       </header>
 
-      {/* 1. Hero — Cliniko-style care-led PMS pitch, Treow brand first */}
-      <section className="landing-hero" aria-label="Treow Clinic">
+      <section className="landing-hero" aria-label={BRAND.name}>
         <div className="landing-hero-media" aria-hidden>
           <Image
             src="/brand/landing-hero.jpg"
@@ -146,41 +125,44 @@ export default function HomePage() {
         </div>
         <div className="landing-hero-copy">
           <BrandLogo variant="clear" className="landing-logo" priority />
+          <p className="landing-eyebrow landing-eyebrow-on-hero">Treow Book</p>
           <h1 className="landing-headline">
-            Practice software for UK clinics who care.
+            Online booking clinics can embed in minutes.
           </h1>
           <p className="landing-lede">
-            Diary, notes, invoices, and online booking — plus a visit that
-            records once and drafts the clinical note into your MSK template.
+            Patients book from your website. Your team runs the diary in one
+            calm app. We host and update everything — no clinic install.
           </p>
           <div className="landing-cta">
-            <a href="#pilot" className="btn-primary">
-              Start a pilot
-            </a>
-            <Link href="/login" className="btn-secondary">
-              Try the clinic demo
+            <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-primary">
+              Try online booking
             </Link>
+            <a href="#pricing" className="btn-secondary">
+              See pricing
+            </a>
           </div>
         </div>
       </section>
 
-      {/* 2. Feature pillars — mirrors Cliniko Features hub categories */}
       <section
         id="features"
         className="landing-pillars"
         aria-labelledby="pillars-heading"
       >
         <div className="landing-pillars-inner">
-          <p className="landing-eyebrow">Everything in one place</p>
-          <h2 id="pillars-heading">Built for physio, osteopathy, and manual therapy.</h2>
+          <p className="landing-eyebrow">Treow Book</p>
+          <h2 id="pillars-heading">
+            Everything you need to take bookings online.
+          </h2>
           <p className="landing-support">
-            The calm practice OS UK clinics expect — with native visit notes so
-            you are not paying for a second AI scribe.
+            Built for physio, osteopathy, and manual therapy clinics in the{" "}
+            {LAUNCH.country} — {LAUNCH.timezone}, {LAUNCH.currency}, and website
+            embeds that actually sync to the diary.
           </p>
           <ul className="landing-pillar-list">
             {PILLARS.map((item) => (
               <li key={item.id}>
-                <a href={`#${item.id === "notes" ? "how-it-works" : item.id}`}>
+                <a href={`#${item.id === "trust" ? "uk-trust" : "how-it-works"}`}>
                   <span className="landing-pillar-icon" aria-hidden>
                     <item.Icon size={22} strokeWidth={1.75} />
                   </span>
@@ -193,17 +175,15 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 3. How it works — Treow differentiator (Cliniko leaves AI to connected apps) */}
       <section
         id="how-it-works"
         className="landing-section landing-loop"
         aria-labelledby="loop-heading"
       >
-        <p className="landing-eyebrow">Clinical notes</p>
-        <h2 id="loop-heading">From mic to signed note in one loop.</h2>
+        <p className="landing-eyebrow">How it works</p>
+        <h2 id="loop-heading">From your website to a booked slot.</h2>
         <p className="landing-support">
-          Cliniko-class calm for the diary — then Treow listens in the room so
-          notes keep pace with the visit, not the evening.
+          Four steps — no developer visit, no software download on clinic PCs.
         </p>
         <ol className="landing-steps">
           {LOOP.map((item, i) => (
@@ -221,9 +201,16 @@ export default function HomePage() {
             </li>
           ))}
         </ol>
+        <div className="landing-cta" style={{ marginTop: "1.5rem" }}>
+          <Link href={`/embed/${DEMO_CLINIC.slug}`} className="btn-secondary">
+            Preview the embed
+          </Link>
+          <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-ghost">
+            Open the book page
+          </Link>
+        </div>
       </section>
 
-      {/* 4. Booking deep band */}
       <section
         id="booking"
         className="landing-band landing-band-mist"
@@ -231,29 +218,21 @@ export default function HomePage() {
       >
         <div className="landing-band-grid">
           <div className="landing-band-copy">
-            <p className="landing-eyebrow">Diary &amp; booking</p>
+            <p className="landing-eyebrow">For your website</p>
             <h2 id="booking-heading">A clear schedule patients can book into.</h2>
             <p className="landing-support">
-              Online booking, colour-coded services, rooms, waitlist fills, and
-              notice windows — tuned for {LAUNCH.timezone} and {LAUNCH.currency}.
+              Parallel practitioners, day-first availability, deposits, and
+              manage links — tuned for {LAUNCH.timezone} and {LAUNCH.currency}.
             </p>
-            <ul className="landing-point-list">
-              {BOOKING_POINTS.map((p) => (
-                <li key={p.title}>
-                  <p.Icon size={18} strokeWidth={1.75} aria-hidden />
-                  <div>
-                    <strong>{p.title}</strong>
-                    <span>{p.line}</span>
-                  </div>
-                </li>
-              ))}
+            <ul className="landing-check-list">
+              <li>Book button or iframe from Settings</li>
+              <li>Any available practitioner or named clinician</li>
+              <li>Same wall-clock time allowed when staff are free</li>
+              <li>Cancel / reschedule within your notice windows</li>
             </ul>
             <div className="landing-cta">
               <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-secondary">
-                Try online booking
-              </Link>
-              <Link href="/login" className="btn-ghost">
-                Open the diary
+                Try as a patient
               </Link>
             </div>
           </div>
@@ -266,25 +245,20 @@ export default function HomePage() {
               </div>
               <div className="landing-mock-body">
                 <div className="landing-mock-row landing-mock-row-head">
-                  <span>This week · {DEMO_CLINIC.name}</span>
+                  <span>Book online · {DEMO_CLINIC.name}</span>
                   <span className="landing-mock-badge">Live</span>
                 </div>
                 <div className="landing-mock-row">
-                  <span>Mon 09:00 · Initial MSK</span>
-                  <span className="landing-mock-muted">45 min · £75</span>
+                  <span>Today · 6 morning times</span>
+                  <span className="landing-mock-muted">Day picker</span>
                 </div>
                 <div className="landing-mock-row landing-mock-row-active">
-                  <span>Mon 10:30 · Follow-up</span>
-                  <span className="landing-mock-badge">Recording</span>
+                  <span>11:30 · 2 practitioners free</span>
+                  <span className="landing-mock-badge">Selected</span>
                 </div>
                 <div className="landing-mock-row">
-                  <span>Tue 14:00 · Osteopathy</span>
-                  <span className="landing-mock-muted">Room 2</span>
-                </div>
-                <div className="landing-mock-divider" />
-                <div className="landing-mock-row landing-mock-row-foot">
-                  <span>Waitlist offers ready</span>
-                  <strong>3</strong>
+                  <span>Afternoon · Show</span>
+                  <span className="landing-mock-muted">18 times</span>
                 </div>
               </div>
             </div>
@@ -292,72 +266,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 5. Money deep band */}
-      <section
-        id="money"
-        className="landing-band landing-band-forest"
-        aria-labelledby="money-heading"
-      >
-        <div className="landing-band-grid landing-band-grid-reverse">
-          <div className="landing-band-copy landing-band-copy-on-dark">
-            <p className="landing-eyebrow">Finance</p>
-            <h2 id="money-heading">Invoices and pay that stay in GBP.</h2>
-            <p className="landing-support">
-              Mark visits paid, take deposits on online book, print receipts, and
-              summarise team pay — without bolting on a US billing mindset.
-            </p>
-            <ul className="landing-check-list">
-              <li>List prices on services you define</li>
-              <li>Deposits and notice windows on public booking</li>
-              <li>Owner staff-pay summaries from session fees</li>
-            </ul>
-            <Link href="/login" className="btn-primary landing-btn-on-dark">
-              See money in the demo
-            </Link>
-          </div>
-          <div className="landing-band-stat" aria-hidden>
-            <p className="landing-stat-label">{LAUNCH.currency} · {LAUNCH.locale}</p>
-            <p className="landing-stat-value">{LAUNCH.currencySymbol}55</p>
-            <p className="landing-stat-line">Typical follow-up list price</p>
-            <p className="landing-stat-meta">
-              Services · deposits · mark paid · receipts
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* 6. Clinic ops */}
-      <section
-        id="ops"
-        className="landing-section"
-        aria-labelledby="ops-heading"
-      >
-        <p className="landing-eyebrow">Clinic day</p>
-        <h2 id="ops-heading">Owners, practitioners, and reception on one calm surface.</h2>
-        <p className="landing-support">
-          Today view, tasks for unsigned notes and unpaid invoices, rooms, and
-          brand settings — without a noisy dashboard.
-        </p>
-        <ul className="landing-ops-row">
-          <li>
-            <MapPin size={20} strokeWidth={1.75} aria-hidden />
-            <strong>{LAUNCH.country}-first defaults</strong>
-            <span>{LAUNCH.timezone} · {LAUNCH.currency} · UK phone formats</span>
-          </li>
-          <li>
-            <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
-            <strong>Practice pulse</strong>
-            <span>Unsigned notes, waitlist, and money at a glance</span>
-          </li>
-          <li>
-            <DoorOpen size={20} strokeWidth={1.75} aria-hidden />
-            <strong>Rooms as resources</strong>
-            <span>Couches booked without fake diary users</span>
-          </li>
-        </ul>
-      </section>
-
-      {/* 7. UK security — Cliniko “records are safe” equivalent */}
       <section
         id="uk-trust"
         className="landing-band landing-band-trust"
@@ -365,24 +273,24 @@ export default function HomePage() {
       >
         <div className="landing-trust-copy">
           <p className="landing-eyebrow">Security &amp; privacy</p>
-          <h2 id="trust-heading">Your clinic records stay under UK-minded control.</h2>
+          <h2 id="trust-heading">Booking data under UK-minded control.</h2>
           <p className="landing-support">
-            Visit recording consent, audit exports, retention settings, and
-            EU-ready Postgres hosting. Privacy is a product surface — not buried
-            fine print.
+            Your clinic remains the data controller. We host Treow Book as
+            processor — EU-ready Postgres, retention controls, and a privacy
+            notice linked from every booking page.
           </p>
           <ul className="landing-check-list">
             <li>
               <Lock size={16} strokeWidth={1.75} aria-hidden />
-              Consent captured before ambient recording
+              Privacy consent on public booking
             </li>
             <li>
               <ShieldCheck size={16} strokeWidth={1.75} aria-hidden />
-              Owner export of clinic audits
+              Staff access scoped per clinic
             </li>
             <li>
-              <Globe2 size={16} strokeWidth={1.75} aria-hidden />
-              Privacy notice linked from booking and the app
+              <LayoutDashboard size={16} strokeWidth={1.75} aria-hidden />
+              We update the product remotely — no site visit for upgrades
             </li>
           </ul>
           <Link href="/privacy" className="btn-secondary">
@@ -391,28 +299,27 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Pricing — SaaS plans for clinics */}
       <section
         id="pricing"
         className="landing-section landing-pricing"
         aria-labelledby="pricing-heading"
       >
         <p className="landing-eyebrow">Simple monthly pricing</p>
-        <h2 id="pricing-heading">Hosted for you. Updated without a clinic visit.</h2>
+        <h2 id="pricing-heading">Pay for booking — not a full PMS licence.</h2>
         <p className="landing-support">
-          We run Treow in the cloud. Your team signs in from any browser. Your
-          website gets a Book button or embed — paste once, we keep improving the
-          product.
+          Treow Book is what you subscribe to. The full clinic demo below is for
+          exploring; commercial plans cover online booking, diary, and website
+          embed.
         </p>
         <div className="landing-price-grid">
           <article className="landing-price-card">
             <h3>Starter</h3>
             <p className="landing-price-amount">
-              £79<span>/ month</span>
+              £49<span>/ month</span>
             </p>
-            <p>Solo or two-practitioner practices.</p>
+            <p>Solo or two-practitioner clinics.</p>
             <ul>
-              <li>Diary, notes, online booking</li>
+              <li>Online booking + diary</li>
               <li>Website button + embed</li>
               <li>Email support</li>
             </ul>
@@ -421,30 +328,30 @@ export default function HomePage() {
             <p className="landing-price-badge">Most clinics</p>
             <h3>Clinic</h3>
             <p className="landing-price-amount">
-              £149<span>/ month</span>
+              £99<span>/ month</span>
             </p>
-            <p>Busy multi-practitioner clinics.</p>
+            <p>Busy multi-practitioner diaries.</p>
             <ul>
               <li>Everything in Starter</li>
-              <li>Rooms, waitlist, staff pay</li>
-              <li>Deposits &amp; GBP invoices</li>
+              <li>Rooms, waitlist, deposits</li>
+              <li>Reminders &amp; manage links</li>
               <li>Priority onboarding</li>
             </ul>
           </article>
           <article className="landing-price-card">
             <h3>Group</h3>
             <p className="landing-price-amount">Custom</p>
-            <p>Multi-site groups and chains.</p>
+            <p>Multi-site booking rollouts.</p>
             <ul>
               <li>Unlimited practitioners</li>
-              <li>Guided rollout</li>
+              <li>Guided website embeds</li>
               <li>SLA support</li>
             </ul>
           </article>
         </div>
         <p className="landing-support landing-price-note">
-          No clinic install. No surprise site-visit fees for product updates.
-          Cancel anytime from Billing in the app once Stripe is connected.
+          Hosted by us. Updated without a clinic visit. Cancel anytime from
+          Billing once Stripe is connected.
         </p>
       </section>
 
@@ -454,36 +361,40 @@ export default function HomePage() {
         aria-labelledby="pilot-heading"
       >
         <p className="landing-eyebrow">Design partners</p>
-        <h2 id="pilot-heading">Start with a guided pilot.</h2>
+        <h2 id="pilot-heading">Start a Treow Book pilot.</h2>
         <p className="landing-support">
           We create your clinic tenant, owner login, and website snippets. You
-          run a short live pilot — we update Treow remotely as you give feedback.
+          take live bookings — we update Treow Book remotely as you give
+          feedback.
         </p>
         <div className="landing-cta">
           <a
             className="btn-primary"
-            href="mailto:ops@northbank.example?subject=Treow%20clinic%20pilot"
+            href="mailto:ops@northbank.example?subject=Treow%20Book%20pilot"
           >
             Email to start a pilot
           </a>
-          <Link href="/login" className="btn-secondary">
-            Explore the demo first
+          <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-secondary">
+            Try booking first
           </Link>
         </div>
       </section>
 
-      {/* Transparent try — Cliniko pricing/trial equivalent for beta */}
       <section
         id="demo"
         className="landing-close"
         aria-labelledby="demo-heading"
       >
         <div className="landing-close-inner">
-          <p className="landing-eyebrow">Transparent access</p>
-          <h2 id="demo-heading">Try the full UK clinic demo.</h2>
+          <p className="landing-eyebrow">Optional product tour</p>
+          <h2 id="demo-heading">
+            Explore {BRAND.clinicDemoName} — our interactive demo.
+          </h2>
           <p>
-            Explore {DEMO_CLINIC.name} with password <code>treow-demo</code>. No
-            card required — same staff roles you would run on a busy day.
+            {BRAND.clinicDemoName} is a sample clinic day ({DEMO_CLINIC.name}) so
+            you can see Treow Book inside a fuller diary and ops surface. It is{" "}
+            <strong>not</strong> the product you buy — Treow Book is.
+            Password <code>treow-demo</code>.
           </p>
           <ul className="landing-demo-roles">
             {DEMO_ROLES.map((r) => (
@@ -494,11 +405,11 @@ export default function HomePage() {
             ))}
           </ul>
           <div className="landing-cta">
-            <Link href="/login" className="btn-primary">
-              Clinic sign in
+            <Link href="/login" className="btn-secondary">
+              Open clinic demo
             </Link>
-            <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-secondary">
-              Book as patient
+            <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-ghost">
+              Prefer patient booking
             </Link>
           </div>
         </div>
@@ -509,12 +420,15 @@ export default function HomePage() {
         <p>
           {BRAND.name} · {BRAND.motto}
         </p>
+        <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+          {BRAND.clinicDemoName} is a demo environment for exploring the diary.
+        </p>
         <nav aria-label="Footer">
           <a href="#features">Features</a>
           <a href="#pricing">Pricing</a>
           <a href="#pilot">Pilot</a>
+          <a href="#demo">Clinic demo</a>
           <Link href="/privacy">Privacy</Link>
-          <Link href="/login">Sign in</Link>
           <Link href={`/book/${DEMO_CLINIC.slug}`}>Book</Link>
           <Link href={`/embed/${DEMO_CLINIC.slug}`}>Embed</Link>
         </nav>

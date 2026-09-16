@@ -1,10 +1,10 @@
 # Treow Clinic — Launch readiness
 
-Goal: move from **unpaid UK design-partner beta** toward **sellable hosted SaaS**.
+Goal: sell **Treow Book** (online booking + diary) as hosted SaaS. **Treow Clinic** remains the interactive demo only.
 
-Commercial packaging (website embed UI, clinic provision API, Stripe Billing, pricing page): see **`docs/SELL.md`**.
+Commercial packaging: see **`docs/SELL.md`**.
 
-Product loop already ships: book → Today → Visit (record) → sign note → mark paid · waitlist · tasks · pulse · UK privacy controls.
+Product loop for the booking SKU: website embed → public book → diary → reminders · deposits · waitlist.
 
 ---
 

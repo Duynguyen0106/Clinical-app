@@ -416,6 +416,10 @@ h3 {
   font-weight: 650;
 }
 
+.landing-eyebrow-on-hero {
+  color: rgba(238, 242, 236, 0.9);
+}
+
 .landing-section {
   padding: clamp(3.5rem, 9vw, 6.5rem) clamp(1.15rem, 4vw, 3.25rem);
   max-width: 1100px;
@@ -1315,6 +1319,17 @@ h3 {
   font-size: 0.85rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.demo-clinic-note {
+  margin: 0 0 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent-soft) 80%, white);
+  border: 1px dashed color-mix(in srgb, var(--accent) 35%, var(--line));
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--accent-deep);
 }
 
 .nav-list {

@@ -538,8 +538,9 @@ export default function SettingsPage() {
         <section className="panel">
           <h2>Website booking</h2>
           <p className="muted">
-            Put Treow on your clinic website in minutes — we host the booking
-            page; you paste a button or embed. No download required.
+            This is the Treow Book product: put online booking on your clinic
+            website in minutes. We host the page; you paste a button or embed.
+            No download required.
           </p>
           {website ? (
             <>

@@ -1,11 +1,17 @@
-/** Treow Clinic brand + launch defaults */
+/**
+ * Treow brand — we sell **Treow Book** (online booking + diary).
+ * **Treow Clinic** is the interactive demo that shows booking inside a full clinic day.
+ */
 export const BRAND = {
-  name: "Treow Clinic",
+  /** Sellable product name */
+  name: "Treow Book",
   shortName: "Treow",
+  /** Demo suite name (not the commercial SKU) */
+  clinicDemoName: "Treow Clinic",
   /** Primary brand line from the mark */
   motto: "Rooted in Osteopathy, Growing in Health",
   tagline:
-    "Record the visit — Treow organises the clinical note so you can sign and move on.",
+    "Online booking and diary for UK clinics — embed on your website, staff manage the schedule in one calm app.",
   logo: {
     full: "/brand/treow-logo.png",
     mark: "/brand/treow-mark.png",
@@ -32,7 +38,7 @@ export const LAUNCH = {
   locale: "en-GB",
 } as const;
 
-/** Demo tenant shown in the scaffold UI */
+/** Demo tenant used to showcase Treow Book inside a sample clinic */
 export const DEMO_CLINIC = {
   name: "Northbank Manual Therapy",
   slug: "northbank-manual",

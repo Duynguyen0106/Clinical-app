@@ -6,7 +6,7 @@ Phone prep while waiting: see `docs/PHONE_CHECKLIST.md`.
 
 Want **downloadable installers** (Windows/Mac/.apk/App Store)? After this web deploy is live, follow `docs/NATIVE_APP.md`.
 
-**Selling Treow** (embed + provision + monthly Stripe): see `docs/SELL.md`.
+**Selling Treow Book** (embed + provision + monthly Stripe; Clinic is demo-only): see `docs/SELL.md`.
 
 ## 0. Vercel + Neon (click path)
 

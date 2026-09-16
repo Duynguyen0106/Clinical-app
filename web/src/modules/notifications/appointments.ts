@@ -91,7 +91,7 @@ export async function sendBookingConfirmation(appointmentId: string) {
       "",
       "Online changes close within 2 hours of the appointment.",
       "",
-      "— Treow Clinic",
+      "— Treow Book",
     ]
       .filter((line) => line !== null)
       .join("\n");
@@ -128,7 +128,7 @@ export async function sendBookingConfirmation(appointmentId: string) {
       `Service: ${apt.appointmentType.name}`,
       roomLine,
       "",
-      "— Treow Clinic",
+      "— Treow Book",
     ]
       .filter((line) => line !== null)
       .join("\n"),
@@ -177,7 +177,7 @@ export async function sendAppointmentRescheduled(opts: {
         "Manage your booking:",
         manageLink,
         "",
-        "— Treow Clinic",
+        "— Treow Book",
       ]
         .filter((line) => line !== null)
         .join("\n"),
@@ -207,7 +207,7 @@ export async function sendAppointmentRescheduled(opts: {
       `Service: ${apt.appointmentType.name}`,
       roomLine,
       "",
-      "— Treow Clinic",
+      "— Treow Book",
     ]
       .filter((line) => line !== null)
       .join("\n"),
@@ -242,7 +242,7 @@ export async function sendAppointmentCancelled(appointmentId: string) {
         "",
         "Please contact the clinic if you need to rebook.",
         "",
-        "— Treow Clinic",
+        "— Treow Book",
       ]
         .filter((line) => line !== null)
         .join("\n"),
@@ -271,7 +271,7 @@ export async function sendAppointmentCancelled(appointmentId: string) {
       `Service: ${apt.appointmentType.name}`,
       roomLine,
       "",
-      "— Treow Clinic",
+      "— Treow Book",
     ]
       .filter((line) => line !== null)
       .join("\n"),
@@ -331,7 +331,7 @@ export async function sendUpcomingReminders(withinHours = 24) {
           "Need to change it?",
           manageLink,
           "",
-          "— Treow Clinic",
+          "— Treow Book",
         ]
           .filter((line) => line !== null)
           .join("\n"),
@@ -400,7 +400,7 @@ export async function sendWaitlistOfferEmail(opts: {
         "",
         `(Waitlist ref: ${opts.entryId})`,
         "",
-        "— Treow Clinic",
+        "— Treow Book",
       ].join("\n"),
     });
     emailSent = true;

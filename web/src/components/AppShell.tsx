@@ -139,6 +139,8 @@ export function AppShell({
     return true;
   });
 
+  const isDemoClinic = me?.clinic.slug === DEMO_CLINIC.slug;
+
   return (
     <div className="app-shell min-h-screen">
       <aside className="app-nav">
@@ -155,9 +157,14 @@ export function AppShell({
           )}
           <div>
             <p className="brand-word">{clinicName}</p>
-            <p className="brand-sub">{BRAND.shortName}</p>
+            <p className="brand-sub">{BRAND.name}</p>
           </div>
         </Link>
+        {isDemoClinic ? (
+          <p className="demo-clinic-note">
+            Demo clinic — product sold is {BRAND.name}
+          </p>
+        ) : null}
         <nav className="nav-list" aria-label="Clinic">
           {visibleNav.map((item) => {
             const { href, icon: Icon } = item;

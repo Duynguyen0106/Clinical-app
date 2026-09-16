@@ -17,10 +17,12 @@ export default function PrivacyPage() {
 
         <h2>Who we are</h2>
         <p>
-          Treow Clinic provides practice management software for allied health
-          clinics (physiotherapy, osteopathy, manual therapy) in the United
-          Kingdom. Your clinic is the data controller for patient records. Treow
-          acts as a processor when hosting the service.
+          Treow Book provides online booking and diary software for allied
+          health clinics (physiotherapy, osteopathy, manual therapy) in the
+          United Kingdom. Your clinic is the data controller for patient
+          records. Treow acts as a processor when hosting the service. Treow
+          Clinic is an interactive demo environment used to showcase the
+          product.
         </p>
 
         <h2>What we process</h2>
