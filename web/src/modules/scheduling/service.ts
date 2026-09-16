@@ -43,6 +43,8 @@ export const updateAppointmentStatusSchema = z.object({
 
 export const rescheduleSchema = z.object({
   startsAt: z.string().datetime(),
+  /** When false, skip patient email/SMS (practitioner still notified). Default true. */
+  notifyPatient: z.boolean().optional(),
 });
 
 export const updateAppointmentSchema = z
@@ -55,6 +57,8 @@ export const updateAppointmentSchema = z
     /** Add or top-up a linked invoice by this many pence (creates one if missing) */
     additionalFeeCents: z.number().int().positive().optional(),
     feeNote: z.string().max(200).optional(),
+    /** When changing time/length: email/SMS the patient (default true) */
+    notifyPatient: z.boolean().optional(),
   })
   .refine(
     (v) =>
@@ -66,6 +70,12 @@ export const updateAppointmentSchema = z
       v.additionalFeeCents !== undefined,
     { message: "No updates provided" },
   );
+
+function scheduleUpdateKeys(
+  input: z.infer<typeof updateAppointmentSchema>,
+) {
+  return Object.keys(input).filter((k) => k !== "notifyPatient");
+}
 
 export async function listAppointments(
   ctx: AuthContext,
@@ -238,16 +248,21 @@ export async function createAppointment(
     });
   }
 
+  let confirmation: Awaited<
+    ReturnType<
+      typeof import("@/modules/notifications/appointments").sendBookingConfirmation
+    >
+  > = null;
   try {
     const { sendBookingConfirmation } = await import(
       "@/modules/notifications/appointments"
     );
-    await sendBookingConfirmation(appointment.id);
+    confirmation = await sendBookingConfirmation(appointment.id);
   } catch (err) {
     console.error("Staff booking confirmation failed", err);
   }
 
-  return appointment;
+  return Object.assign(appointment, { confirmation });
 }
 
 export async function updateAppointmentStatus(
@@ -298,6 +313,7 @@ export async function rescheduleAppointment(
   ctx: AuthContext,
   id: string,
   startsAtIso: string,
+  opts: { notifyPatient?: boolean } = {},
 ) {
   const appointment = await getAppointment(ctx, id);
   const previousStartsAt = appointment.startsAt;
@@ -305,6 +321,7 @@ export async function rescheduleAppointment(
   const duration =
     appointment.endsAt.getTime() - appointment.startsAt.getTime();
   const endsAt = new Date(startsAt.getTime() + duration);
+  const notifyPatient = opts.notifyPatient !== false;
 
   await assertWithinAvailability({
     clinicId: ctx.clinicId,
@@ -353,19 +370,33 @@ export async function rescheduleAppointment(
     },
   );
 
+  let notification: {
+    patientEmailSent: boolean;
+    patientSmsSent: boolean;
+    practitionerEmailSent: boolean;
+    patientNotified: boolean;
+  } | null = null;
+
   try {
     const { sendAppointmentRescheduled } = await import(
       "@/modules/notifications/appointments"
     );
-    await sendAppointmentRescheduled({
+    const result = await sendAppointmentRescheduled({
       appointmentId: updated.id,
       previousStartsAt,
+      notifyPatient,
     });
+    if (result) {
+      notification = {
+        ...result,
+        patientNotified: result.patientEmailSent || result.patientSmsSent,
+      };
+    }
   } catch (err) {
     console.error("Reschedule notification failed", err);
   }
 
-  return updated;
+  return Object.assign(updated, { notification });
 }
 
 export async function updateAppointment(
@@ -373,14 +404,18 @@ export async function updateAppointment(
   id: string,
   input: z.infer<typeof updateAppointmentSchema>,
 ) {
-  if (input.status && Object.keys(input).every((k) => k === "status")) {
+  const keys = scheduleUpdateKeys(input);
+  if (input.status && keys.every((k) => k === "status")) {
     return updateAppointmentStatus(ctx, id, input.status as AppointmentStatus);
   }
-  if (input.startsAt && Object.keys(input).length === 1) {
-    return rescheduleAppointment(ctx, id, input.startsAt);
+  if (input.startsAt && keys.every((k) => k === "startsAt")) {
+    return rescheduleAppointment(ctx, id, input.startsAt, {
+      notifyPatient: input.notifyPatient,
+    });
   }
 
   const appointment = await getAppointment(ctx, id);
+  const previousStartsAt = appointment.startsAt;
   let type = appointment.appointmentType;
   let startsAt = appointment.startsAt;
   let endsAt = appointment.endsAt;
@@ -416,9 +451,12 @@ export async function updateAppointment(
 
   if (input.notes !== undefined) notes = input.notes;
 
-  if (
+  const scheduleChanged =
     startsAt.getTime() !== appointment.startsAt.getTime() ||
-    endsAt.getTime() !== appointment.endsAt.getTime() ||
+    endsAt.getTime() !== appointment.endsAt.getTime();
+
+  if (
+    scheduleChanged ||
     (input.appointmentTypeId &&
       input.appointmentTypeId !== appointment.appointmentTypeId)
   ) {
@@ -438,8 +476,7 @@ export async function updateAppointment(
     },
     async (tx) => {
       if (
-        startsAt.getTime() !== appointment.startsAt.getTime() ||
-        endsAt.getTime() !== appointment.endsAt.getTime() ||
+        scheduleChanged ||
         (input.appointmentTypeId &&
           input.appointmentTypeId !== appointment.appointmentTypeId)
       ) {
@@ -464,6 +501,9 @@ export async function updateAppointment(
           startsAt,
           endsAt,
           notes,
+          ...(scheduleChanged
+            ? { reminderSentAt: null, smsReminderSentAt: null }
+            : {}),
           ...(input.appointmentTypeId
             ? { appointmentTypeId: input.appointmentTypeId }
             : {}),
@@ -479,10 +519,47 @@ export async function updateAppointment(
     },
   );
 
+  let notification: {
+    patientEmailSent: boolean;
+    patientSmsSent: boolean;
+    practitionerEmailSent: boolean;
+    patientNotified: boolean;
+  } | null = null;
+
+  if (scheduleChanged) {
+    try {
+      const { sendAppointmentRescheduled } = await import(
+        "@/modules/notifications/appointments"
+      );
+      const result = await sendAppointmentRescheduled({
+        appointmentId: updated.id,
+        previousStartsAt,
+        notifyPatient: input.notifyPatient,
+      });
+      if (result) {
+        notification = {
+          ...result,
+          patientNotified: result.patientEmailSent || result.patientSmsSent,
+        };
+      }
+    } catch (err) {
+      console.error("Schedule-change notification failed", err);
+    }
+  }
+
   if (
     input.status === AppointmentStatus.CANCELLED &&
     appointment.status !== AppointmentStatus.CANCELLED
   ) {
+    try {
+      const { sendAppointmentCancelled } = await import(
+        "@/modules/notifications/appointments"
+      );
+      await sendAppointmentCancelled(appointment.id);
+    } catch (err) {
+      console.error("Cancel notification failed", err);
+    }
+
     const { offerSlotToWaitlist } = await import("./waitlist");
     const offer = await offerSlotToWaitlist({
       clinicId: ctx.clinicId,
@@ -546,7 +623,7 @@ export async function updateAppointment(
     }
   }
 
-  return updated;
+  return Object.assign(updated, { notification });
 }
 
 export async function listAppointmentTypes(ctx: AuthContext) {
