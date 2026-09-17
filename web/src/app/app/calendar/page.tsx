@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   addDays,
@@ -547,14 +546,6 @@ export default function CalendarPage() {
                 >
                   Block
                 </button>
-              ) : null}
-              {me?.role !== "PRACTITIONER" ? (
-                <Link
-                  href={`/book/${me?.clinic.slug ?? "northbank-manual"}`}
-                  className="btn-ghost btn-sm cal-hide-mobile"
-                >
-                  Online booking
-                </Link>
               ) : null}
             </div>
           </div>
