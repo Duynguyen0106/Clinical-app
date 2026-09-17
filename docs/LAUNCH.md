@@ -1,8 +1,10 @@
 # Treow Clinic — Launch readiness
 
-Goal: **unpaid UK design-partner beta** (1–2 clinics), not full commercial GA.
+Goal: sell **Treow Clinic** as a full UK clinic management system (diary, booking, notes, money, team).
 
-Product loop already ships: book → Today → Visit (record) → sign note → mark paid · waitlist · tasks · pulse · UK privacy controls.
+Commercial packaging: see **`docs/SELL.md`**.
+
+Product loop: website booking → diary → visit notes → invoices · rooms · waitlist · team.
 
 ---
 
