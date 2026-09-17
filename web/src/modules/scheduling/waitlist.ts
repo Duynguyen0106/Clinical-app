@@ -256,6 +256,16 @@ export async function acceptWaitlistOfferForClinic(
     });
 
     return { entry: updated, appointment };
+  }).then(async (result) => {
+    try {
+      const { sendBookingConfirmation } = await import(
+        "@/modules/notifications/appointments"
+      );
+      await sendBookingConfirmation(result.appointment.id);
+    } catch (err) {
+      console.error("Waitlist booking confirmation failed", err);
+    }
+    return result;
   });
 }
 

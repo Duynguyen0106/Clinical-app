@@ -143,6 +143,8 @@ export default function CalendarPage() {
   const [editDuration, setEditDuration] = useState(30);
   const [extraFee, setExtraFee] = useState("");
   const [feeNote, setFeeNote] = useState("");
+  /** When reception moves or shortens/lengthens a booking, email/SMS the patient */
+  const [notifyPatientOnChange, setNotifyPatientOnChange] = useState(true);
 
   const days = useMemo(
     () =>
@@ -334,12 +336,39 @@ export default function CalendarPage() {
   async function reschedule(id: string, day: Date, hour: number) {
     const startsAt = setMinutes(setHours(day, hour), 0);
     try {
-      await api(`/appointments/${id}`, {
+      const res = await api<{
+        appointment: Appointment;
+        notification?: {
+          patientNotified?: boolean;
+          patientEmailSent?: boolean;
+          patientSmsSent?: boolean;
+        };
+      }>(`/appointments/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ startsAt: startsAt.toISOString() }),
+        body: JSON.stringify({
+          startsAt: startsAt.toISOString(),
+          notifyPatient: notifyPatientOnChange,
+        }),
       });
       setError(null);
-      setMessage("Appointment moved");
+      const n = res.notification;
+      if (!notifyPatientOnChange) {
+        setMessage("Appointment moved (patient not notified)");
+      } else if (n?.patientEmailSent || n?.patientSmsSent) {
+        setMessage(
+          `Appointment moved — patient notified${
+            n.patientEmailSent && n.patientSmsSent
+              ? " by email and SMS"
+              : n.patientEmailSent
+                ? " by email"
+                : " by SMS"
+          }`,
+        );
+      } else {
+        setMessage(
+          "Appointment moved — no patient email/phone on file to notify",
+        );
+      }
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not reschedule");
@@ -360,7 +389,13 @@ export default function CalendarPage() {
       ]
         .filter(Boolean)
         .join("\n");
-      await api("/appointments", {
+      const res = await api<{
+        appointment: Appointment;
+        confirmation?: {
+          emailSent?: boolean;
+          smsSent?: boolean;
+        };
+      }>("/appointments", {
         method: "POST",
         body: JSON.stringify({
           patientId: bookPatientId,
@@ -375,7 +410,22 @@ export default function CalendarPage() {
       setBookOpen(false);
       setBookSlotFixed(false);
       setBookIntakeNote(null);
-      setMessage("Appointment booked");
+      const c = res.confirmation;
+      if (c?.emailSent || c?.smsSent) {
+        setMessage(
+          `Appointment booked — confirmation sent${
+            c.emailSent && c.smsSent
+              ? " by email and SMS"
+              : c.emailSent
+                ? " by email"
+                : " by SMS"
+          }`,
+        );
+      } else {
+        setMessage(
+          "Appointment booked — add patient email or phone to send confirmations",
+        );
+      }
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not book");
@@ -415,12 +465,41 @@ export default function CalendarPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ appointment: Appointment }>(
-        `/appointments/${selected.id}`,
-        { method: "PATCH", body: JSON.stringify(body) },
-      );
+      const payload = { ...body };
+      if (
+        "startsAt" in payload ||
+        "durationMinutes" in payload ||
+        "appointmentTypeId" in payload
+      ) {
+        payload.notifyPatient = notifyPatientOnChange;
+      }
+      const res = await api<{
+        appointment: Appointment;
+        notification?: {
+          patientNotified?: boolean;
+          patientEmailSent?: boolean;
+          patientSmsSent?: boolean;
+        };
+      }>(`/appointments/${selected.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
       setSelected(res.appointment);
-      setMessage(okMsg);
+      const n = res.notification;
+      if (
+        ("startsAt" in body || "durationMinutes" in body) &&
+        notifyPatientOnChange &&
+        (n?.patientEmailSent || n?.patientSmsSent)
+      ) {
+        setMessage(`${okMsg} — patient notified`);
+      } else if (
+        ("startsAt" in body || "durationMinutes" in body) &&
+        !notifyPatientOnChange
+      ) {
+        setMessage(`${okMsg} (patient not notified)`);
+      } else {
+        setMessage(okMsg);
+      }
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Update failed");
@@ -850,6 +929,20 @@ export default function CalendarPage() {
                 {humanStatusLabel(selected.status)}
               </span>
             </p>
+
+            {canEditSchedule ? (
+              <label className="consent-label notify-patient-toggle">
+                <input
+                  type="checkbox"
+                  checked={notifyPatientOnChange}
+                  onChange={(e) => setNotifyPatientOnChange(e.target.checked)}
+                />
+                <span>
+                  Notify patient by email/SMS when time or length changes
+                  (also applies when you drag to a new slot)
+                </span>
+              </label>
+            ) : null}
 
             <div className="sheet-actions">
               {(me?.role === "OWNER" ||
