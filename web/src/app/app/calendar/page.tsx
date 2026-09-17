@@ -99,6 +99,8 @@ export default function CalendarPage() {
   );
   const [viewMode, setViewMode] = useState<"week" | "day">("week");
   const [dayFocus, setDayFocus] = useState(() => new Date());
+  /** Phone-first: day view is clearer on narrow screens */
+  const [isNarrow, setIsNarrow] = useState(false);
   /** "" = all practitioners; otherwise filter diary to one profile */
   const [filterPractitionerId, setFilterPractitionerId] = useState<string>("");
   const [filterReady, setFilterReady] = useState(false);
@@ -207,6 +209,35 @@ export default function CalendarPage() {
     }
     setFilterReady(true);
   }, [me, filterReady]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 720px)");
+    const apply = () => {
+      const narrow = mq.matches;
+      setIsNarrow(narrow);
+      if (narrow) {
+        setViewMode("day");
+        setDayFocus(new Date());
+        setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+      }
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  const stripDays = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) =>
+        addDays(
+          startOfWeek(viewMode === "day" ? dayFocus : weekStart, {
+            weekStartsOn: 1,
+          }),
+          i,
+        ),
+      ),
+    [dayFocus, weekStart, viewMode],
+  );
 
   useEffect(() => {
     if (!bookOpen || !bookTypeId || !bookPractitionerId || bookSlotFixed) return;
@@ -468,8 +499,8 @@ export default function CalendarPage() {
       }
     >
       <div className="panel calendar-panel">
-        <div className="panel-head week-toolbar">
-          <div className="week-nav">
+        <div className="cal-toolbar">
+          <div className="cal-toolbar-top">
             <div className="view-toggle" role="group" aria-label="Calendar view">
               <button
                 type="button"
@@ -489,63 +520,106 @@ export default function CalendarPage() {
                 Week
               </button>
             </div>
-            {catalog &&
-            catalog.practitioners.length > 1 &&
-            me?.role !== "PRACTITIONER" ? (
-              <div
-                className="view-toggle prac-filter"
-                role="group"
-                aria-label="Practitioner filter"
-              >
+            <div className="week-actions">
+              {canEditSchedule ? (
                 <button
                   type="button"
-                  className={`btn-sm ${filterPractitionerId === "" ? "btn-secondary" : "btn-ghost"}`}
-                  onClick={() => setFilterPractitionerId("")}
+                  className="btn-primary btn-sm"
+                  onClick={() => openBookSheet()}
                 >
-                  All
+                  Book
                 </button>
-                {catalog.practitioners.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className={`btn-sm ${
-                      filterPractitionerId === p.id ? "btn-secondary" : "btn-ghost"
-                    }`}
-                    onClick={() => setFilterPractitionerId(p.id)}
-                  >
-                    {p.id === me?.practitionerProfileId
-                      ? "Me"
-                      : p.displayName.split(" ")[0]}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+              ) : null}
+              {me?.practitionerProfileId ? (
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm cal-secondary-action"
+                  onClick={() => void openPhoneFeed()}
+                >
+                  {isNarrow ? "Sync" : "Phone calendar"}
+                </button>
+              ) : null}
+              {canEditSchedule ? (
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm cal-secondary-action"
+                  onClick={() => setBlockOpen(true)}
+                >
+                  Block
+                </button>
+              ) : null}
+              {me?.role !== "PRACTITIONER" ? (
+                <Link
+                  href={`/book/${me?.clinic.slug ?? "northbank-manual"}`}
+                  className="btn-ghost btn-sm cal-hide-mobile"
+                >
+                  Online booking
+                </Link>
+              ) : null}
+            </div>
+          </div>
+
+          {catalog &&
+          catalog.practitioners.length > 1 &&
+          me?.role !== "PRACTITIONER" ? (
+            <div
+              className="view-toggle prac-filter cal-prac-filter"
+              role="group"
+              aria-label="Practitioner filter"
+            >
+              <button
+                type="button"
+                className={`btn-sm ${filterPractitionerId === "" ? "btn-secondary" : "btn-ghost"}`}
+                onClick={() => setFilterPractitionerId("")}
+              >
+                All
+              </button>
+              {catalog.practitioners.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`btn-sm ${
+                    filterPractitionerId === p.id ? "btn-secondary" : "btn-ghost"
+                  }`}
+                  onClick={() => setFilterPractitionerId(p.id)}
+                >
+                  {p.id === me?.practitionerProfileId
+                    ? "Me"
+                    : p.displayName.split(" ")[0]}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="cal-toolbar-nav">
             <button
               type="button"
               className="btn-ghost btn-sm"
+              aria-label="Previous"
               onClick={() =>
                 viewMode === "day"
                   ? setDayFocus((d) => addDays(d, -1))
                   : setWeekStart((d) => addDays(d, -7))
               }
             >
-              ← Prev
+              ←
             </button>
-            <h2>
+            <h2 className="cal-date-label">
               {viewMode === "day"
-                ? format(dayFocus, "EEE d MMM yyyy")
-                : `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 6), "d MMM yyyy")}`}
+                ? format(dayFocus, isNarrow ? "EEE d MMM" : "EEE d MMM yyyy")
+                : `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 6), isNarrow ? "d MMM" : "d MMM yyyy")}`}
             </h2>
             <button
               type="button"
               className="btn-ghost btn-sm"
+              aria-label="Next"
               onClick={() =>
                 viewMode === "day"
                   ? setDayFocus((d) => addDays(d, 1))
                   : setWeekStart((d) => addDays(d, 7))
               }
             >
-              Next →
+              →
             </button>
             <button
               type="button"
@@ -559,43 +633,40 @@ export default function CalendarPage() {
               Today
             </button>
           </div>
-          <div className="week-actions">
-            {me?.practitionerProfileId ? (
-              <button
-                type="button"
-                className="btn-ghost btn-sm"
-                onClick={() => void openPhoneFeed()}
-              >
-                Phone calendar
-              </button>
-            ) : null}
-            {canEditSchedule ? (
-              <>
-                <button
-                  type="button"
-                  className="btn-primary btn-sm"
-                  onClick={() => openBookSheet()}
-                >
-                  Book
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={() => setBlockOpen(true)}
-                >
-                  Block time
-                </button>
-              </>
-            ) : null}
-            {me?.role !== "PRACTITIONER" ? (
-              <Link
-                href={`/book/${me?.clinic.slug ?? "northbank-manual"}`}
-                className="btn-ghost"
-              >
-                Online booking
-              </Link>
-            ) : null}
-          </div>
+
+          {viewMode === "day" ? (
+            <div className="cal-day-strip" role="tablist" aria-label="Days this week">
+              {stripDays.map((day) => {
+                const selected =
+                  format(day, "yyyy-MM-dd") === format(dayFocus, "yyyy-MM-dd");
+                const isToday =
+                  format(day, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
+                return (
+                  <button
+                    key={day.toISOString()}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    className={`cal-day-chip ${selected ? "active" : ""} ${
+                      isToday ? "is-today" : ""
+                    }`}
+                    onClick={() => {
+                      setViewMode("day");
+                      setDayFocus(day);
+                      setWeekStart(startOfWeek(day, { weekStartsOn: 1 }));
+                    }}
+                  >
+                    <span className="cal-day-chip-dow">{format(day, "EEE")}</span>
+                    <span className="cal-day-chip-num">{format(day, "d")}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {viewMode === "week" && isNarrow ? (
+            <p className="cal-swipe-hint muted">Swipe sideways to see the full week</p>
+          ) : null}
         </div>
         {error ? <p className="form-error">{error}</p> : null}
         {message ? <p className="form-ok">{message}</p> : null}
@@ -626,7 +697,10 @@ export default function CalendarPage() {
           {days.map((day) => (
             <div key={day.toISOString()} className="week-day-head">
               <strong>{format(day, "EEE")}</strong>
-              <span>{format(day, "d MMM")}</span>
+              <span className="week-day-full">{format(day, "d MMM")}</span>
+              <span className="week-day-short" aria-hidden>
+                {format(day, "d")}
+              </span>
             </div>
           ))}
 
