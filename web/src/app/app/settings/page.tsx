@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
+import { getWebsiteSnippets } from "@/modules/clinic/website";
 
 type ClinicProfile = {
   id: string;
@@ -53,6 +54,27 @@ export default function SettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [auditCount, setAuditCount] = useState<number | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const website = useMemo(() => {
+    if (!clinic?.slug || !support?.appBaseUrl) return null;
+    return getWebsiteSnippets({
+      appBaseUrl: support.appBaseUrl,
+      slug: clinic.slug,
+      clinicName: clinic.name,
+      brandColour: brandColour || clinic.brandColour,
+    });
+  }, [clinic, support, brandColour]);
+
+  async function copyText(label: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      setError("Could not copy — select the text manually");
+    }
+  }
 
   useEffect(() => {
     if (authLoading || !me) return;
@@ -519,6 +541,63 @@ export default function SettingsPage() {
             </>
           ) : (
             <p className="muted">Loading…</p>
+          )}
+        </section>
+
+        <section className="panel">
+          <h2>Website booking</h2>
+          <p className="muted">
+            Part of Treow Clinic: put online booking on your website in minutes.
+            We host the page; you paste a button or embed. No download required.
+          </p>
+          {website ? (
+            <>
+              <label className="field">
+                <span>Public booking link</span>
+                <div className="inline-row">
+                  <input readOnly value={website.bookUrl} />
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => void copyText("link", website.bookUrl)}
+                  >
+                    {copied === "link" ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </label>
+              <label className="field">
+                <span>Book online button (HTML)</span>
+                <textarea readOnly rows={6} value={website.buttonHtml} />
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={() => void copyText("button", website.buttonHtml)}
+                >
+                  {copied === "button" ? "Copied" : "Copy button HTML"}
+                </button>
+              </label>
+              <label className="field">
+                <span>Embed widget (iframe)</span>
+                <textarea readOnly rows={7} value={website.iframeHtml} />
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={() => void copyText("iframe", website.iframeHtml)}
+                >
+                  {copied === "iframe" ? "Copied" : "Copy iframe HTML"}
+                </button>
+              </label>
+              <p className="muted book-fineprint">
+                WordPress / Squarespace / Wix: add a Custom HTML block and paste
+                the iframe. Preview:{" "}
+                <a href={website.embedUrl} target="_blank" rel="noreferrer">
+                  open embed
+                </a>
+                .
+              </p>
+            </>
+          ) : (
+            <p className="muted">Loading clinic slug…</p>
           )}
         </section>
 

@@ -118,6 +118,22 @@ enum EmploymentType {
   CONTRACTOR
 }
 
+/// SaaS plan sold by Treow to the clinic
+enum SaasPlan {
+  PILOT
+  STARTER
+  CLINIC
+  GROUP
+}
+
+enum SaasSubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  NONE
+}
+
 /// How practitioner pay is calculated for the month summary
 enum PractitionerPayMode {
   NONE
@@ -156,6 +172,13 @@ model Clinic {
   depositDefaultCents Int @default(2000)
   /// Shown on public booking / manage pages
   bookingPolicyText String @default("Please give at least 2 hours’ notice to cancel or reschedule online. Late cancels and no-shows may forfeit the deposit.")
+  /// Treow SaaS billing (clinic → Treow monthly)
+  saasPlan SaasPlan @default(PILOT)
+  saasStatus SaasSubscriptionStatus @default(TRIALING)
+  saasTrialEndsAt DateTime?
+  saasCurrentPeriodEnd DateTime?
+  stripeCustomerId String?
+  stripeSubscriptionId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -1,6 +1,6 @@
-# Website integration — put Treow booking on a clinic’s site
+# Website integration — put Treow booking on a clinic site
 
-Replace `YOUR_APP` with your Treow URL (e.g. `https://app.treow.clinic`) and `CLINIC_SLUG` with the clinic slug (demo: `northbank-manual`).
+Treow Clinic includes online booking. Replace `YOUR_APP` with your Treow URL (e.g. `https://app.treow.clinic`) and `CLINIC_SLUG` with the clinic slug (demo: `northbank-manual`).
 
 | Surface | URL |
 |---------|-----|

@@ -16,7 +16,7 @@ const sourceSans = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: `${BRAND.name} — practice software for UK clinics`,
+  title: `${BRAND.name} — clinic management for UK practices`,
   description: BRAND.tagline,
   applicationName: BRAND.name,
   manifest: "/manifest.webmanifest",

@@ -1,16 +1,17 @@
-/** Treow Clinic brand + launch defaults */
+/**
+ * Treow Clinic — full practice management for UK allied-health clinics.
+ * Online booking is included; the product is the whole clinic day.
+ */
 export const BRAND = {
   name: "Treow Clinic",
   shortName: "Treow",
-  /** Primary brand line from the mark */
   motto: "Rooted in Osteopathy, Growing in Health",
   tagline:
-    "Record the visit — Treow organises the clinical note so you can sign and move on.",
+    "The full clinic management system for UK physio, osteopathy, and manual therapy — diary, online booking, clinical notes, and money in one calm hosted app.",
   logo: {
     full: "/brand/treow-logo.png",
     mark: "/brand/treow-mark.png",
     trim: "/brand/treow-logo-trim.png",
-    /** Transparent export for overlays on photography */
     clear: "/brand/treow-logo-clear.png",
   },
   colours: {
@@ -32,7 +33,7 @@ export const LAUNCH = {
   locale: "en-GB",
 } as const;
 
-/** Demo tenant shown in the scaffold UI */
+/** Interactive demo tenant prospects can sign into */
 export const DEMO_CLINIC = {
   name: "Northbank Manual Therapy",
   slug: "northbank-manual",
