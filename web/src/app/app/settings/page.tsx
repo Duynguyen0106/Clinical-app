@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
@@ -38,7 +39,8 @@ type BookingPolicy = {
 };
 
 export default function SettingsPage() {
-  const { me, refresh } = useAuth();
+  const router = useRouter();
+  const { me, refresh, loading: authLoading } = useAuth();
   const [clinic, setClinic] = useState<ClinicProfile | null>(null);
   const [support, setSupport] = useState<SupportInfo | null>(null);
   const [booking, setBooking] = useState<BookingPolicy | null>(null);
@@ -73,6 +75,13 @@ export default function SettingsPage() {
       setError("Could not copy — select the text manually");
     }
   }
+
+  useEffect(() => {
+    if (authLoading || !me) return;
+    if (me.role !== "OWNER") {
+      router.replace("/app");
+    }
+  }, [authLoading, me, router]);
 
   useEffect(() => {
     void Promise.all([

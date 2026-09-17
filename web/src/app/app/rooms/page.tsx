@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
@@ -14,12 +15,20 @@ type Room = {
 };
 
 export default function RoomsPage() {
-  const { me } = useAuth();
+  const router = useRouter();
+  const { me, loading: authLoading } = useAuth();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const canEdit = me?.role === "OWNER" || me?.role === "RECEPTION";
+
+  useEffect(() => {
+    if (authLoading || !me) return;
+    if (me.role === "PRACTITIONER") {
+      router.replace("/app");
+    }
+  }, [authLoading, me, router]);
 
   const load = useCallback(() => {
     void api<{ rooms: Room[] }>("/rooms")

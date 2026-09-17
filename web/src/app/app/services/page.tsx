@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
@@ -37,7 +38,8 @@ const emptyForm = {
 };
 
 export default function ServicesPage() {
-  const { me } = useAuth();
+  const router = useRouter();
+  const { me, loading: authLoading } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -45,6 +47,13 @@ export default function ServicesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const canEdit = me?.role === "OWNER" || me?.role === "RECEPTION";
+
+  useEffect(() => {
+    if (authLoading || !me) return;
+    if (me.role === "PRACTITIONER") {
+      router.replace("/app");
+    }
+  }, [authLoading, me, router]);
 
   const load = useCallback(() => {
     void api<{ appointmentTypes: Service[] }>("/clinic/appointment-types")

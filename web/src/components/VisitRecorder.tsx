@@ -100,6 +100,14 @@ export function VisitRecorder({ visitId }: Props) {
   const mimeRef = useRef({ mimeType: "audio/webm", extension: "webm" });
   const elapsedRef = useRef(0);
 
+  function applyTemplateMeta(
+    template?: { id: string; name: string; schema: unknown } | null,
+  ) {
+    if (!template) return;
+    setTemplateName(template.name);
+    setTemplateSections(extractSectionsFromSchema(template.schema));
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -539,13 +547,6 @@ export function VisitRecorder({ visitId }: Props) {
 
   const fields = orderedSectionIds(Object.keys(content), templateSections);
 
-  function applyTemplateMeta(
-    template?: { id: string; name: string; schema: unknown } | null,
-  ) {
-    if (!template) return;
-    setTemplateName(template.name);
-    setTemplateSections(extractSectionsFromSchema(template.schema));
-  }
 
   return (
     <div className="visit-stack">
