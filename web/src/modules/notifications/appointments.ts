@@ -147,10 +147,13 @@ export async function sendBookingConfirmation(appointmentId: string) {
 export async function sendAppointmentRescheduled(opts: {
   appointmentId: string;
   previousStartsAt: Date;
+  /** When false, skip patient email/SMS (practitioner still notified). Default true. */
+  notifyPatient?: boolean;
 }) {
   const apt = await loadNotifyAppointment(opts.appointmentId);
   if (!apt) return null;
 
+  const notifyPatient = opts.notifyPatient !== false;
   const when = formatWhen(apt.startsAt, apt.clinic.timezone);
   const previous = formatWhen(opts.previousStartsAt, apt.clinic.timezone);
   const roomLine = apt.room ? `Room: ${apt.room.name}` : null;
@@ -159,7 +162,7 @@ export async function sendAppointmentRescheduled(opts: {
   let patientSmsSent = false;
   let practitionerEmailSent = false;
 
-  if (apt.patient.email) {
+  if (notifyPatient && apt.patient.email) {
     await sendEmail({
       to: apt.patient.email,
       subject: `Appointment updated — ${apt.clinic.name}`,
@@ -185,7 +188,7 @@ export async function sendAppointmentRescheduled(opts: {
     patientEmailSent = true;
   }
 
-  if (apt.patient.phone) {
+  if (notifyPatient && apt.patient.phone) {
     await sendSms({
       to: apt.patient.phone,
       body: `${apt.clinic.name}: appointment moved to ${when} with ${apt.practitioner.displayName}. Manage: ${manageLink}`,
@@ -206,6 +209,7 @@ export async function sendAppointmentRescheduled(opts: {
       `Now: ${when} (${apt.clinic.timezone})`,
       `Service: ${apt.appointmentType.name}`,
       roomLine,
+      notifyPatient ? null : "(Patient was not notified by the clinic.)",
       "",
       "— Treow Clinic",
     ]

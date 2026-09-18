@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { api } from "@/lib/api";
@@ -25,26 +25,47 @@ function parseStatus(raw: string | null): StatusFilter {
 }
 
 function NotesPageInner() {
-  const { me } = useAuth();
+  const router = useRouter();
+  const { me, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const [notes, setNotes] = useState<Note[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusFilter>(() =>
     parseStatus(searchParams.get("status")),
   );
+  const isClinician = me?.role === "OWNER" || me?.role === "PRACTITIONER";
   const scoped = me?.role === "PRACTITIONER";
+
+  useEffect(() => {
+    if (authLoading || !me) return;
+    if (!isClinician) {
+      router.replace("/app");
+    }
+  }, [authLoading, me, isClinician, router]);
 
   useEffect(() => {
     setStatus(parseStatus(searchParams.get("status")));
   }, [searchParams]);
 
   useEffect(() => {
-    if (!me) return;
+    if (!me || !isClinician) return;
     const qs = new URLSearchParams({ status });
     if (scoped && me.practitionerProfileId) {
       qs.set("practitionerId", me.practitionerProfileId);
     }
-    void api<{ notes: Note[] }>(`/notes?${qs}`).then((d) => setNotes(d.notes));
-  }, [me, scoped, status]);
+    setError(null);
+    void api<{ notes: Note[] }>(`/notes?${qs}`)
+      .then((d) => setNotes(d.notes))
+      .catch((e: Error) => setError(e.message));
+  }, [me, scoped, status, isClinician]);
+
+  if (!authLoading && me && !isClinician) {
+    return (
+      <AppShell title="Notes" subtitle="Clinician only.">
+        <p className="muted">Redirecting…</p>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell
@@ -79,7 +100,8 @@ function NotesPageInner() {
           </div>
           <span className="count">{notes.length}</span>
         </div>
-        {notes.length === 0 ? (
+        {error ? <p className="form-error">{error}</p> : null}
+        {notes.length === 0 && !error ? (
           <p className="muted">
             {status === "DRAFT"
               ? "When you stop a recording, organised notes land here until you sign them."
