@@ -7,6 +7,9 @@ import {
   getClinicBookingPolicy,
   isSlotAllowedByPolicy,
 } from "./policy";
+import { publicSlotWindow } from "./public-slot-window";
+
+export { publicSlotWindow } from "./public-slot-window";
 
 export async function listClinicSlots(args: {
   clinicId: string;
@@ -139,11 +142,18 @@ export async function listPublicSlots(args: {
   const clinic = await prisma.clinic.findUnique({ where: { slug: args.slug } });
   if (!clinic) throw notFound("Clinic not found");
 
+  const policy = await getClinicBookingPolicy(clinic.id);
+  const { days, limit } = publicSlotWindow({
+    maxAdvanceDays: policy.bookingMaxAdvanceDays,
+    days: args.days,
+  });
+
   return listClinicSlots({
     clinicId: clinic.id,
     appointmentTypeId: args.appointmentTypeId,
     practitionerId: args.practitionerId,
-    days: args.days,
+    days,
+    limit,
     onlineBookableOnly: true,
   });
 }

@@ -52,7 +52,7 @@ export function AvailabilityPicker({
   value,
   practitionerId,
   onSelect,
-  emptyMessage = "No open slots in the next fortnight.",
+  emptyMessage = "No open slots in the booking window.",
   legend = "Choose a day",
   initialVisiblePerPeriod = 4,
 }: Props) {
