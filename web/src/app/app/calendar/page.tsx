@@ -935,6 +935,20 @@ export default function CalendarPage() {
               </label>
             ) : null}
 
+            {canEditSchedule ? (
+              <label className="consent-label notify-patient-toggle">
+                <input
+                  type="checkbox"
+                  checked={notifyPatientOnChange}
+                  onChange={(e) => setNotifyPatientOnChange(e.target.checked)}
+                />
+                <span>
+                  Notify patient by email/SMS when time or length changes
+                  (also applies when you drag to a new slot)
+                </span>
+              </label>
+            ) : null}
+
             <div className="sheet-actions">
               {(me?.role === "OWNER" ||
                 me?.role === "PRACTITIONER") ? (
