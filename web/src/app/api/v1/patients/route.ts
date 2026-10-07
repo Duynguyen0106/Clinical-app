@@ -5,13 +5,27 @@ import {
   createPatientSchema,
   listPatients,
   parseListQuery,
+  todayYmd,
 } from "@/modules/patients/service";
 import { requireStaff } from "@/server/rbac";
 
 export const GET = withAuth(async (req, ctx) => {
   requireStaff(ctx);
-  const { q, take } = parseListQuery(new URL(req.url));
-  const patients = await listPatients(ctx, { q, take });
+  const parsed = parseListQuery(new URL(req.url));
+  let { q, take, appointmentOn, practitionerId } = parsed;
+
+  // Practitioners only see patients with appointments today on their diary
+  if (ctx.role === "PRACTITIONER") {
+    appointmentOn = appointmentOn ?? todayYmd();
+    practitionerId = ctx.practitionerProfileId ?? practitionerId;
+  }
+
+  const patients = await listPatients(ctx, {
+    q,
+    take,
+    appointmentOn,
+    practitionerId,
+  });
   return jsonOk({ patients });
 });
 

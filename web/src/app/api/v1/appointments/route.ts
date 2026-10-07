@@ -22,5 +22,11 @@ export const POST = withAuth(async (req, ctx) => {
   requireStaff(ctx);
   const body = createAppointmentSchema.parse(await req.json());
   const appointment = await createAppointment(ctx, body);
-  return jsonCreated({ appointment });
+  const confirmation =
+    appointment &&
+    typeof appointment === "object" &&
+    "confirmation" in appointment
+      ? (appointment as { confirmation?: unknown }).confirmation
+      : undefined;
+  return jsonCreated({ appointment, confirmation });
 });

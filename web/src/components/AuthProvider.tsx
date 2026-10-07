@@ -6,10 +6,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { api, clearSession, getToken, setSession } from "@/lib/api";
+import { ApiError, api, clearSession, getToken, setSession } from "@/lib/api";
 
 type Me = {
   user: { id: string; email: string; name: string };
@@ -35,31 +36,94 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | null>(null);
+const ME_CACHE_KEY = "treow_me_cache";
+
+function readMeCache(): Me | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(ME_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Me;
+  } catch {
+    return null;
+  }
+}
+
+function writeMeCache(me: Me | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!me) sessionStorage.removeItem(ME_CACHE_KEY);
+    else sessionStorage.setItem(ME_CACHE_KEY, JSON.stringify(me));
+  } catch {
+    /* ignore quota */
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [me, setMe] = useState<Me | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [me, setMe] = useState<Me | null>(() =>
+    getToken() ? readMeCache() : null,
+  );
+  const [loading, setLoading] = useState(
+    () => !(typeof window !== "undefined" && getToken() && readMeCache()),
+  );
+  const aliveRef = useRef(true);
+  const refreshGen = useRef(0);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      refreshGen.current += 1;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
+    const gen = ++refreshGen.current;
     if (!getToken()) {
-      setMe(null);
-      setLoading(false);
+      writeMeCache(null);
+      if (aliveRef.current && gen === refreshGen.current) {
+        setMe(null);
+        setLoading(false);
+      }
       return;
     }
     try {
-      const data = await api<Me>("/auth/me");
+      const data = await Promise.race([
+        api<Me>("/auth/me"),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(
+            () => reject(new ApiError(408, "Auth check timed out")),
+            5_000,
+          );
+        }),
+      ]);
+      if (!aliveRef.current || gen !== refreshGen.current) return;
+      writeMeCache(data);
       setMe(data);
-    } catch {
-      clearSession();
-      setMe(null);
+    } catch (e) {
+      if (!aliveRef.current || gen !== refreshGen.current) return;
+      const status = e instanceof ApiError ? e.status : 0;
+      if (status === 401 || status === 403) {
+        clearSession();
+        writeMeCache(null);
+        setMe(null);
+      } else {
+        const cached = readMeCache();
+        if (cached) setMe(cached);
+      }
     } finally {
-      setLoading(false);
+      if (aliveRef.current && gen === refreshGen.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    // Session restore on mount — intentional bootstrap.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- auth bootstrap
+    const cached = getToken() ? readMeCache() : null;
+    if (cached) {
+      setMe(cached);
+      setLoading(false);
+    }
     void refresh();
   }, [refresh]);
 
@@ -87,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* ignore */
     }
     clearSession();
+    writeMeCache(null);
     setMe(null);
   }, []);
 
@@ -105,14 +170,33 @@ export function useAuth() {
 }
 
 export function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { me, loading } = useAuth();
+  const { me, loading, refresh } = useAuth();
   const router = useRouter();
+  const retryRef = useRef(false);
+  const [booting, setBooting] = useState(false);
 
   useEffect(() => {
-    if (!loading && !me) router.replace("/login");
-  }, [loading, me, router]);
+    if (loading || booting) return;
+    if (me) {
+      retryRef.current = false;
+      return;
+    }
+    if (getToken() && !retryRef.current) {
+      retryRef.current = true;
+      setBooting(true);
+      void refresh().finally(() => setBooting(false));
+      return;
+    }
+    router.replace("/login");
+  }, [loading, booting, me, router, refresh]);
 
-  if (loading) {
+  useEffect(() => {
+    if (!loading && !booting) return;
+    const t = window.setTimeout(() => setBooting(false), 8_000);
+    return () => window.clearTimeout(t);
+  }, [loading, booting]);
+
+  if ((loading || booting) && !me) {
     return (
       <div className="book-page">
         <p className="muted">Loading clinic…</p>

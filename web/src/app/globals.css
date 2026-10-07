@@ -1502,7 +1502,7 @@ h3 {
 .apt-row,
 .patient-row {
   display: grid;
-  grid-template-columns: 64px 1fr auto;
+  grid-template-columns: 1fr auto;
   gap: 0.85rem;
   align-items: center;
   padding: 0.85rem;
@@ -1512,8 +1512,44 @@ h3 {
   animation: row-in 420ms ease both;
 }
 
-.patient-row {
-  grid-template-columns: 1fr auto;
+.patient-row-active {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface-solid));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.patient-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+  flex: 1;
+}
+
+.patient-row-copy {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.patient-day-time {
+  flex: 0 0 3.25rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  padding-top: 0.1rem;
+}
+
+.patient-day-slot {
+  margin: 0 0 0.35rem;
 }
 
 @keyframes row-in {
@@ -2096,6 +2132,17 @@ h3 {
   margin: 0.75rem 0 1rem;
   padding-left: 1.1rem;
   font-size: 0.9rem;
+}
+
+.notify-patient-toggle {
+  margin: 0.75rem 0 0.25rem;
+  align-items: flex-start;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.notify-patient-toggle input {
+  margin-top: 0.2rem;
 }
 
 .pay-history-title {
