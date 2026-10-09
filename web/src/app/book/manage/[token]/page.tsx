@@ -17,7 +17,13 @@ type Managed = {
   practitioner: { displayName: string };
   appointmentType: { name: string; durationMinutes: number };
   room: { name: string } | null;
-  clinic: { name: string; slug: string; timezone: string };
+  clinic: {
+    name: string;
+    slug: string;
+    timezone: string;
+    cancelMinNoticeHours: number;
+    bookingPolicyText: string;
+  };
 };
 
 type Props = { params: Promise<{ token: string }> };
@@ -92,11 +98,18 @@ export default function ManageBookingPage({ params }: Props) {
     }
   }
 
-  const closed =
+  const statusClosed =
     appointment &&
     ["CANCELLED", "COMPLETED", "NO_SHOW", "IN_PROGRESS"].includes(
       appointment.status,
     );
+
+  const cancelNoticeHours = appointment?.clinic.cancelMinNoticeHours ?? 24;
+  const withinCancelWindow =
+    !!appointment &&
+    new Date(appointment.startsAt).getTime() - Date.now() <
+      cancelNoticeHours * 60 * 60_000;
+  const closed = statusClosed || withinCancelWindow;
 
   const availabilitySlots = useMemo(
     () => slots.map((startsAt) => ({ startsAt })),
@@ -197,9 +210,15 @@ export default function ManageBookingPage({ params }: Props) {
               ) : null}
 
               <p className="muted book-fineprint">
-                Online cancel/reschedule closes within 2 hours of the visit.
-                After that, please contact the clinic.
+                {appointment.clinic.bookingPolicyText ||
+                  `Online cancel/reschedule needs at least ${cancelNoticeHours} hours’ notice. After that, please contact the clinic.`}
               </p>
+              {withinCancelWindow && !statusClosed ? (
+                <p className="muted book-fineprint">
+                  Online changes for this visit are closed — please contact the
+                  clinic.
+                </p>
+              ) : null}
               <Link
                 href={`/book/${appointment.clinic.slug}`}
                 className="btn-ghost"

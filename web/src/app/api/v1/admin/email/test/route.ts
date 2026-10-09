@@ -37,7 +37,7 @@ export const POST = withPublic(async (req) => {
     serviceName: "Follow-up Osteopathic Treatment",
     roomName: "Couch 1",
     manageLink: "https://treow-clinic.vercel.app/book/manage/demo",
-    cancelNoticeHours: 2,
+    cancelNoticeHours: 24,
   });
 
   try {
