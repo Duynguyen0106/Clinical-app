@@ -18,11 +18,12 @@ export type EmailSendResult = {
 };
 
 export function getEmailProvider(): "resend" | "console" {
-  const provider = (process.env.EMAIL_PROVIDER ?? "console").toLowerCase();
-  if (provider === "resend" && process.env.RESEND_API_KEY?.trim()) {
-    return "resend";
-  }
-  return "console";
+  const key = process.env.RESEND_API_KEY?.trim();
+  if (!key) return "console";
+  const provider = (process.env.EMAIL_PROVIDER ?? "resend").toLowerCase();
+  // Prefer Resend whenever a key is present (unless explicitly forced to console).
+  if (provider === "console") return "console";
+  return "resend";
 }
 
 export function isEmailDeliveryConfigured() {
