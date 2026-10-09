@@ -54,7 +54,7 @@ export function assertWithinCancelWindow(
   const minMs = policy.cancelMinNoticeHours * 60 * 60_000;
   if (startsAt.getTime() - now.getTime() < minMs) {
     throw badRequest(
-      `Online changes close within ${policy.cancelMinNoticeHours} hours of the appointment — please call the clinic`,
+      `Online cancel/reschedule needs at least ${policy.cancelMinNoticeHours} hours’ notice — please call the clinic`,
     );
   }
 }

@@ -47,7 +47,16 @@ const appointmentInclude = {
   practitioner: true,
   appointmentType: true,
   room: true,
-  clinic: { select: { id: true, name: true, slug: true, timezone: true } },
+  clinic: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      timezone: true,
+      cancelMinNoticeHours: true,
+      bookingPolicyText: true,
+    },
+  },
 } as const;
 
 export async function getManagedAppointment(token: string) {
