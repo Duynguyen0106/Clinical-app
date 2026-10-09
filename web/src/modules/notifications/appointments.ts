@@ -118,25 +118,32 @@ export async function sendBookingConfirmation(appointmentId: string) {
     smsSent = true;
   }
 
-  practitionerEmailSent = await notifyPractitioner(
-    apt,
-    `New booking — ${apt.patient.firstName} ${apt.patient.lastName}`,
-    [
-      `Hi ${practitionerName(apt)},`,
-      "",
-      `A new appointment was booked at ${apt.clinic.name}.`,
-      "",
-      `When: ${when} (${apt.clinic.timezone})`,
-      `Patient: ${apt.patient.firstName} ${apt.patient.lastName}`,
-      apt.patient.phone ? `Phone: ${apt.patient.phone}` : null,
-      `Service: ${apt.appointmentType.name}`,
-      roomLine,
-      "",
-      `— ${apt.clinic.name}`,
-    ]
-      .filter((line) => line !== null)
-      .join("\n"),
-  );
+  try {
+    practitionerEmailSent = await notifyPractitioner(
+      apt,
+      `New booking — ${apt.patient.firstName} ${apt.patient.lastName}`,
+      [
+        `Hi ${practitionerName(apt)},`,
+        "",
+        `A new appointment was booked at ${apt.clinic.name}.`,
+        "",
+        `When: ${when} (${apt.clinic.timezone})`,
+        `Patient: ${apt.patient.firstName} ${apt.patient.lastName}`,
+        apt.patient.phone ? `Phone: ${apt.patient.phone}` : null,
+        `Service: ${apt.appointmentType.name}`,
+        roomLine,
+        "",
+        `— ${apt.clinic.name}`,
+      ]
+        .filter((line) => line !== null)
+        .join("\n"),
+    );
+  } catch (err) {
+    // Don't fail patient confirmation if staff notify is blocked (e.g. Resend
+    // sandbox only allows the account owner's inbox until a domain is verified).
+    console.error("Practitioner booking notify failed", err);
+    practitionerEmailSent = false;
+  }
 
   if (emailDelivered || smsSent) {
     await prisma.appointment.update({
