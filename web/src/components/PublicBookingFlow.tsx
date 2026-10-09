@@ -179,6 +179,12 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
           checkoutUrl: string | null;
         } | null;
         policyText?: string;
+        confirmation?: {
+          emailSent: boolean;
+          emailDelivered: boolean;
+          emailProvider: "resend" | "console" | null;
+          smsSent: boolean;
+        } | null;
       }>(`/public/clinics/${slug}`, {
         method: "POST",
         auth: false,
@@ -220,6 +226,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
       if (booked.deposit?.depositCents != null) {
         qs.set("depositCents", String(booked.deposit.depositCents));
       }
+      if (booked.confirmation?.emailDelivered) qs.set("emailSent", "1");
       if (embed) qs.set("embed", "1");
 
       router.push(`/book/${slug}/confirmed?${qs.toString()}`);

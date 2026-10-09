@@ -28,6 +28,8 @@ export type BookingConfirmedDetails = {
   depositStatus?: string;
   depositCents?: number;
   policyText?: string;
+  /** True when confirmation email was handed to Resend (or similar) */
+  emailDelivered?: boolean;
 };
 
 type Props = {
@@ -128,7 +130,13 @@ export function BookingConfirmed({ slug, details = {}, embed = false }: Props) {
                 for <strong>{details.email}</strong>
               </>
             ) : null}
-            . Use the manage link below if you need to cancel or reschedule.
+            .
+            {details.emailDelivered && details.email ? (
+              <> A confirmation email is on its way to that address.</>
+            ) : details.email ? (
+              <> Save the manage link below for your records.</>
+            ) : null}{" "}
+            Use Manage this booking if you need to cancel or reschedule.
           </p>
 
           {details.depositStatus ? (

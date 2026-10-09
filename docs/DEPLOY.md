@@ -49,6 +49,12 @@ RESEND_API_KEY=re_...
 EMAIL_FROM="Clinic Name <bookings@yourdomain.com>"
 ```
 
+**Patient booking confirmations** require Resend (or another real provider). With `EMAIL_PROVIDER=console`, bookings still succeed but emails only log in the server — patients will not receive them. After setting Resend:
+
+1. Verify your sending domain in the Resend dashboard  
+2. Set `EMAIL_FROM` to an address on that domain  
+3. Redeploy, then place a test book and check the inbox  
+
 Optional later:
 
 ```bash

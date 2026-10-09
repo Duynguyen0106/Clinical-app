@@ -21,6 +21,7 @@ function ConfirmedInner({ slug }: { slug: string }) {
     manageHref: search.get("manage") ?? undefined,
     depositStatus: search.get("depositStatus") ?? undefined,
     depositCents: depositCentsRaw ? Number(depositCentsRaw) : undefined,
+    emailDelivered: search.get("emailSent") === "1",
   };
 
   return (

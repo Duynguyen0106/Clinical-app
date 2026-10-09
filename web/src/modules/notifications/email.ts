@@ -7,18 +7,39 @@ export type EmailMessage = {
   subject: string;
   text: string;
   html?: string;
+  /** Optional Reply-To (e.g. clinic inbox) */
+  replyTo?: string | null;
 };
 
-export async function sendEmail(message: EmailMessage) {
-  const provider = (process.env.EMAIL_PROVIDER ?? "console").toLowerCase();
+export type EmailSendResult = {
+  provider: "resend" | "console";
+  /** True only when handed to a real delivery provider successfully */
+  delivered: boolean;
+};
 
-  if (provider === "resend" && process.env.RESEND_API_KEY) {
+export function getEmailProvider(): "resend" | "console" {
+  const provider = (process.env.EMAIL_PROVIDER ?? "console").toLowerCase();
+  if (provider === "resend" && process.env.RESEND_API_KEY?.trim()) {
+    return "resend";
+  }
+  return "console";
+}
+
+export function isEmailDeliveryConfigured() {
+  return getEmailProvider() === "resend";
+}
+
+export async function sendEmail(message: EmailMessage): Promise<EmailSendResult> {
+  const provider = getEmailProvider();
+
+  if (provider === "resend") {
     const from =
-      process.env.EMAIL_FROM ?? "Treow Clinic <onboarding@resend.dev>";
+      process.env.EMAIL_FROM?.trim() ||
+      "Treow Clinic <onboarding@resend.dev>";
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        Authorization: `Bearer ${process.env.RESEND_API_KEY!.trim()}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -26,18 +47,26 @@ export async function sendEmail(message: EmailMessage) {
         to: [message.to],
         subject: message.subject,
         text: message.text,
-        html: message.html ?? `<pre>${message.text}</pre>`,
+        html: message.html ?? `<pre>${escapeHtml(message.text)}</pre>`,
+        ...(message.replyTo ? { reply_to: message.replyTo } : {}),
       }),
     });
     if (!res.ok) {
       const body = await res.text();
       throw new Error(`Resend failed: ${res.status} ${body}`);
     }
-    return { provider: "resend" as const };
+    return { provider: "resend", delivered: true };
   }
 
   console.log(
     `[email:console] to=${message.to} subject=${JSON.stringify(message.subject)}\n${message.text}\n`,
   );
-  return { provider: "console" as const };
+  return { provider: "console", delivered: false };
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
