@@ -1,6 +1,12 @@
 /**
  * Email notifications — EMAIL_PROVIDER=console|resend
+ * Config from env and/or DB (admin runtime settings).
  */
+
+import {
+  getEffectiveEmailProvider,
+  loadEmailRuntimeConfig,
+} from "./email-config";
 
 export type EmailMessage = {
   to: string;
@@ -17,11 +23,11 @@ export type EmailSendResult = {
   delivered: boolean;
 };
 
+/** Sync helper for health/tests — prefer async getEffectiveEmailProvider in request paths. */
 export function getEmailProvider(): "resend" | "console" {
   const key = process.env.RESEND_API_KEY?.trim();
   if (!key) return "console";
   const provider = (process.env.EMAIL_PROVIDER ?? "resend").toLowerCase();
-  // Prefer Resend whenever a key is present (unless explicitly forced to console).
   if (provider === "console") return "console";
   return "resend";
 }
@@ -31,16 +37,18 @@ export function isEmailDeliveryConfigured() {
 }
 
 export async function sendEmail(message: EmailMessage): Promise<EmailSendResult> {
-  const provider = getEmailProvider();
+  const cfg = await loadEmailRuntimeConfig();
+  const provider = cfg.provider;
 
-  if (provider === "resend") {
+  if (provider === "resend" && cfg.apiKey) {
     const from =
+      cfg.from?.trim() ||
       process.env.EMAIL_FROM?.trim() ||
-      "Treow Clinic <onboarding@resend.dev>";
+      "Nguyen's Osteopathic Clinic <onboarding@resend.dev>";
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY!.trim()}`,
+        Authorization: `Bearer ${cfg.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -64,6 +72,8 @@ export async function sendEmail(message: EmailMessage): Promise<EmailSendResult>
   );
   return { provider: "console", delivered: false };
 }
+
+export { getEffectiveEmailProvider };
 
 function escapeHtml(value: string) {
   return value
