@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { BRAND } from "@/modules/config/brand";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -50,6 +51,7 @@ type Props = {
 };
 
 export function PublicBookingFlow({ slug, embed = false }: Props) {
+  const router = useRouter();
   const [clinic, setClinic] = useState<Clinic | null>(null);
   const [serviceId, setServiceId] = useState("");
   const [practitionerId, setPractitionerId] = useState("");
@@ -60,7 +62,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   >([]);
   const [anyMode, setAnyMode] = useState(true);
   const [slot, setSlot] = useState("");
-  const [step, setStep] = useState<"pick" | "details" | "done">("pick");
+  const [step, setStep] = useState<"pick" | "details">("pick");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -68,15 +70,9 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   const [privacy, setPrivacy] = useState(false);
   const [recordingPref, setRecordingPref] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [manageHref, setManageHref] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const captchaRequired = turnstileEnabledInBrowser();
-  const [depositInfo, setDepositInfo] = useState<{
-    status: string;
-    depositCents: number;
-    checkoutUrl: string | null;
-  } | null>(null);
   const [policyText, setPolicyText] = useState<string | null>(null);
 
   useEffect(() => {
@@ -158,6 +154,11 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
     };
   }, [slug, serviceId, practitionerId, anyMode]);
 
+  const practitioners = (clinic?.practitioners ?? []).filter(Boolean) as {
+    id: string;
+    displayName: string;
+  }[];
+
   async function confirm() {
     if (!clinic || !privacy) return;
     if (captchaRequired && !captchaToken) {
@@ -194,25 +195,40 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
           captchaToken: captchaToken || undefined,
         }),
       });
-      if (booked.manageUrl) setManageHref(booked.manageUrl);
-      if (booked.deposit) setDepositInfo(booked.deposit);
       if (booked.policyText) setPolicyText(booked.policyText);
       if (booked.deposit?.checkoutUrl) {
         window.location.href = booked.deposit.checkoutUrl;
         return;
       }
-      setStep("done");
+
+      const serviceName =
+        clinic.appointmentTypes.find((t) => t.id === serviceId)?.name ?? "";
+      const practitionerName =
+        practitioners.find((p) => p.id === practitionerId)?.displayName ??
+        anySlots.find((s) => s.practitionerId === practitionerId)
+          ?.practitionerName ??
+        "";
+
+      const qs = new URLSearchParams();
+      if (name.trim()) qs.set("name", name.trim());
+      if (email.trim()) qs.set("email", email.trim());
+      if (slot) qs.set("startsAt", slot);
+      if (serviceName) qs.set("service", serviceName);
+      if (practitionerName) qs.set("practitioner", practitionerName);
+      if (booked.manageUrl) qs.set("manage", booked.manageUrl);
+      if (booked.deposit?.status) qs.set("depositStatus", booked.deposit.status);
+      if (booked.deposit?.depositCents != null) {
+        qs.set("depositCents", String(booked.deposit.depositCents));
+      }
+      if (embed) qs.set("embed", "1");
+
+      router.push(`/book/${slug}/confirmed?${qs.toString()}`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Booking failed");
     } finally {
       setBusy(false);
     }
   }
-
-  const practitioners = (clinic?.practitioners ?? []).filter(Boolean) as {
-    id: string;
-    displayName: string;
-  }[];
 
   const availabilitySlots: AvailabilitySlot[] = useMemo(() => {
     if (anyMode && anySlots.length > 0) {
@@ -228,53 +244,6 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   const shellClass = embed ? "book-page book-page-embed" : "book-page";
   const accent = clinic?.brandColour || undefined;
   const clinicLogo = clinic?.logoUrl ?? null;
-
-  if (step === "done") {
-    return (
-      <div className={shellClass}>
-        <div className="book-card">
-          {!embed ? (
-            clinicLogo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={clinicLogo} alt="" className="book-clinic-logo" />
-            ) : (
-              <p className="brand-mark">{BRAND.shortName}</p>
-            )
-          ) : null}
-          <h1>You&apos;re booked</h1>
-          <p className="muted">
-            {name} · {format(new Date(slot), "EEE d MMM HH:mm")}
-          </p>
-          <p>
-            A confirmation is on its way to {email}
-            {phone ? " (and SMS if we have your number)" : ""} with a link to
-            cancel or reschedule. We&apos;ll also send a reminder before your
-            visit.
-          </p>
-          {depositInfo ? (
-            <p className="alert-line">
-              {depositInfo.status === "paid"
-                ? `Deposit of £${(depositInfo.depositCents / 100).toFixed(2)} received — booking confirmed.`
-                : `A deposit of £${(depositInfo.depositCents / 100).toFixed(2)} is required to hold this slot.`}
-            </p>
-          ) : null}
-          {policyText ? <p className="muted book-fineprint">{policyText}</p> : null}
-          {manageHref ? (
-            <Link href={manageHref} className="btn-secondary">
-              Manage this booking
-            </Link>
-          ) : null}
-          {!embed ? (
-            <Link href="/login" className="btn-primary">
-              Clinic sign in
-            </Link>
-          ) : (
-            <p className="muted embed-foot">You can close this window.</p>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={shellClass}>

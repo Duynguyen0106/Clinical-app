@@ -14,6 +14,7 @@ export function getWebsiteSnippets(args: {
   const slug = args.slug.trim();
   const colour = args.brandColour?.trim() || "#1E3F37";
   const bookUrl = `${base}/book/${slug}`;
+  const confirmedUrl = `${base}/book/${slug}/confirmed`;
   const embedUrl = `${base}/embed/${slug}`;
   const loginUrl = `${base}/login`;
 
@@ -34,6 +35,8 @@ export function getWebsiteSnippets(args: {
 
   return {
     bookUrl,
+    /** Thank-you / Google Ads conversion URL (details appended as query after book) */
+    confirmedUrl,
     embedUrl,
     loginUrl,
     buttonHtml,

@@ -13,6 +13,10 @@ describe("getWebsiteSnippets", () => {
       brandColour: "#123456",
     });
     assert.equal(s.bookUrl, "https://app.treow.example/book/riverside-physio");
+    assert.equal(
+      s.confirmedUrl,
+      "https://app.treow.example/book/riverside-physio/confirmed",
+    );
     assert.equal(s.embedUrl, "https://app.treow.example/embed/riverside-physio");
     assert.match(s.buttonHtml, /Book online/);
     assert.match(s.buttonHtml, /#123456/);

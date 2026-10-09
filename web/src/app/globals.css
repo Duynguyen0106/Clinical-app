@@ -4734,3 +4734,38 @@ h3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+.book-confirm-lead {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.book-confirm-summary {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-solid) 88%, var(--accent-soft, #e8f0ee));
+}
+
+.book-confirm-summary li {
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.book-confirm-actions {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.book-confirm-actions .btn-primary,
+.book-confirm-actions .btn-secondary {
+  width: 100%;
+  text-align: center;
+}

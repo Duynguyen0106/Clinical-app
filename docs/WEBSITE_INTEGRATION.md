@@ -5,9 +5,12 @@ Treow Clinic includes online booking. Replace `YOUR_APP` with your Treow URL (e.
 | Surface | URL |
 |---------|-----|
 | Full booking page | `https://YOUR_APP/book/CLINIC_SLUG` |
+| **Confirmation / Ads conversion** | `https://YOUR_APP/book/CLINIC_SLUG/confirmed` |
 | **Embed** (iframe-friendly) | `https://YOUR_APP/embed/CLINIC_SLUG` |
 | Staff login | `https://YOUR_APP/login` |
 | Privacy notice | `https://YOUR_APP/privacy` |
+
+For **Google Ads**: use the booking page as the ad final URL, and match conversions on the `/confirmed` path (patients land there after a successful book).
 
 ---
 
