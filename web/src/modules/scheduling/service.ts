@@ -888,11 +888,16 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     },
   );
 
+  let confirmation: Awaited<
+    ReturnType<
+      typeof import("@/modules/notifications/appointments").sendBookingConfirmation
+    >
+  > = null;
   try {
     const { sendBookingConfirmation } = await import(
       "@/modules/notifications/appointments"
     );
-    await sendBookingConfirmation(appointment.id);
+    confirmation = await sendBookingConfirmation(appointment.id);
   } catch (err) {
     console.error("Booking confirmation email failed", err);
   }
@@ -929,6 +934,7 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     appointment: fresh,
     deposit: depositCheckout,
     policyText: policy.bookingPolicyText,
+    confirmation,
   };
 }
 

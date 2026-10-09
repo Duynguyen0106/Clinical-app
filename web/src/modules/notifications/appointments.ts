@@ -2,6 +2,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { prisma } from "@/server/db";
 import { sendEmail } from "./email";
 import { sendSms } from "./sms";
+import { buildBookingConfirmationEmail } from "./booking-confirmation-email";
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { manageUrl } from "@/modules/scheduling/manage";
 
@@ -71,33 +72,36 @@ export async function sendBookingConfirmation(appointmentId: string) {
   const roomLine = apt.room ? `Room: ${apt.room.name}` : null;
   const manageLink = manageUrl(apt.id);
   let emailSent = false;
+  let emailDelivered = false;
+  let emailProvider: "resend" | "console" | null = null;
   let smsSent = false;
   let practitionerEmailSent = false;
 
   if (apt.patient.email) {
-    const subject = `Booking confirmed — ${apt.clinic.name}`;
-    const text = [
-      `Hi ${apt.patient.firstName},`,
-      "",
-      `Your appointment is confirmed at ${apt.clinic.name}.`,
-      "",
-      `When: ${when} (${apt.clinic.timezone})`,
-      `With: ${apt.practitioner.displayName}`,
-      `Service: ${apt.appointmentType.name}`,
-      roomLine,
-      "",
-      "Manage your booking (cancel or reschedule):",
+    const content = buildBookingConfirmationEmail({
+      clinicName: apt.clinic.name,
+      clinicPhone: apt.clinic.phone,
+      clinicAddress: apt.clinic.address,
+      patientFirstName: apt.patient.firstName,
+      whenLabel: when,
+      timezone: apt.clinic.timezone,
+      practitionerName: apt.practitioner.displayName,
+      serviceName: apt.appointmentType.name,
+      roomName: apt.room?.name ?? null,
       manageLink,
-      "",
-      "Online changes close within 2 hours of the appointment.",
-      "",
-      "— Treow Clinic",
-    ]
-      .filter((line) => line !== null)
-      .join("\n");
+      cancelNoticeHours: apt.clinic.cancelMinNoticeHours ?? 2,
+    });
 
-    await sendEmail({ to: apt.patient.email, subject, text });
+    const result = await sendEmail({
+      to: apt.patient.email,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+      replyTo: apt.clinic.email,
+    });
     emailSent = true;
+    emailDelivered = result.delivered;
+    emailProvider = result.provider;
   }
 
   if (apt.patient.phone) {
@@ -128,20 +132,27 @@ export async function sendBookingConfirmation(appointmentId: string) {
       `Service: ${apt.appointmentType.name}`,
       roomLine,
       "",
-      "— Treow Clinic",
+      `— ${apt.clinic.name}`,
     ]
       .filter((line) => line !== null)
       .join("\n"),
   );
 
-  if (emailSent || smsSent) {
+  if (emailDelivered || smsSent) {
     await prisma.appointment.update({
       where: { id: apt.id },
       data: { confirmationSentAt: new Date() },
     });
   }
 
-  return { emailSent, smsSent, practitionerEmailSent, manageLink };
+  return {
+    emailSent,
+    emailDelivered,
+    emailProvider,
+    smsSent,
+    practitionerEmailSent,
+    manageLink,
+  };
 }
 
 export async function sendAppointmentRescheduled(opts: {

@@ -30,5 +30,13 @@ export const POST = withPublic(async (req, params) => {
     manageUrl: manageUrl(appointment.id),
     deposit: result.deposit,
     policyText: result.policyText,
+    confirmation: result.confirmation
+      ? {
+          emailSent: result.confirmation.emailSent,
+          emailDelivered: result.confirmation.emailDelivered,
+          emailProvider: result.confirmation.emailProvider,
+          smsSent: result.confirmation.smsSent,
+        }
+      : null,
   });
 });
