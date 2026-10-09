@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { withPublic } from "@/server/api";
 import { jsonOk } from "@/server/http";
 import { unauthorized, badRequest } from "@/server/errors";
@@ -8,23 +7,10 @@ import {
 } from "@/modules/clinic/provision";
 import { getAppBaseUrl } from "@/server/env";
 import { getWebsiteSnippets } from "@/modules/clinic/website";
-
-function isProvisionAuthorized(req: Request): boolean {
-  const secret = process.env.ADMIN_PROVISION_SECRET?.trim() || "";
-  if (!secret || secret.length < 24) return false;
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.startsWith("Bearer ")) return false;
-  const token = auth.slice("Bearer ".length).trim();
-  if (token.length !== secret.length) return false;
-  try {
-    return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
-  } catch {
-    return false;
-  }
-}
+import { isAdminProvisionAuthorized } from "@/server/admin-auth";
 
 export const POST = withPublic(async (req) => {
-  if (!isProvisionAuthorized(req)) {
+  if (!isAdminProvisionAuthorized(req)) {
     throw unauthorized("Invalid provision secret");
   }
   let body: unknown;
