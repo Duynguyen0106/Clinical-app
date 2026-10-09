@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db";
 import { jsonOk } from "@/server/http";
+import { getEmailProvider } from "@/modules/notifications/email";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export async function GET() {
     time: new Date().toISOString(),
     regionHint: process.env.S3_REGION ?? process.env.DATA_REGION ?? "uk-eu",
     aiProvider: process.env.AI_PROVIDER ?? "mock",
-    emailProvider: process.env.EMAIL_PROVIDER ?? "console",
+    emailProvider: getEmailProvider(),
     database,
     latencyMs: Date.now() - started,
   };
