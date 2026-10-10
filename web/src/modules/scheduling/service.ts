@@ -257,7 +257,9 @@ export async function createAppointment(
     const { sendBookingConfirmation } = await import(
       "@/modules/notifications/appointments"
     );
-    confirmation = await sendBookingConfirmation(appointment.id);
+    confirmation = await sendBookingConfirmation(appointment.id, {
+      source: "staff",
+    });
   } catch (err) {
     console.error("Staff booking confirmation failed", err);
   }
