@@ -1,10 +1,12 @@
 import { withAuth } from "@/server/api";
 import { jsonOk } from "@/server/http";
+import { requireRole } from "@/server/auth";
 import {
   assertCanAccessClinicalRecord,
   requireStaff,
 } from "@/server/rbac";
 import {
+  deletePatient,
   getPatient,
   getPatientPrep,
   recordNoteHistoryExpand,
@@ -31,6 +33,15 @@ export const PATCH = withAuth(async (req, ctx, params) => {
   const body = updatePatientSchema.parse(await req.json());
   const patient = await updatePatient(ctx, params.id, body);
   return jsonOk({ patient });
+});
+
+export const DELETE = withAuth(async (req, ctx, params) => {
+  requireStaff(ctx);
+  const url = new URL(req.url);
+  const force = url.searchParams.get("force") === "1";
+  if (force) requireRole(ctx, ["OWNER"]);
+  await deletePatient(ctx, params.id, { force });
+  return jsonOk({ ok: true });
 });
 
 const expandSchema = z.object({

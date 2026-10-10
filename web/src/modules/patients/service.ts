@@ -14,23 +14,39 @@ import {
 export type { TimelineItem };
 export { buildPatientTimeline } from "@/modules/patients/timeline";
 
-export const createPatientSchema = z.object({
-  firstName: z.string().min(1).max(100),
-  lastName: z.string().min(1).max(100),
-  email: z.string().email().optional().nullable(),
-  phone: z.string().max(40).optional().nullable(),
-  dateOfBirth: z
+/** Treat blank strings as null so empty form fields validate. */
+const optionalEmail = z.preprocess(
+  (v) => (v === "" || v === undefined ? null : v),
+  z.string().email().nullable(),
+);
+
+const optionalDob = z.preprocess(
+  (v) => (v === "" || v === undefined ? null : v),
+  z
     .union([
       z.string().datetime(),
       z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     ])
-    .optional()
     .nullable(),
-  alerts: z.string().max(2000).optional().nullable(),
-  gpName: z.string().max(120).optional().nullable(),
-  gpPractice: z.string().max(200).optional().nullable(),
-  gpEmail: z.string().email().optional().nullable(),
-  nhsNumber: z.string().max(20).optional().nullable(),
+);
+
+const optionalText = (max: number) =>
+  z.preprocess(
+    (v) => (v === "" || v === undefined ? null : v),
+    z.string().max(max).nullable(),
+  );
+
+export const createPatientSchema = z.object({
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+  email: optionalEmail.optional(),
+  phone: optionalText(40).optional(),
+  dateOfBirth: optionalDob.optional(),
+  alerts: optionalText(2000).optional(),
+  gpName: optionalText(120).optional(),
+  gpPractice: optionalText(200).optional(),
+  gpEmail: optionalEmail.optional(),
+  nhsNumber: optionalText(20).optional(),
 });
 
 export const updatePatientSchema = createPatientSchema.partial();
@@ -452,6 +468,41 @@ export async function updatePatient(
         : {}),
     },
   });
+}
+
+/**
+ * Permanently delete a patient. Blocked when they have signed clinical notes
+ * or upcoming appointments unless `force` is true (owner cleanup / test data).
+ */
+export async function deletePatient(
+  ctx: AuthContext,
+  id: string,
+  opts: { force?: boolean } = {},
+) {
+  await assertPatientInClinic(ctx.clinicId, id);
+
+  const [signedNotes, upcoming] = await Promise.all([
+    prisma.clinicalNote.count({
+      where: { patientId: id, status: "SIGNED" },
+    }),
+    prisma.appointment.count({
+      where: {
+        patientId: id,
+        clinicId: ctx.clinicId,
+        startsAt: { gte: new Date() },
+        status: { not: "CANCELLED" },
+      },
+    }),
+  ]);
+
+  if ((signedNotes > 0 || upcoming > 0) && !opts.force) {
+    throw badRequest(
+      `Cannot delete: ${signedNotes} signed note(s) and ${upcoming} upcoming appointment(s). Remove or cancel those first, or ask an owner to force-delete.`,
+    );
+  }
+
+  // Cascades consents, appointments, notes, invoices, waitlist, access events.
+  return prisma.patient.delete({ where: { id } });
 }
 
 export const consentSchema = z.object({
