@@ -141,25 +141,29 @@ export async function startRecording(ctx: AuthContext, visitId: string) {
       if (hasSigned) {
         throw badRequest("Visit already has a signed note");
       }
-      return prisma.recording.update({
-        where: { id: visit.recording.id },
-        data: {
-          status: RecordingStatus.RECORDING,
-          error: null,
-          durationSec: null,
-        },
-      });
+      return withClinicTransaction(ctx.clinicId, async (tx) =>
+        tx.recording.update({
+          where: { id: visit.recording!.id },
+          data: {
+            status: RecordingStatus.RECORDING,
+            error: null,
+            durationSec: null,
+          },
+        }),
+      );
     }
     return visit.recording;
   }
 
-  return prisma.recording.create({
-    data: {
-      visitId: visit.id,
-      status: RecordingStatus.RECORDING,
-      storageKey: `clinics/${ctx.clinicId}/visits/${visit.id}/audio.webm`,
-    },
-  });
+  return withClinicTransaction(ctx.clinicId, async (tx) =>
+    tx.recording.create({
+      data: {
+        visitId: visit.id,
+        status: RecordingStatus.RECORDING,
+        storageKey: `clinics/${ctx.clinicId}/visits/${visit.id}/audio.webm`,
+      },
+    }),
+  );
 }
 
 export async function uploadRecordingAudio(
@@ -178,14 +182,16 @@ export async function uploadRecordingAudio(
     extension: opts.extension,
   });
 
-  return prisma.recording.update({
-    where: { id: visit.recording.id },
-    data: {
-      storageKey,
-      status: RecordingStatus.UPLOADING,
-      error: null,
-    },
-  });
+  return withClinicTransaction(ctx.clinicId, async (tx) =>
+    tx.recording.update({
+      where: { id: visit.recording!.id },
+      data: {
+        storageKey,
+        status: RecordingStatus.UPLOADING,
+        error: null,
+      },
+    }),
+  );
 }
 
 export const stopRecordingSchema = z.object({
@@ -218,13 +224,15 @@ export async function stopRecordingAndOrganise(
     throw badRequest("Upload audio before organising");
   }
 
-  await prisma.recording.update({
-    where: { id: visit.recording.id },
-    data: {
-      status: RecordingStatus.TRANSCRIBING,
-      durationSec: input.durationSec ?? visit.recording.durationSec,
-      error: null,
-    },
+  await withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.recording.update({
+      where: { id: visit.recording!.id },
+      data: {
+        status: RecordingStatus.TRANSCRIBING,
+        durationSec: input.durationSec ?? visit.recording!.durationSec,
+        error: null,
+      },
+    });
   });
 
   let audioBytes: Buffer | undefined;
@@ -245,28 +253,31 @@ export async function stopRecordingAndOrganise(
         audioBytes,
       }));
   } catch (err) {
-    await prisma.recording.update({
-      where: { id: visit.recording.id },
-      data: {
-        status: RecordingStatus.FAILED,
-        error: err instanceof Error ? err.message : "Transcription failed",
-      },
+    await withClinicTransaction(ctx.clinicId, async (tx) => {
+      await tx.recording.update({
+        where: { id: visit.recording!.id },
+        data: {
+          status: RecordingStatus.FAILED,
+          error: err instanceof Error ? err.message : "Transcription failed",
+        },
+      });
     });
     throw err;
   }
 
-  await prisma.recording.update({
-    where: { id: visit.recording.id },
-    data: { status: RecordingStatus.ORGANISING },
-  });
-
-  const transcript = await prisma.transcript.upsert({
-    where: { recordingId: visit.recording.id },
-    create: {
-      recordingId: visit.recording.id,
-      text: transcriptText,
-    },
-    update: { text: transcriptText },
+  const transcript = await withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.recording.update({
+      where: { id: visit.recording!.id },
+      data: { status: RecordingStatus.ORGANISING },
+    });
+    return tx.transcript.upsert({
+      where: { recordingId: visit.recording!.id },
+      create: {
+        recordingId: visit.recording!.id,
+        text: transcriptText!,
+      },
+      update: { text: transcriptText! },
+    });
   });
 
   const template = await resolveTemplate(
@@ -294,12 +305,14 @@ export async function stopRecordingAndOrganise(
       priorContext: priorContext ?? undefined,
     });
   } catch (err) {
-    await prisma.recording.update({
-      where: { id: visit.recording.id },
-      data: {
-        status: RecordingStatus.FAILED,
-        error: err instanceof Error ? err.message : "Organise failed",
-      },
+    await withClinicTransaction(ctx.clinicId, async (tx) => {
+      await tx.recording.update({
+        where: { id: visit.recording!.id },
+        data: {
+          status: RecordingStatus.FAILED,
+          error: err instanceof Error ? err.message : "Organise failed",
+        },
+      });
     });
     throw err;
   }
@@ -311,19 +324,19 @@ export async function stopRecordingAndOrganise(
     templateId: template?.id,
   });
 
-  await prisma.recording.update({
-    where: { id: visit.recording.id },
-    data: { status: RecordingStatus.READY, error: null },
-  });
-
-  await prisma.visit.update({
-    where: { id: visit.id },
-    data: { endedAt: new Date() },
-  });
-
-  await prisma.appointment.update({
-    where: { id: visit.appointmentId },
-    data: { status: AppointmentStatus.COMPLETED },
+  await withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.recording.update({
+      where: { id: visit.recording!.id },
+      data: { status: RecordingStatus.READY, error: null },
+    });
+    await tx.visit.update({
+      where: { id: visit.id },
+      data: { endedAt: new Date() },
+    });
+    await tx.appointment.update({
+      where: { id: visit.appointmentId },
+      data: { status: AppointmentStatus.COMPLETED },
+    });
   });
 
   return {

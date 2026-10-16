@@ -5,7 +5,7 @@ import { enforceLoginLimits } from "@/server/abuse";
 
 export const POST = withPublic(async (req) => {
   const body = loginSchema.parse(await req.json());
-  enforceLoginLimits(req, body.email);
+  await enforceLoginLimits(req, body.email);
   const result = await login(body);
   return jsonOk(result);
 });

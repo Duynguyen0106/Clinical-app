@@ -22,11 +22,15 @@ type Practitioner = {
   professionalTitle?: string | null;
   registrationBody?: string | null;
   registrationNumber?: string | null;
+  /** null = all clinic services */
+  appointmentTypeIds?: string[] | null;
   availability: Rule[];
   membership: {
     user: { email: string; name: string };
   };
 };
+
+type ServiceType = { id: string; name: string; active: boolean };
 
 type LeaveRequest = {
   id: string;
@@ -114,9 +118,13 @@ export default function TeamPage() {
   const canReviewLeave = isOwner || isReception;
   const myProfileId = me?.practitionerProfileId ?? null;
   const [practitioners, setPractitioners] = useState<Practitioner[]>([]);
+  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  /** Empty set = all services; otherwise selected type ids */
+  const [editServiceIds, setEditServiceIds] = useState<string[]>([]);
+  const [editAllServices, setEditAllServices] = useState(true);
 
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -161,9 +169,13 @@ export default function TeamPage() {
   }, [canReviewLeave, myProfileId, selectedId]);
 
   const load = useCallback(() => {
-    void api<{ practitioners: Practitioner[] }>("/team")
-      .then((d) => {
+    void Promise.all([
+      api<{ practitioners: Practitioner[] }>("/team"),
+      api<{ appointmentTypes: ServiceType[] }>("/clinic/appointment-types"),
+    ])
+      .then(([d, types]) => {
         setPractitioners(d.practitioners);
+        setServiceTypes(types.appointmentTypes.filter((t) => t.active));
         setSelectedId((prev) => {
           if (prev && d.practitioners.some((p) => p.id === prev)) return prev;
           if (myProfileId && d.practitioners.some((p) => p.id === myProfileId)) {
@@ -221,6 +233,16 @@ export default function TeamPage() {
     setEditTitle(selected.professionalTitle ?? "");
     setEditBody(selected.registrationBody ?? "");
     setEditReg(selected.registrationNumber ?? "");
+    if (
+      selected.appointmentTypeIds == null ||
+      selected.appointmentTypeIds.length === 0
+    ) {
+      setEditAllServices(true);
+      setEditServiceIds([]);
+    } else {
+      setEditAllServices(false);
+      setEditServiceIds(selected.appointmentTypeIds);
+    }
     const next: Record<number, { on: boolean; start: string; end: string }> =
       {};
     for (const d of DAYS) {
@@ -283,6 +305,11 @@ export default function TeamPage() {
           professionalTitle: editTitle || null,
           registrationBody: editBody || null,
           registrationNumber: editReg || null,
+          ...(isOwner || isReception
+            ? {
+                appointmentTypeIds: editAllServices ? [] : editServiceIds,
+              }
+            : {}),
         }),
       });
       setMessage("Profile saved — registration appears on printed letters.");
@@ -602,6 +629,46 @@ export default function TeamPage() {
                   />
                 </div>
               </fieldset>
+              {isOwner || isReception ? (
+                <fieldset className="field">
+                  <legend className="muted">Services offered</legend>
+                  <p className="muted">
+                    Empty / all = bookable for every active service. Restrict to
+                    limit public and staff booking.
+                  </p>
+                  <label className="inline-check">
+                    <input
+                      type="checkbox"
+                      checked={editAllServices}
+                      onChange={(e) => {
+                        setEditAllServices(e.target.checked);
+                        if (e.target.checked) setEditServiceIds([]);
+                      }}
+                    />
+                    All clinic services
+                  </label>
+                  {!editAllServices ? (
+                    <div className="side-stack">
+                      {serviceTypes.map((t) => (
+                        <label key={t.id} className="inline-check">
+                          <input
+                            type="checkbox"
+                            checked={editServiceIds.includes(t.id)}
+                            onChange={(e) => {
+                              setEditServiceIds((prev) =>
+                                e.target.checked
+                                  ? [...prev, t.id]
+                                  : prev.filter((id) => id !== t.id),
+                              );
+                            }}
+                          />
+                          {t.name}
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </fieldset>
+              ) : null}
               {canEditSelected ? (
                 <div className="home-cta">
                   <button

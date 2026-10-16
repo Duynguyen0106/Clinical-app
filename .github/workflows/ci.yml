@@ -36,16 +36,65 @@ jobs:
       - name: RLS SQL present
         run: |
           test -f prisma/sql/001_clinic_rls.sql
+          test -f prisma/sql/002_force_rls.sql
           grep -q "ClinicalNote" prisma/sql/001_clinic_rls.sql
+          grep -q "AppointmentAuditEvent" prisma/sql/001_clinic_rls.sql
           grep -qE "nullif\\(current_setting\\('app\\.clinic_id'" prisma/sql/001_clinic_rls.sql
+          grep -q "FORCE ROW LEVEL SECURITY" prisma/sql/002_force_rls.sql
 
       - name: Migration SQL present
         run: |
           test -f prisma/migrations/20261016_patient_archive_indexes/migration.sql
           test -f prisma/migrations/20261016_appointment_audit_recurrence/migration.sql
+          test -f prisma/migrations/20261016_re_audit_improve/migration.sql
           grep -q "AppointmentAuditEvent" prisma/migrations/20261016_appointment_audit_recurrence/migration.sql
+          grep -q "PractitionerService" prisma/migrations/20261016_re_audit_improve/migration.sql
 
       # Full eslint currently flags pre-existing react-hooks setState-in-effect
       # patterns across pages; keep typecheck + unit tests as the merge gate.
       - name: Lint (targeted)
         run: npx eslint "src/modules/scheduling/conflict.ts" "src/modules/scheduling/locks.ts" "src/modules/notes/hash.ts" "src/modules/notes/service.ts" "src/modules/scheduling/clinic-time.ts" "src/server/rbac.ts" "src/app/api/v1/notes/[id]/void/route.ts" "src/app/api/v1/notes/[id]/addendum/route.ts"
+
+  rls-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: treow
+          POSTGRES_PASSWORD: treow
+          POSTGRES_DB: treow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U treow -d treow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        working-directory: web
+        run: npm ci
+      - name: Prisma generate + push schema
+        working-directory: web
+        env:
+          DATABASE_URL: postgresql://treow:treow@localhost:5432/treow
+        run: |
+          npx prisma generate
+          npx prisma db push --accept-data-loss
+      - name: Apply RLS ENABLE policies
+        working-directory: web
+        env:
+          DATABASE_URL: postgresql://treow:treow@localhost:5432/treow
+        run: npm run db:rls
+      - name: Smoke clinic GUC isolation
+        working-directory: web
+        env:
+          DATABASE_URL: postgresql://treow:treow@localhost:5432/treow
+        run: npx tsx scripts/rls-smoke.ts

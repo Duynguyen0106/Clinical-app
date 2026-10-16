@@ -30,6 +30,7 @@ type Appointment = {
   endsAt: string;
   status: string;
   notes: string | null;
+  recurrenceGroupId?: string | null;
   patient: { id: string; firstName: string; lastName: string };
   practitioner: { id: string; displayName: string };
   appointmentType: {
@@ -41,6 +42,18 @@ type Appointment = {
   room: { name: string } | null;
   visit: { id: string } | null;
 };
+
+function patientDiaryLabel(
+  patient: { firstName: string; lastName: string },
+  mode: "FULL_NAME" | "INITIALS",
+) {
+  if (mode === "INITIALS") {
+    const a = (patient.firstName[0] ?? "?").toUpperCase();
+    const b = (patient.lastName[0] ?? "?").toUpperCase();
+    return `${a}.${b}.`;
+  }
+  return `${patient.firstName} ${patient.lastName}`;
+}
 
 type Block = {
   id: string;
@@ -55,6 +68,8 @@ type CatalogPractitioner = {
   id: string;
   displayName: string;
   availability?: AvailabilityRule[];
+  /** null/undefined = all services */
+  appointmentTypeIds?: string[] | null;
 };
 
 type Catalog = {
@@ -137,9 +152,13 @@ export default function CalendarPage() {
   const [bookSlots, setBookSlots] = useState<string[]>([]);
   const [bookSlot, setBookSlot] = useState("");
   const [bookNotes, setBookNotes] = useState("");
-  /** 1 = single; 2–26 = weekly series including first slot */
+  /** 1 = single; 2–26 = series including first slot */
   const [bookWeeklyCount, setBookWeeklyCount] = useState(1);
+  /** 1 = weekly; 2 = fortnightly */
+  const [bookIntervalWeeks, setBookIntervalWeeks] = useState(1);
   const [busy, setBusy] = useState(false);
+  const privacyMode =
+    me?.clinic.calendarPrivacyMode === "INITIALS" ? "INITIALS" : "FULL_NAME";
   const [feedOpen, setFeedOpen] = useState(false);
   const [feedUrl, setFeedUrl] = useState<string | null>(null);
   const [feedWebcal, setFeedWebcal] = useState<string | null>(null);
@@ -176,6 +195,16 @@ export default function CalendarPage() {
       relevant.map((p) => rulesForPractitioner(p.availability)),
     );
   }, [catalog, filterPractitionerId]);
+
+  const bookableTypes = useMemo(() => {
+    const types = catalog?.appointmentTypes ?? [];
+    const prac = catalog?.practitioners.find(
+      (p) => p.id === bookPractitionerId,
+    );
+    if (!prac?.appointmentTypeIds?.length) return types;
+    const allowed = new Set(prac.appointmentTypeIds);
+    return types.filter((t) => allowed.has(t.id));
+  }, [catalog, bookPractitionerId]);
 
   const load = useCallback(() => {
     const from = viewMode === "day" ? dayFocus : weekStart;
@@ -471,17 +500,24 @@ export default function CalendarPage() {
           notes: notes || null,
           feeCents: feeCents > 0 ? feeCents : undefined,
           weeklyCount: bookWeeklyCount > 1 ? bookWeeklyCount : undefined,
+          intervalWeeks:
+            bookWeeklyCount > 1 && bookIntervalWeeks > 1
+              ? bookIntervalWeeks
+              : undefined,
         }),
       });
+      const cadenceLabel =
+        bookIntervalWeeks === 2 ? "fortnightly" : "weekly";
       setBookOpen(false);
       setBookSlotFixed(false);
       setBookIntakeNote(null);
       setBookWeeklyCount(1);
+      setBookIntervalWeeks(1);
       const c = res.confirmation;
       const series = res.series;
       const seriesBit =
         series && series.requestedCount > 1
-          ? ` · ${series.createdCount}/${series.requestedCount} weekly slots created${
+          ? ` · ${series.createdCount}/${series.requestedCount} ${cadenceLabel} slots created${
               series.skippedStartsAt?.length
                 ? ` (${series.skippedStartsAt.length} skipped — busy/closed)`
                 : ""
@@ -1061,7 +1097,7 @@ export default function CalendarPage() {
                         }
                       >
                         <strong>
-                          {apt.patient.firstName} {apt.patient.lastName}
+                          {patientDiaryLabel(apt.patient, privacyMode)}
                         </strong>
                         <span className="cal-prac">{apt.practitioner.displayName}</span>
                         <span>{apt.appointmentType.name}</span>
@@ -1091,7 +1127,7 @@ export default function CalendarPage() {
           >
             <div className="panel-head">
               <h2>
-                {selected.patient.firstName} {selected.patient.lastName}
+                {patientDiaryLabel(selected.patient, privacyMode)}
               </h2>
               <button
                 type="button"
@@ -1190,6 +1226,42 @@ export default function CalendarPage() {
                   >
                     Cancel
                   </button>
+                  {selected.recurrenceGroupId ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={busy || selected.status === "CANCELLED"}
+                      onClick={() => {
+                        void (async () => {
+                          setBusy(true);
+                          setError(null);
+                          try {
+                            const d = await api<{
+                              cancelledCount: number;
+                            }>(
+                              `/appointments/${selected.id}/cancel-series`,
+                              { method: "POST" },
+                            );
+                            setSelected(null);
+                            setMessage(
+                              `Cancelled ${d.cancelledCount} remaining series appointments.`,
+                            );
+                            load();
+                          } catch (e) {
+                            setError(
+                              e instanceof ApiError
+                                ? e.message
+                                : "Could not cancel series",
+                            );
+                          } finally {
+                            setBusy(false);
+                          }
+                        })();
+                      }}
+                    >
+                      Cancel series from here
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="btn-ghost"
@@ -1408,7 +1480,7 @@ export default function CalendarPage() {
                   }
                 }}
               >
-                {catalog?.appointmentTypes.map((t) => (
+                {bookableTypes.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} · {t.durationMinutes} min · £
                     {(t.defaultPriceCents / 100).toFixed(2)}
@@ -1420,7 +1492,30 @@ export default function CalendarPage() {
               <span>Practitioner</span>
               <select
                 value={bookPractitionerId}
-                onChange={(e) => setBookPractitionerId(e.target.value)}
+                onChange={(e) => {
+                  setBookPractitionerId(e.target.value);
+                  const prac = catalog?.practitioners.find(
+                    (p) => p.id === e.target.value,
+                  );
+                  if (prac?.appointmentTypeIds?.length) {
+                    const allowed = new Set(prac.appointmentTypeIds);
+                    if (!allowed.has(bookTypeId)) {
+                      const next =
+                        catalog?.appointmentTypes.find((t) =>
+                          allowed.has(t.id),
+                        ) ?? null;
+                      if (next) {
+                        setBookTypeId(next.id);
+                        setBookDuration(next.durationMinutes);
+                        setBookFeePounds(
+                          next.defaultPriceCents
+                            ? (next.defaultPriceCents / 100).toFixed(2)
+                            : "",
+                        );
+                      }
+                    }
+                  }
+                }}
               >
                 {catalog?.practitioners.map((p) => {
                   const busyAtFixed =
@@ -1485,7 +1580,7 @@ export default function CalendarPage() {
               </label>
             ) : null}
             <label className="field">
-              <span>Repeat weekly</span>
+              <span>Repeat</span>
               <select
                 value={bookWeeklyCount}
                 onChange={(e) => setBookWeeklyCount(Number(e.target.value))}
@@ -1493,11 +1588,25 @@ export default function CalendarPage() {
                 <option value={1}>No repeat — one appointment</option>
                 {[2, 3, 4, 6, 8, 12].map((n) => (
                   <option key={n} value={n}>
-                    {n} weeks (same day/time)
+                    {n} occurrences (same day/time)
                   </option>
                 ))}
               </select>
             </label>
+            {bookWeeklyCount > 1 ? (
+              <label className="field">
+                <span>Cadence</span>
+                <select
+                  value={bookIntervalWeeks}
+                  onChange={(e) =>
+                    setBookIntervalWeeks(Number(e.target.value))
+                  }
+                >
+                  <option value={1}>Every week</option>
+                  <option value={2}>Every fortnight</option>
+                </select>
+              </label>
+            ) : null}
             <label className="field">
               <span>Notes</span>
               <textarea

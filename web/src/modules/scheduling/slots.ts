@@ -39,6 +39,14 @@ export async function listClinicSlots(args: {
   });
   if (!type) throw notFound("Appointment type not found");
 
+  const { assertPractitionerOffersType } = await import(
+    "./practitioner-services"
+  );
+  await assertPractitionerOffersType({
+    practitionerId: args.practitionerId,
+    appointmentTypeId: args.appointmentTypeId,
+  });
+
   const durationMinutes = args.durationMinutes ?? type.durationMinutes;
   if (durationMinutes < 5 || durationMinutes > 8 * 60) {
     throw notFound("Invalid duration");

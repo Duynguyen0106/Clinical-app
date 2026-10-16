@@ -258,6 +258,21 @@ export async function acceptWaitlistOfferForClinic(
     return { entry: updated, appointment };
   }).then(async (result) => {
     try {
+      const { recordScheduleAudit } = await import("./audit");
+      await recordScheduleAudit({
+        clinicId,
+        appointmentId: result.appointment.id,
+        actorId: null,
+        action: "created",
+        meta: {
+          source: "waitlist_accept",
+          waitlistEntryId: result.entry.id,
+        },
+      });
+    } catch (err) {
+      console.error("Waitlist schedule audit failed", err);
+    }
+    try {
       const { sendBookingConfirmation } = await import(
         "@/modules/notifications/appointments"
       );

@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db";
 import { jsonOk } from "@/server/http";
 import { getEffectiveEmailProvider } from "@/modules/notifications/email";
+import { rateLimitBackend } from "@/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,19 @@ export async function GET() {
     emailProvider = "console";
   }
 
+  const smsRaw = (process.env.SMS_PROVIDER ?? "console").toLowerCase();
+  const smsProvider =
+    smsRaw === "twilio" &&
+    process.env.TWILIO_ACCOUNT_SID &&
+    process.env.TWILIO_AUTH_TOKEN &&
+    process.env.TWILIO_FROM_NUMBER
+      ? "twilio"
+      : "console";
+
+  const cronConfigured =
+    typeof process.env.CRON_SECRET === "string" &&
+    process.env.CRON_SECRET.length >= 24;
+
   const ok = database === "ok";
   const body = {
     ok,
@@ -32,6 +46,9 @@ export async function GET() {
     regionHint: process.env.S3_REGION ?? process.env.DATA_REGION ?? "uk-eu",
     aiProvider: process.env.AI_PROVIDER ?? "mock",
     emailProvider,
+    smsProvider,
+    cronConfigured,
+    rateLimitBackend: rateLimitBackend(),
     database,
     latencyMs: Date.now() - started,
   };

@@ -10,7 +10,7 @@ import { assertTurnstileToken } from "@/server/turnstile";
 
 export const POST = withPublic(async (req) => {
   const body = forgotPasswordSchema.parse(await req.json());
-  enforceForgotPasswordLimits(req, body.email);
+  await enforceForgotPasswordLimits(req, body.email);
   await assertTurnstileToken(body.captchaToken, { ip: clientIp(req) });
   const result = await requestPasswordReset(body);
   return jsonOk(result);

@@ -19,6 +19,7 @@ export const updateClinicProfileSchema = z.object({
   brandColour: z
     .union([z.string().regex(HEX), z.literal(""), z.null()])
     .optional(),
+  calendarPrivacyMode: z.enum(["FULL_NAME", "INITIALS"]).optional(),
 });
 
 const profileSelect = {
@@ -35,6 +36,7 @@ const profileSelect = {
   audioRetentionDays: true,
   privacyNoticeVersion: true,
   dataRegion: true,
+  calendarPrivacyMode: true,
 } as const;
 
 function toPublicProfile(clinic: {
@@ -51,6 +53,7 @@ function toPublicProfile(clinic: {
   audioRetentionDays: number;
   privacyNoticeVersion: string;
   dataRegion: string;
+  calendarPrivacyMode: "FULL_NAME" | "INITIALS";
 }) {
   const { logoStorageKey, logoMimeType, ...rest } = clinic;
   return {
@@ -94,6 +97,9 @@ export async function updateClinicProfile(
                 ? null
                 : input.brandColour.toUpperCase(),
           }
+        : {}),
+      ...(input.calendarPrivacyMode !== undefined
+        ? { calendarPrivacyMode: input.calendarPrivacyMode }
         : {}),
     },
     select: profileSelect,

@@ -8,7 +8,8 @@ export type ScheduleAuditAction =
   | "status_changed"
   | "patient_cancelled"
   | "patient_rescheduled"
-  | "series_created";
+  | "series_created"
+  | "series_cancelled";
 
 export async function recordScheduleAudit(opts: {
   clinicId: string;

@@ -42,7 +42,11 @@ type Clinic = {
     defaultPriceCents?: number;
     effectiveDepositCents?: number;
   }[];
-  practitioners: ({ id: string; displayName: string } | null)[];
+  practitioners: ({
+    id: string;
+    displayName: string;
+    appointmentTypeIds?: string[] | null;
+  } | null)[];
 };
 
 type Props = {
@@ -91,10 +95,15 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
 
   useEffect(() => {
     if (!serviceId || !clinic || !anyMode) return;
-    const pracs = (clinic.practitioners ?? []).filter(Boolean) as {
+    const pracs = ((clinic.practitioners ?? []).filter(Boolean) as {
       id: string;
       displayName: string;
-    }[];
+      appointmentTypeIds?: string[] | null;
+    }[]).filter(
+      (p) =>
+        !p.appointmentTypeIds?.length ||
+        p.appointmentTypeIds.includes(serviceId),
+    );
     if (pracs.length < 2) return;
     let cancelled = false;
     void Promise.all(
@@ -155,10 +164,17 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
     };
   }, [slug, serviceId, practitionerId, anyMode]);
 
-  const practitioners = (clinic?.practitioners ?? []).filter(Boolean) as {
-    id: string;
-    displayName: string;
-  }[];
+  const practitioners = (
+    (clinic?.practitioners ?? []).filter(Boolean) as {
+      id: string;
+      displayName: string;
+      appointmentTypeIds?: string[] | null;
+    }[]
+  ).filter((p) => {
+    if (!serviceId) return true;
+    if (!p.appointmentTypeIds?.length) return true;
+    return p.appointmentTypeIds.includes(serviceId);
+  });
 
   async function confirm() {
     if (!clinic || !privacy) return;

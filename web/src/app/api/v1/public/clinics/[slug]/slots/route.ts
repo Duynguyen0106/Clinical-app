@@ -5,7 +5,7 @@ import { listPublicSlots } from "@/modules/scheduling/slots";
 import { enforcePublicSlotsLimits } from "@/server/abuse";
 
 export const GET = withPublic(async (req, params) => {
-  enforcePublicSlotsLimits(req);
+  await enforcePublicSlotsLimits(req);
   const url = new URL(req.url);
   const appointmentTypeId = url.searchParams.get("appointmentTypeId");
   const practitionerId = url.searchParams.get("practitionerId");
