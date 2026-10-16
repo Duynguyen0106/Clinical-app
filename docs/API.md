@@ -63,7 +63,7 @@ Blocks remove time from online + staff slot search.
 ## Patient self-serve
 
 | GET | `/public/manage?token=&slots=1` | Appointment (+ optional slots) via signed link |
-| POST | `/public/manage` | `{ action: "cancel"\|"reschedule", token, startsAt? }` — closes within 2h of start |
+| POST | `/public/manage` | `{ action: "cancel"\|"reschedule", token, startsAt? }` — needs ≥24h notice by default (`cancelMinNoticeHours`) |
 
 Manage links are emailed/SMS’d on confirmation and reminders. UI: `/book/manage/[token]`.
 

@@ -89,7 +89,7 @@ export async function sendBookingConfirmation(appointmentId: string) {
       serviceName: apt.appointmentType.name,
       roomName: apt.room?.name ?? null,
       manageLink,
-      cancelNoticeHours: apt.clinic.cancelMinNoticeHours ?? 2,
+      cancelNoticeHours: apt.clinic.cancelMinNoticeHours ?? 24,
     });
 
     const result = await sendEmail({
