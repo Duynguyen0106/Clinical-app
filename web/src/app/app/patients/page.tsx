@@ -163,6 +163,7 @@ function PatientsPageInner() {
   function startEdit(p: Patient) {
     setCreating(false);
     setEditing(true);
+    setSelectedId(p.id);
     setForm({
       firstName: p.firstName,
       lastName: p.lastName,
@@ -177,6 +178,12 @@ function PatientsPageInner() {
     });
     setError(null);
     setMessage(null);
+    // Form panel is beside/below the list — bring it into view on phone.
+    window.setTimeout(() => {
+      document
+        .getElementById("patient-edit-form")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   }
 
   async function save() {
@@ -209,17 +216,48 @@ function PatientsPageInner() {
         setCreating(false);
         setSelectedId(d.patient.id);
         setQ(`${d.patient.firstName} ${d.patient.lastName}`);
+        load();
       } else if (selectedId) {
-        await api(`/patients/${selectedId}`, {
+        const d = await api<{ patient: Patient }>(`/patients/${selectedId}`, {
           method: "PATCH",
           body: JSON.stringify(body),
         });
+        setPatients((prev) =>
+          prev.map((p) =>
+            p.id === d.patient.id ? { ...p, ...d.patient } : p,
+          ),
+        );
         setMessage("Patient details saved.");
         setEditing(false);
-        load();
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removePatient(p: Patient) {
+    const label = `${p.firstName} ${p.lastName}`;
+    if (
+      !confirm(
+        `Delete ${label} from the directory?\n\nThis cannot be undone. Patients with signed notes or upcoming appointments are blocked.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await api(`/patients/${p.id}`, { method: "DELETE" });
+      setMessage(`${label} deleted.`);
+      setEditing(false);
+      setCreating(false);
+      setSelectedId((prev) => (prev === p.id ? null : prev));
+      setPatients((prev) => prev.filter((row) => row.id !== p.id));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Delete failed");
     } finally {
       setBusy(false);
     }
@@ -314,16 +352,29 @@ function PatientsPageInner() {
                       {isPractitioner ? "Prior notes" : "Prep"}
                     </button>
                     {!isPractitioner ? (
-                      <button
-                        type="button"
-                        className="btn-ghost btn-sm"
-                        onClick={() => {
-                          setSelectedId(p.id);
-                          startEdit(p);
-                        }}
-                      >
-                        Edit
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="btn-ghost btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startEdit(p);
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost btn-sm"
+                          disabled={busy}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void removePatient(p);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </>
                     ) : apt?.visit ? (
                       <Link
                         href={`/app/visits/${apt.visit.id}`}
@@ -347,19 +398,34 @@ function PatientsPageInner() {
         </div>
 
         {showForm ? (
-          <div className="panel">
+          <div className="panel" id="patient-edit-form">
             <div className="panel-head">
               <h2>{creating ? "New patient" : "Edit patient"}</h2>
-              <button
-                type="button"
-                className="btn-ghost btn-sm"
-                onClick={() => {
-                  setCreating(false);
-                  setEditing(false);
-                }}
-              >
-                Cancel
-              </button>
+              <div className="sheet-actions">
+                {!creating && selectedId ? (
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    disabled={busy}
+                    onClick={() => {
+                      const p = patients.find((row) => row.id === selectedId);
+                      if (p) void removePatient(p);
+                    }}
+                  >
+                    Delete
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => {
+                    setCreating(false);
+                    setEditing(false);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
             <div className="team-reg-row">
               <label className="field">
