@@ -43,7 +43,7 @@ export default function LoginPage() {
         <p className="muted">
           {DEMO
             ? `${BRAND.name} — full clinic demo for UK staff.`
-            : `Sign in to your ${BRAND.name} clinic.`}
+            : "Sign in to your clinic."}
         </p>
         {DEMO ? (
           <div className="demo-role-chips" role="group" aria-label="Demo accounts">
