@@ -1,4 +1,11 @@
-import { createHmac, timingSafeEqual } from "crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from "crypto";
 import { z } from "zod";
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
@@ -7,20 +14,101 @@ import { getAppBaseUrl } from "@/server/env";
 import { listClinicSlots } from "./slots";
 import { assertWithinAvailability } from "./availability";
 
-const TOKEN_TTL_MS = 30 * 24 * 60 * 60_000; // 30 days
+/** Floor TTL so patients can still manage within a week of booking. */
+const MIN_TTL_MS = 7 * 24 * 60 * 60_000;
+/** Extra hours beyond cancel notice so the link outlives the cancel window. */
+const CANCEL_BUFFER_HOURS = 24;
+/** Legacy default when clinic policy is unavailable. */
+const FALLBACK_TTL_MS = MIN_TTL_MS;
 
 function manageSecret() {
   return process.env.AUTH_SECRET ?? "treow-dev-secret-change-me";
 }
 
-export function createManageToken(appointmentId: string, expiresAt = Date.now() + TOKEN_TTL_MS) {
+function sealKey() {
+  return createHash("sha256").update(`manage-seal:${manageSecret()}`).digest();
+}
+
+/** TTL = max(cancelMinNoticeHours + buffer, 7d). */
+export function manageTokenTtlMs(cancelMinNoticeHours: number) {
+  const fromPolicy =
+    (Math.max(0, cancelMinNoticeHours) + CANCEL_BUFFER_HOURS) * 60 * 60_000;
+  return Math.max(fromPolicy, MIN_TTL_MS);
+}
+
+/**
+ * Opaque manage token (v2): sealed appointment id + expiry.
+ * HMAC binds the id; raw appointmentId is not a plaintext URL segment.
+ * Legacy v1 `id.exp.sig` tokens still verify until they expire.
+ */
+export function createManageToken(
+  appointmentId: string,
+  expiresAt = Date.now() + FALLBACK_TTL_MS,
+) {
   const exp = String(expiresAt);
-  const payload = `${appointmentId}.${exp}`;
-  const sig = createHmac("sha256", manageSecret()).update(payload).digest("base64url");
-  return `${appointmentId}.${exp}.${sig}`;
+  const mac = createHmac("sha256", manageSecret())
+    .update(`${appointmentId}.${exp}`)
+    .digest();
+  const plaintext = Buffer.concat([
+    Buffer.from(appointmentId, "utf8"),
+    Buffer.from("\0", "utf8"),
+    Buffer.from(exp, "utf8"),
+    Buffer.from("\0", "utf8"),
+    mac,
+  ]);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", sealKey(), iv);
+  const enc = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const sealed = Buffer.concat([iv, tag, enc]).toString("base64url");
+  return `v2.${sealed}`;
 }
 
 export function verifyManageToken(token: string): { appointmentId: string } {
+  if (token.startsWith("v2.")) {
+    return verifySealedManageToken(token.slice(3));
+  }
+  return verifyLegacyManageToken(token);
+}
+
+function verifySealedManageToken(sealed: string): { appointmentId: string } {
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(sealed, "base64url");
+  } catch {
+    throw forbidden("Invalid manage link");
+  }
+  if (buf.length < 12 + 16 + 1) throw forbidden("Invalid manage link");
+  const iv = buf.subarray(0, 12);
+  const tag = buf.subarray(12, 28);
+  const enc = buf.subarray(28);
+  let plaintext: Buffer;
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", sealKey(), iv);
+    decipher.setAuthTag(tag);
+    plaintext = Buffer.concat([decipher.update(enc), decipher.final()]);
+  } catch {
+    throw forbidden("Invalid manage link");
+  }
+  const null1 = plaintext.indexOf(0);
+  const null2 = plaintext.indexOf(0, null1 + 1);
+  if (null1 < 0 || null2 < 0) throw forbidden("Invalid manage link");
+  const id = plaintext.subarray(0, null1).toString("utf8");
+  const expStr = plaintext.subarray(null1 + 1, null2).toString("utf8");
+  const mac = plaintext.subarray(null2 + 1);
+  if (!id || !expStr || Number(expStr) < Date.now()) {
+    throw forbidden("This manage link has expired");
+  }
+  const expected = createHmac("sha256", manageSecret())
+    .update(`${id}.${expStr}`)
+    .digest();
+  if (mac.length !== expected.length || !timingSafeEqual(mac, expected)) {
+    throw forbidden("Invalid manage link");
+  }
+  return { appointmentId: id };
+}
+
+function verifyLegacyManageToken(token: string): { appointmentId: string } {
   const parts = token.split(".");
   if (parts.length !== 3) throw forbidden("Invalid manage link");
   const [appointmentId, exp, sig] = parts;
@@ -28,7 +116,9 @@ export function verifyManageToken(token: string): { appointmentId: string } {
   if (Number(exp) < Date.now()) throw forbidden("This manage link has expired");
 
   const payload = `${appointmentId}.${exp}`;
-  const expected = createHmac("sha256", manageSecret()).update(payload).digest("base64url");
+  const expected = createHmac("sha256", manageSecret())
+    .update(payload)
+    .digest("base64url");
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) {
@@ -37,8 +127,18 @@ export function verifyManageToken(token: string): { appointmentId: string } {
   return { appointmentId };
 }
 
-export function manageUrl(appointmentId: string) {
-  const token = createManageToken(appointmentId);
+export async function manageUrl(appointmentId: string) {
+  const apt = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    select: {
+      clinic: { select: { cancelMinNoticeHours: true } },
+    },
+  });
+  const hours = apt?.clinic.cancelMinNoticeHours ?? 24;
+  const token = createManageToken(
+    appointmentId,
+    Date.now() + manageTokenTtlMs(hours),
+  );
   return `${getAppBaseUrl()}/book/manage/${encodeURIComponent(token)}`;
 }
 
@@ -223,6 +323,7 @@ export async function rescheduleManagedAppointment(
     {
       practitionerId: appointment.practitionerId,
       roomId: appointment.roomId,
+      clinicId: appointment.clinicId,
     },
     async (tx) => {
       await assertNoConflict(

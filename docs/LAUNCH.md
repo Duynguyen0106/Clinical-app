@@ -10,7 +10,7 @@ Product loop: website booking → diary → visit notes → invoices · rooms ·
 
 ## Phase A — Freeze the MVP (engineering)
 
-- [ ] Merge open PRs that belong in launch (clinical safety, leak/live-day, re-audit improve)
+- [ ] Merge open PRs that belong in launch: #63 clinical-safety → #64 leak/live-day → #65 re-audit-improve → #66 post-65-harden → diary-scope (need-to-know)
 - [ ] Replace generated logo with **final brand assets** in `web/public/brand/`
 - [ ] Tag a release candidate (e.g. `v0.1.0-rc1`)
 - [ ] Confirm `npm run build` + seed + smoke path on RC

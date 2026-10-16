@@ -51,7 +51,7 @@ export const POST = withPublic(async (req, params) => {
         timezone: appointment.clinic.timezone,
       },
     },
-    manageUrl: manageUrl(appointment.id),
+    manageUrl: await manageUrl(appointment.id),
     deposit: result.deposit,
     policyText: result.policyText,
     confirmation: result.confirmation

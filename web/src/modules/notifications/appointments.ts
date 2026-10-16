@@ -113,7 +113,7 @@ export async function sendBookingConfirmation(
 
   const when = formatWhen(apt.startsAt, apt.clinic.timezone);
   const roomLine = apt.room ? `Room: ${apt.room.name}` : null;
-  const manageLink = manageUrl(apt.id);
+  const manageLink = await manageUrl(apt.id);
   let emailSent = false;
   let emailDelivered = false;
   let emailProvider: "resend" | "console" | null = null;
@@ -231,7 +231,7 @@ export async function sendAppointmentRescheduled(opts: {
   const when = formatWhen(apt.startsAt, apt.clinic.timezone);
   const previous = formatWhen(opts.previousStartsAt, apt.clinic.timezone);
   const roomLine = apt.room ? `Room: ${apt.room.name}` : null;
-  const manageLink = manageUrl(apt.id);
+  const manageLink = await manageUrl(apt.id);
   let patientEmailSent = false;
   let patientSmsSent = false;
   let practitionerEmailSent = false;
@@ -395,7 +395,7 @@ export async function sendUpcomingReminders(
     const when = formatWhen(apt.startsAt, apt.clinic.timezone);
     const roomBit = apt.room ? ` Room ${apt.room.name}.` : "";
 
-    const manageLink = manageUrl(apt.id);
+    const manageLink = await manageUrl(apt.id);
 
     if (!apt.reminderSentAt && apt.patient.email) {
       const emailResult = await sendEmail({

@@ -88,8 +88,9 @@ export default function TodayPage() {
       from: from.toISOString(),
       to: to.toISOString(),
     });
-    // Practitioners (and owners with a diary) land on their own list
-    if (isPractitionerHome && myPractitionerId) {
+    // Owners with a diary: request own list. Practitioners are forced to own
+    // diary server-side in listAppointments (ignore client practitionerId).
+    if (!isPractitioner && isPractitionerHome && myPractitionerId) {
       aptQs.set("practitionerId", myPractitionerId);
     }
 

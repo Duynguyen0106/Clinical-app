@@ -97,6 +97,12 @@ export async function listAppointments(
     throw badRequest("Invalid from/to");
   }
 
+  // Practitioners: own diary only (ignore client practitionerId)
+  let practitionerId = opts.practitionerId;
+  if (ctx.role === "PRACTITIONER") {
+    practitionerId = ctx.practitionerProfileId ?? "__none__";
+  }
+
   const [clinic, appointments] = await Promise.all([
     prisma.clinic.findUnique({
       where: { id: ctx.clinicId },
@@ -106,9 +112,7 @@ export async function listAppointments(
       where: {
         clinicId: ctx.clinicId,
         startsAt: { gte: from, lte: to },
-        ...(opts.practitionerId
-          ? { practitionerId: opts.practitionerId }
-          : {}),
+        ...(practitionerId ? { practitionerId } : {}),
         status: { not: AppointmentStatus.CANCELLED },
       },
       include: {
@@ -174,11 +178,36 @@ export async function getAppointment(ctx: AuthContext, id: string) {
     },
   });
   if (!appointment) throw notFound("Appointment not found");
-  // Peer diary / reception: strip note stubs + recording status (need-to-know)
-  if (
-    appointment.visit &&
-    !canSeeVisitClinicalMeta(ctx, appointment.practitionerId)
-  ) {
+
+  const ownDiary = canSeeVisitClinicalMeta(ctx, appointment.practitionerId);
+  // Peer diary practitioner: strip clinical visit meta + patient contact / alerts
+  if (ctx.role === "PRACTITIONER" && !ownDiary) {
+    return {
+      ...appointment,
+      notes: null,
+      patient: {
+        ...appointment.patient,
+        email: null,
+        phone: null,
+        alerts: null,
+        dateOfBirth: null,
+        gpName: null,
+        gpPractice: null,
+        gpEmail: null,
+        nhsNumber: null,
+      },
+      visit: appointment.visit
+        ? {
+            ...appointment.visit,
+            notes: [],
+            recording: null,
+            recordingConsentAt: null,
+          }
+        : null,
+    };
+  }
+  // Reception: strip note stubs + recording status (need-to-know)
+  if (appointment.visit && !ownDiary) {
     return {
       ...appointment,
       visit: {
@@ -475,6 +504,7 @@ export async function rescheduleFutureSeries(
         {
           practitionerId: sibling.practitionerId,
           roomId: sibling.roomId ?? null,
+          clinicId: ctx.clinicId,
         },
         async (tx) => {
           await assertNoConflict(
@@ -577,7 +607,11 @@ async function createSingleStaffAppointment(
 
   return withScheduleLocks(
     prisma,
-    { practitionerId: opts.practitionerId, roomId },
+    {
+      practitionerId: opts.practitionerId,
+      roomId,
+      clinicId: ctx.clinicId,
+    },
     async (tx) => {
       await assertNoConflict(
         {
@@ -701,6 +735,7 @@ export async function rescheduleAppointment(
     {
       practitionerId: appointment.practitionerId,
       roomId: appointment.roomId,
+      clinicId: ctx.clinicId,
     },
     async (tx) => {
       await assertNoConflict(
@@ -852,6 +887,7 @@ export async function updateAppointment(
     {
       practitionerId: appointment.practitionerId,
       roomId: appointment.roomId,
+      clinicId: ctx.clinicId,
     },
     async (tx) => {
       if (
@@ -1259,6 +1295,7 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     {
       practitionerId: input.practitionerId,
       roomId: freeRoom?.id ?? null,
+      clinicId: clinic.id,
     },
     async (tx) => {
       await assertNoConflict(

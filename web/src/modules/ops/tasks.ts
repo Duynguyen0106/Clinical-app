@@ -19,20 +19,23 @@ export type OpsTask = {
 export async function listOpsTasks(ctx: AuthContext): Promise<OpsTask[]> {
   const now = new Date();
   const horizon = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const ownDiaryId =
+    ctx.role === "PRACTITIONER" ? (ctx.practitionerProfileId ?? "__none__") : null;
+  // Practitioners: own-diary drafts/intake only; hide clinic-wide money tasks
+  const includeMoneyTasks = ctx.role !== "PRACTITIONER";
 
-  const draftDiaryFilter =
-    ctx.role === "PRACTITIONER" && ctx.practitionerProfileId
-      ? {
-          OR: [
-            {
-              visit: {
-                appointment: { practitionerId: ctx.practitionerProfileId },
-              },
+  const draftDiaryFilter = ownDiaryId
+    ? {
+        OR: [
+          {
+            visit: {
+              appointment: { practitionerId: ownDiaryId },
             },
-            { signedById: ctx.userId },
-          ],
-        }
-      : {};
+          },
+          { signedById: ctx.userId },
+        ],
+      }
+    : {};
 
   const [draftNotes, unpaidInvoices, upcoming] = await Promise.all([
     prisma.clinicalNote.findMany({
@@ -47,21 +50,24 @@ export async function listOpsTasks(ctx: AuthContext): Promise<OpsTask[]> {
       orderBy: { updatedAt: "desc" },
       take: 50,
     }),
-    prisma.invoice.findMany({
-      where: {
-        clinicId: ctx.clinicId,
-        status: { in: [InvoiceStatus.SENT, InvoiceStatus.DRAFT] },
-      },
-      include: {
-        patient: { select: { firstName: true, lastName: true } },
-      },
-      orderBy: { issuedAt: "desc" },
-      take: 50,
-    }),
+    includeMoneyTasks
+      ? prisma.invoice.findMany({
+          where: {
+            clinicId: ctx.clinicId,
+            status: { in: [InvoiceStatus.SENT, InvoiceStatus.DRAFT] },
+          },
+          include: {
+            patient: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { issuedAt: "desc" },
+          take: 50,
+        })
+      : Promise.resolve([]),
     prisma.appointment.findMany({
       where: {
         clinicId: ctx.clinicId,
         startsAt: { gte: now, lte: horizon },
+        ...(ownDiaryId ? { practitionerId: ownDiaryId } : {}),
         status: {
           in: [
             AppointmentStatus.BOOKED,
