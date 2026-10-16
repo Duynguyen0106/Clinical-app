@@ -20,11 +20,26 @@ export async function listOpsTasks(ctx: AuthContext): Promise<OpsTask[]> {
   const now = new Date();
   const horizon = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
+  const draftDiaryFilter =
+    ctx.role === "PRACTITIONER" && ctx.practitionerProfileId
+      ? {
+          OR: [
+            {
+              visit: {
+                appointment: { practitionerId: ctx.practitionerProfileId },
+              },
+            },
+            { signedById: ctx.userId },
+          ],
+        }
+      : {};
+
   const [draftNotes, unpaidInvoices, upcoming] = await Promise.all([
     prisma.clinicalNote.findMany({
       where: {
         status: NoteStatus.DRAFT,
         patient: { clinicId: ctx.clinicId },
+        ...draftDiaryFilter,
       },
       include: {
         patient: { select: { firstName: true, lastName: true } },

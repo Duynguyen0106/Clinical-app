@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { format, isSameDay, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 
 export type AvailabilitySlot = {
   startsAt: string;
@@ -20,13 +21,19 @@ type Props = {
   legend?: string;
   /** Max times shown per morning/afternoon before “Show more” */
   initialVisiblePerPeriod?: number;
+  /** Clinic IANA timezone for day grouping / “today” highlight */
+  timeZone?: string;
 };
 
-function dayKey(iso: string) {
+function dayKey(iso: string, timeZone?: string) {
+  if (timeZone) return formatInTimeZone(parseISO(iso), timeZone, "yyyy-MM-dd");
   return format(parseISO(iso), "yyyy-MM-dd");
 }
 
-function isAfternoon(iso: string) {
+function isAfternoon(iso: string, timeZone?: string) {
+  if (timeZone) {
+    return Number(formatInTimeZone(parseISO(iso), timeZone, "H")) >= 12;
+  }
   return parseISO(iso).getHours() >= 12;
 }
 
@@ -55,6 +62,7 @@ export function AvailabilityPicker({
   emptyMessage = "No open slots in the booking window.",
   legend = "Choose a day",
   initialVisiblePerPeriod = 4,
+  timeZone,
 }: Props) {
   const days = useMemo(() => {
     const map = new Map<
@@ -62,13 +70,13 @@ export function AvailabilityPicker({
       { key: string; date: Date; count: number }
     >();
     for (const s of slots) {
-      const key = dayKey(s.startsAt);
+      const key = dayKey(s.startsAt, timeZone);
       const existing = map.get(key);
       if (existing) existing.count += 1;
       else map.set(key, { key, date: parseISO(s.startsAt), count: 1 });
     }
     return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
-  }, [slots]);
+  }, [slots, timeZone]);
 
   const [selectedDay, setSelectedDay] = useState<string>("");
   const [expandedMorning, setExpandedMorning] = useState(false);
@@ -82,7 +90,7 @@ export function AvailabilityPicker({
       return;
     }
     if (value) {
-      const fromValue = dayKey(value);
+      const fromValue = dayKey(value, timeZone);
       if (days.some((d) => d.key === fromValue)) {
         setSelectedDay(fromValue);
         return;
@@ -91,12 +99,14 @@ export function AvailabilityPicker({
     setSelectedDay((prev) =>
       days.some((d) => d.key === prev) ? prev : days[0]!.key,
     );
-  }, [days, value]);
+  }, [days, value, timeZone]);
 
   useEffect(() => {
     setExpandedMorning(false);
     setExpandedAfternoon(false);
-    const hour = new Date().getHours();
+    const hour = timeZone
+      ? Number(formatInTimeZone(new Date(), timeZone, "H"))
+      : new Date().getHours();
     if (hour < 12) {
       setShowMorning(true);
       setShowAfternoon(false);
@@ -104,20 +114,22 @@ export function AvailabilityPicker({
       setShowMorning(false);
       setShowAfternoon(true);
     }
-  }, [selectedDay]);
+  }, [selectedDay, timeZone]);
 
   const daySlots = useMemo(() => {
     if (!selectedDay) return [];
-    return slots.filter((s) => dayKey(s.startsAt) === selectedDay);
-  }, [slots, selectedDay]);
+    return slots.filter((s) => dayKey(s.startsAt, timeZone) === selectedDay);
+  }, [slots, selectedDay, timeZone]);
 
   const morningGroups = useMemo(
-    () => groupByTime(daySlots.filter((s) => !isAfternoon(s.startsAt))),
-    [daySlots],
+    () =>
+      groupByTime(daySlots.filter((s) => !isAfternoon(s.startsAt, timeZone))),
+    [daySlots, timeZone],
   );
   const afternoonGroups = useMemo(
-    () => groupByTime(daySlots.filter((s) => isAfternoon(s.startsAt))),
-    [daySlots],
+    () =>
+      groupByTime(daySlots.filter((s) => isAfternoon(s.startsAt, timeZone))),
+    [daySlots, timeZone],
   );
 
   const uniqueTimesToday = morningGroups.length + afternoonGroups.length;
@@ -131,18 +143,24 @@ export function AvailabilityPicker({
 
   // If the selected slot sits in a collapsed period, open it.
   useEffect(() => {
-    if (!value || dayKey(value) !== selectedDay) return;
-    if (!isAfternoon(value) && morningGroups.length > 0) {
+    if (!value || dayKey(value, timeZone) !== selectedDay) return;
+    if (!isAfternoon(value, timeZone) && morningGroups.length > 0) {
       setShowMorning(true);
     }
-    if (isAfternoon(value) && afternoonGroups.length > 0) {
+    if (isAfternoon(value, timeZone) && afternoonGroups.length > 0) {
       setShowAfternoon(true);
     }
-  }, [value, selectedDay, morningGroups.length, afternoonGroups.length]);
+  }, [
+    value,
+    selectedDay,
+    timeZone,
+    morningGroups.length,
+    afternoonGroups.length,
+  ]);
 
   function pickDay(key: string) {
     setSelectedDay(key);
-    const first = slots.find((s) => dayKey(s.startsAt) === key);
+    const first = slots.find((s) => dayKey(s.startsAt, timeZone) === key);
     if (first) onSelect(first);
   }
 
@@ -285,9 +303,12 @@ export function AvailabilityPicker({
       <div className="avail-day-strip" role="tablist" aria-label="Available days">
         {days.map((d) => {
           const active = d.key === selectedDay;
-          const isToday = isSameDay(d.date, new Date());
+          const todayKey = timeZone
+            ? formatInTimeZone(new Date(), timeZone, "yyyy-MM-dd")
+            : format(new Date(), "yyyy-MM-dd");
+          const isToday = d.key === todayKey;
           const uniqueForDay = groupByTime(
-            slots.filter((s) => dayKey(s.startsAt) === d.key),
+            slots.filter((s) => dayKey(s.startsAt, timeZone) === d.key),
           ).length;
           return (
             <button

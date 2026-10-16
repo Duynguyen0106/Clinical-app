@@ -6,6 +6,8 @@ import {
   todayYmd,
 } from "../../src/modules/patients/service";
 
+const TZ = "Europe/London";
+
 describe("parseListQuery appointment day filters", () => {
   it("parses appointmentOn and practitionerId", () => {
     const parsed = parseListQuery(
@@ -36,24 +38,29 @@ describe("parseListQuery appointment day filters", () => {
   });
 });
 
-describe("dayBoundsFromYmd", () => {
-  it("builds inclusive local day window", () => {
-    const { from, to } = dayBoundsFromYmd("2026-09-16");
-    assert.equal(from.getFullYear(), 2026);
-    assert.equal(from.getMonth(), 8);
-    assert.equal(from.getDate(), 16);
-    assert.equal(from.getHours(), 0);
-    assert.equal(to.getHours(), 23);
+describe("dayBoundsFromYmd clinic timezone", () => {
+  it("maps London civil day to UTC bounds (BST)", () => {
+    const { from, to } = dayBoundsFromYmd("2026-09-16", TZ);
+    // 00:00 London BST = 23:00 previous day UTC
+    assert.equal(from.toISOString(), "2026-09-15T23:00:00.000Z");
     assert.ok(to.getTime() > from.getTime());
+    // End of London day should still be before next London midnight (22:00Z on 16th)
+    assert.ok(to.getTime() < new Date("2026-09-16T23:00:00.000Z").getTime());
   });
 
   it("rejects garbage dates", () => {
-    assert.throws(() => dayBoundsFromYmd("not-a-date"), /Invalid appointmentOn/);
+    assert.throws(
+      () => dayBoundsFromYmd("not-a-date", TZ),
+      /Invalid appointmentOn/,
+    );
   });
 });
 
 describe("todayYmd", () => {
-  it("formats YYYY-MM-DD", () => {
-    assert.equal(todayYmd(new Date(2026, 8, 16, 15, 30)), "2026-09-16");
+  it("formats YYYY-MM-DD in clinic timezone", () => {
+    // 2026-09-16 01:30 UTC = still 16th in London (BST)
+    assert.equal(todayYmd(TZ, new Date("2026-09-16T01:30:00.000Z")), "2026-09-16");
+    // 2026-09-16 23:30 UTC = 17th in London
+    assert.equal(todayYmd(TZ, new Date("2026-09-16T23:30:00.000Z")), "2026-09-17");
   });
 });

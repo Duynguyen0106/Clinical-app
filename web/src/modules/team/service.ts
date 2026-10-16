@@ -216,6 +216,43 @@ export async function updatePractitioner(
   });
 }
 
+export const ownerSetPasswordSchema = z.object({
+  password: z.string().min(8).max(200),
+});
+
+/**
+ * Owner sets a temporary password for a team member (practitioner user).
+ * Clears active sessions so the new password is required on next sign-in.
+ */
+export async function ownerSetPractitionerPassword(
+  ctx: AuthContext,
+  practitionerId: string,
+  input: z.infer<typeof ownerSetPasswordSchema>,
+) {
+  if (ctx.role !== MembershipRole.OWNER) {
+    throw forbidden("Only clinic owners can reset team passwords");
+  }
+
+  const profile = await prisma.practitionerProfile.findFirst({
+    where: { id: practitionerId, membership: { clinicId: ctx.clinicId } },
+    include: { membership: { select: { userId: true } } },
+  });
+  if (!profile) throw notFound("Practitioner not found");
+
+  const passwordHash = await hashPassword(input.password);
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: profile.membership.userId },
+      data: { passwordHash },
+    }),
+    prisma.session.deleteMany({
+      where: { userId: profile.membership.userId },
+    }),
+  ]);
+
+  return { ok: true as const, userId: profile.membership.userId };
+}
+
 export async function replaceAvailability(
   ctx: AuthContext,
   practitionerId: string,

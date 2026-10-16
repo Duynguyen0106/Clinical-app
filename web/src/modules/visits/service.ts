@@ -280,6 +280,7 @@ export async function stopRecordingAndOrganise(
   const priorContext = await loadPriorNoteContext(
     visit.appointment.patientId,
     visit.id,
+    visit.appointment.practitionerId,
   );
 
   let organised;
@@ -351,12 +352,18 @@ async function resolveTemplate(
 }
 
 /** Last signed note plan/presentation for continuity (truncated). */
-async function loadPriorNoteContext(patientId: string, currentVisitId: string) {
+async function loadPriorNoteContext(
+  patientId: string,
+  currentVisitId: string,
+  practitionerId: string,
+) {
+  // Same diary only — do not feed peer clinicians’ signed notes into AI context
   const prior = await prisma.clinicalNote.findFirst({
     where: {
       patientId,
       status: NoteStatus.SIGNED,
       visitId: { not: currentVisitId },
+      visit: { appointment: { practitionerId } },
     },
     orderBy: { signedAt: "desc" },
     select: { content: true, template: { select: { name: true } } },

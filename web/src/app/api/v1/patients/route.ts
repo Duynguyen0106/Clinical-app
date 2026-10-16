@@ -16,7 +16,12 @@ export const GET = withAuth(async (req, ctx) => {
 
   // Practitioners only see patients with appointments today on their diary
   if (ctx.role === "PRACTITIONER") {
-    appointmentOn = appointmentOn ?? todayYmd();
+    const { prisma } = await import("@/server/db");
+    const clinic = await prisma.clinic.findUniqueOrThrow({
+      where: { id: ctx.clinicId },
+      select: { timezone: true },
+    });
+    appointmentOn = appointmentOn ?? todayYmd(clinic.timezone);
     practitionerId = ctx.practitionerProfileId ?? practitionerId;
   }
 

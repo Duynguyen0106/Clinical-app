@@ -4,7 +4,10 @@ import { prisma } from "@/server/db";
 import { notFound } from "@/server/errors";
 import { listClinicSlots } from "@/modules/scheduling/slots";
 import { createAppointment } from "@/modules/scheduling/service";
-import { canAccessClinicalRecord } from "@/server/rbac";
+import {
+  assertOwnsDiaryOrOwner,
+  canAccessClinicalRecord,
+} from "@/server/rbac";
 import { addWeeks } from "date-fns";
 
 export function inferFollowUpWeeks(planText: string | undefined) {
@@ -29,6 +32,7 @@ export async function suggestRebook(ctx: AuthContext, visitId: string) {
     },
   });
   if (!visit) throw notFound("Visit not found");
+  assertOwnsDiaryOrOwner(ctx, visit.appointment.practitionerId);
 
   const note = visit.notes[0];
   const content = (note?.content ?? {}) as Record<string, unknown>;

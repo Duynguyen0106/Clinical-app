@@ -806,7 +806,8 @@ export default function CalendarPage() {
               type="button"
               className="btn-secondary btn-sm"
               onClick={() => {
-                const today = new Date();
+                const todayKey = clinicDateKey(new Date(), timeZone);
+                const today = clinicLocalDateTime(todayKey, 12 * 60, timeZone);
                 setDayFocus(today);
                 setWeekStart(startOfWeek(today, { weekStartsOn: 1 }));
               }}
@@ -819,9 +820,11 @@ export default function CalendarPage() {
             <div className="cal-day-strip" role="tablist" aria-label="Days this week">
               {stripDays.map((day) => {
                 const selected =
-                  format(day, "yyyy-MM-dd") === format(dayFocus, "yyyy-MM-dd");
+                  clinicDateKey(day, timeZone) ===
+                  clinicDateKey(dayFocus, timeZone);
                 const isToday =
-                  format(day, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
+                  clinicDateKey(day, timeZone) ===
+                  clinicDateKey(new Date(), timeZone);
                 const dayClosed = hours.every((h) => cellClosed(day, h));
                 return (
                   <button
