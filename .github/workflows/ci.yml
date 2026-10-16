@@ -34,7 +34,10 @@ jobs:
         run: npm test
 
       - name: RLS SQL present
-        run: test -f prisma/sql/001_clinic_rls.sql && rg -q "ClinicalNote" prisma/sql/001_clinic_rls.sql && rg -q "nullif\\(current_setting\\('app.clinic_id'" prisma/sql/001_clinic_rls.sql
+        run: |
+          test -f prisma/sql/001_clinic_rls.sql
+          grep -q "ClinicalNote" prisma/sql/001_clinic_rls.sql
+          grep -qE "nullif\\(current_setting\\('app\\.clinic_id'" prisma/sql/001_clinic_rls.sql
 
       - name: Migration SQL present
         run: test -f prisma/migrations/20261016_patient_archive_indexes/migration.sql
