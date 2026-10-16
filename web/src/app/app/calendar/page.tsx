@@ -449,11 +449,63 @@ export default function CalendarPage() {
           reason: blockReason || null,
         }),
       });
-      setBlockOpen(false);
       setMessage("Time blocked");
+      setBlockReason("");
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not block time");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeBlock(id: string, label?: string) {
+    if (
+      !confirm(
+        label
+          ? `Remove block on ${label}?`
+          : "Remove this diary block?",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/blocks/${id}`, { method: "DELETE" });
+      setMessage("Block removed");
+      setBlocks((prev) => prev.filter((b) => b.id !== id));
+      load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not remove block");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeBlocksInView() {
+    if (blocks.length === 0) return;
+    if (
+      !confirm(
+        `Remove all ${blocks.length} diary block${blocks.length === 1 ? "" : "s"} in this ${viewMode} view?`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await Promise.all(
+        blocks.map((b) => api(`/blocks/${b.id}`, { method: "DELETE" })),
+      );
+      setMessage(
+        `Removed ${blocks.length} block${blocks.length === 1 ? "" : "s"}`,
+      );
+      setBlocks([]);
+      load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not remove blocks");
+      load();
     } finally {
       setBusy(false);
     }
@@ -623,7 +675,7 @@ export default function CalendarPage() {
                   className="btn-secondary btn-sm cal-secondary-action"
                   onClick={() => setBlockOpen(true)}
                 >
-                  Block
+                  Blocks{blocks.length ? ` (${blocks.length})` : ""}
                 </button>
               ) : null}
             </div>
@@ -825,16 +877,41 @@ export default function CalendarPage() {
                       openBookSheet({ day, hour });
                     }}
                   >
-                    {cellBlocks.map((b) => (
-                      <div
-                        key={b.id}
-                        className="cal-block"
-                        title={b.reason ?? "Blocked"}
-                      >
-                        Blocked · {b.practitioner.displayName}
-                        {b.reason ? ` · ${b.reason}` : ""}
-                      </div>
-                    ))}
+                    {cellBlocks.map((b) =>
+                      canEditSchedule ? (
+                        <button
+                          key={b.id}
+                          type="button"
+                          className="cal-block cal-block-btn"
+                          title={
+                            b.reason
+                              ? `${b.reason} — click to remove`
+                              : "Blocked — click to remove"
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void removeBlock(
+                              b.id,
+                              `${b.date.slice(0, 10)}${
+                                b.reason ? ` · ${b.reason}` : ""
+                              }`,
+                            );
+                          }}
+                        >
+                          Blocked · {b.practitioner.displayName}
+                          {b.reason ? ` · ${b.reason}` : ""}
+                        </button>
+                      ) : (
+                        <div
+                          key={b.id}
+                          className="cal-block"
+                          title={b.reason ?? "Blocked"}
+                        >
+                          Blocked · {b.practitioner.displayName}
+                          {b.reason ? ` · ${b.reason}` : ""}
+                        </div>
+                      ),
+                    )}
                     {cellAppts.map((apt) => (
                       <button
                         key={apt.id}
@@ -1086,10 +1163,10 @@ export default function CalendarPage() {
 
             {blocks.some((b) => b.practitioner.id === selected.practitioner.id) ? (
               <div className="block-list">
-                <h3>Diary blocks this week</h3>
+                <h3>Diary blocks in this view</h3>
                 <p className="muted" style={{ margin: "0 0 0.5rem" }}>
-                  Ad-hoc blocks only. Approved leave is hidden here but still
-                  blocks booking slots.
+                  Or open <strong>Block</strong> in the toolbar to manage all
+                  blocks. Approved leave is managed under Team → Leave.
                 </p>
                 {blocks
                   .filter((b) => b.practitioner.id === selected.practitioner.id)
@@ -1102,20 +1179,23 @@ export default function CalendarPage() {
                           : `${minutesLabel(b.startMinute)}–${minutesLabel(b.endMinute ?? 0)}`}
                         {b.reason ? ` · ${b.reason}` : ""}
                       </span>
-                      <button
-                        type="button"
-                        className="btn-ghost btn-sm"
-                        onClick={() =>
-                          void api(`/blocks/${b.id}`, { method: "DELETE" }).then(
-                            () => {
-                              setMessage("Block removed");
-                              load();
-                            },
-                          )
-                        }
-                      >
-                        Remove
-                      </button>
+                      {canEditSchedule ? (
+                        <button
+                          type="button"
+                          className="btn-ghost btn-sm"
+                          disabled={busy}
+                          onClick={() =>
+                            void removeBlock(
+                              b.id,
+                              `${b.date.slice(0, 10)}${
+                                b.reason ? ` · ${b.reason}` : ""
+                              }`,
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                      ) : null}
                     </div>
                   ))}
               </div>
@@ -1298,11 +1378,11 @@ export default function CalendarPage() {
           <div
             className="sheet-card"
             role="dialog"
-            aria-label="Block time"
+            aria-label="Manage diary blocks"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="panel-head">
-              <h2>Block time</h2>
+              <h2>Manage blocks</h2>
               <button
                 type="button"
                 className="btn-ghost btn-sm"
@@ -1311,6 +1391,60 @@ export default function CalendarPage() {
                 Close
               </button>
             </div>
+
+            <div className="block-list">
+              <h3>
+                In this {viewMode} ({blocks.length})
+              </h3>
+              {blocks.length === 0 ? (
+                <p className="muted">No diary blocks in the current view.</p>
+              ) : (
+                <>
+                  <p className="muted" style={{ margin: "0 0 0.5rem" }}>
+                    Remove a day to reopen online and staff booking for that
+                    date. Leave requests are under Team → Leave.
+                  </p>
+                  {blocks.map((b) => (
+                    <div key={b.id} className="block-row">
+                      <span>
+                        {b.date.slice(0, 10)}{" "}
+                        {b.startMinute == null
+                          ? "all day"
+                          : `${minutesLabel(b.startMinute)}–${minutesLabel(b.endMinute ?? 0)}`}
+                        {b.reason ? ` · ${b.reason}` : ""}
+                        {` · ${b.practitioner.displayName}`}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        disabled={busy}
+                        onClick={() =>
+                          void removeBlock(
+                            b.id,
+                            `${b.date.slice(0, 10)}${
+                              b.reason ? ` · ${b.reason}` : ""
+                            }`,
+                          )
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    disabled={busy}
+                    onClick={() => void removeBlocksInView()}
+                  >
+                    Remove all in this view
+                  </button>
+                </>
+              )}
+            </div>
+
+            <hr className="sheet-divider" />
+            <h3 className="sheet-subhead">Add a block</h3>
             <label className="field">
               <span>Practitioner</span>
               <select
