@@ -3,8 +3,10 @@ import { prisma } from "@/server/db";
 import { sendEmail } from "./email";
 import { sendSms } from "./sms";
 import { buildBookingConfirmationEmail } from "./booking-confirmation-email";
+import { buildClinicBookingNotificationEmail } from "./clinic-booking-notification-email";
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { manageUrl } from "@/modules/scheduling/manage";
+import { getAppBaseUrl } from "@/server/env";
 
 function formatWhen(date: Date, timezone: string) {
   try {
@@ -64,9 +66,50 @@ async function notifyPractitioner(
   return true;
 }
 
-export async function sendBookingConfirmation(appointmentId: string) {
+function clinicNotifyEmail(apt: NotifyAppointment) {
+  return apt.clinic.email?.trim() || null;
+}
+
+async function notifyClinicOfBooking(
+  apt: NotifyAppointment,
+  source: "online" | "staff" = "online",
+) {
+  const to = clinicNotifyEmail(apt);
+  if (!to) return false;
+
+  const when = formatWhen(apt.startsAt, apt.clinic.timezone);
+  const content = buildClinicBookingNotificationEmail({
+    clinicName: apt.clinic.name,
+    whenLabel: when,
+    timezone: apt.clinic.timezone,
+    practitionerName: apt.practitioner.displayName,
+    serviceName: apt.appointmentType.name,
+    roomName: apt.room?.name ?? null,
+    patientName: `${apt.patient.firstName} ${apt.patient.lastName}`.trim(),
+    patientEmail: apt.patient.email,
+    patientPhone: apt.patient.phone,
+    reasonForVisit: apt.notes,
+    source,
+    calendarPath: `${getAppBaseUrl()}/app/calendar`,
+  });
+
+  await sendEmail({
+    to,
+    subject: content.subject,
+    text: content.text,
+    html: content.html,
+    replyTo: apt.patient.email,
+  });
+  return true;
+}
+
+export async function sendBookingConfirmation(
+  appointmentId: string,
+  opts: { source?: "online" | "staff" } = {},
+) {
   const apt = await loadNotifyAppointment(appointmentId);
   if (!apt) return null;
+  const source = opts.source ?? "online";
 
   const when = formatWhen(apt.startsAt, apt.clinic.timezone);
   const roomLine = apt.room ? `Room: ${apt.room.name}` : null;
@@ -75,6 +118,7 @@ export async function sendBookingConfirmation(appointmentId: string) {
   let emailDelivered = false;
   let emailProvider: "resend" | "console" | null = null;
   let smsSent = false;
+  let clinicEmailSent = false;
   let practitionerEmailSent = false;
 
   if (apt.patient.email) {
@@ -119,30 +163,41 @@ export async function sendBookingConfirmation(appointmentId: string) {
   }
 
   try {
-    practitionerEmailSent = await notifyPractitioner(
-      apt,
-      `New booking — ${apt.patient.firstName} ${apt.patient.lastName}`,
-      [
-        `Hi ${practitionerName(apt)},`,
-        "",
-        `A new appointment was booked at ${apt.clinic.name}.`,
-        "",
-        `When: ${when} (${apt.clinic.timezone})`,
-        `Patient: ${apt.patient.firstName} ${apt.patient.lastName}`,
-        apt.patient.phone ? `Phone: ${apt.patient.phone}` : null,
-        `Service: ${apt.appointmentType.name}`,
-        roomLine,
-        "",
-        `— ${apt.clinic.name}`,
-      ]
-        .filter((line) => line !== null)
-        .join("\n"),
-    );
+    clinicEmailSent = await notifyClinicOfBooking(apt, source);
   } catch (err) {
-    // Don't fail patient confirmation if staff notify is blocked (e.g. Resend
-    // sandbox only allows the account owner's inbox until a domain is verified).
-    console.error("Practitioner booking notify failed", err);
-    practitionerEmailSent = false;
+    // Don't fail patient confirmation if clinic notify fails.
+    console.error("Clinic booking notify failed", err);
+    clinicEmailSent = false;
+  }
+
+  const clinicTo = clinicNotifyEmail(apt)?.toLowerCase() ?? null;
+  const practitionerTo = practitionerEmail(apt)?.toLowerCase() ?? null;
+  // Avoid duplicate inbox mail when the practitioner login is the clinic inbox.
+  if (practitionerTo && practitionerTo !== clinicTo) {
+    try {
+      practitionerEmailSent = await notifyPractitioner(
+        apt,
+        `New booking — ${apt.patient.firstName} ${apt.patient.lastName}`,
+        [
+          `Hi ${practitionerName(apt)},`,
+          "",
+          `A new appointment was booked at ${apt.clinic.name}.`,
+          "",
+          `When: ${when} (${apt.clinic.timezone})`,
+          `Patient: ${apt.patient.firstName} ${apt.patient.lastName}`,
+          apt.patient.phone ? `Phone: ${apt.patient.phone}` : null,
+          `Service: ${apt.appointmentType.name}`,
+          roomLine,
+          "",
+          `— ${apt.clinic.name}`,
+        ]
+          .filter((line) => line !== null)
+          .join("\n"),
+      );
+    } catch (err) {
+      console.error("Practitioner booking notify failed", err);
+      practitionerEmailSent = false;
+    }
   }
 
   if (emailDelivered || smsSent) {
@@ -157,6 +212,7 @@ export async function sendBookingConfirmation(appointmentId: string) {
     emailDelivered,
     emailProvider,
     smsSent,
+    clinicEmailSent,
     practitionerEmailSent,
     manageLink,
   };
