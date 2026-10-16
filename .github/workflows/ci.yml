@@ -40,7 +40,10 @@ jobs:
           grep -qE "nullif\\(current_setting\\('app\\.clinic_id'" prisma/sql/001_clinic_rls.sql
 
       - name: Migration SQL present
-        run: test -f prisma/migrations/20261016_patient_archive_indexes/migration.sql
+        run: |
+          test -f prisma/migrations/20261016_patient_archive_indexes/migration.sql
+          test -f prisma/migrations/20261016_appointment_audit_recurrence/migration.sql
+          grep -q "AppointmentAuditEvent" prisma/migrations/20261016_appointment_audit_recurrence/migration.sql
 
       # Full eslint currently flags pre-existing react-hooks setState-in-effect
       # patterns across pages; keep typecheck + unit tests as the merge gate.

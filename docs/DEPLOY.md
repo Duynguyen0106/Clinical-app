@@ -111,6 +111,9 @@ Production boots warn if `CRON_SECRET` is missing or shorter than 24 characters.
 Do not set `NEXT_PUBLIC_DEMO_LOGIN=true` on live clinic deployments — that advertises
 demo emails and the `treow-demo` password on marketing/login surfaces.
 
+**Deposits:** In production, `PAYMENT_PROVIDER=console` refuses to mark deposits paid
+(avoids fake money). Use Stripe, or turn deposit requirements off in clinic settings.
+
 Audio: set `S3_BUCKET` + `S3_REGION=eu-west-2` + keys for durable UK object storage; otherwise files stay under `web/storage/`.
 
 Optional: `cd web && npm run db:rls` applies clinic RLS policies (`prisma/sql/001_clinic_rls.sql`). App-layer `clinicId` filters remain primary; see ARCHITECTURE multi-tenancy for FORCE + non-owner role.

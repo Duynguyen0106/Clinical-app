@@ -128,14 +128,31 @@ export async function processOrganiseJob(jobId: string) {
     return { ok: false as const, reason: "bad_payload" };
   }
 
+  // Re-resolve membership — never trust role / diary id from stored JSON alone
+  const membership = await prisma.membership.findFirst({
+    where: {
+      id: parsed.data.membershipId,
+      clinicId: job.clinicId,
+      userId: job.actorUserId,
+    },
+    include: {
+      user: { select: { email: true, name: true } },
+      practitionerProfile: { select: { id: true } },
+    },
+  });
+  if (!membership) {
+    await failJob(job.id, "Actor membership no longer valid");
+    return { ok: false as const, reason: "stale_membership" };
+  }
+
   const ctx: AuthContext = {
     userId: job.actorUserId,
     clinicId: job.clinicId,
-    email: parsed.data.email,
-    name: parsed.data.name,
-    role: parsed.data.role,
-    membershipId: parsed.data.membershipId,
-    practitionerProfileId: parsed.data.practitionerProfileId,
+    email: membership.user.email,
+    name: membership.user.name,
+    role: membership.role,
+    membershipId: membership.id,
+    practitionerProfileId: membership.practitionerProfile?.id ?? null,
   };
 
   try {

@@ -180,6 +180,7 @@ export default function ManageBookingPage({ params }: Props) {
                     onSelect={(s) => setSlot(s.startsAt)}
                     legend="Pick a new day and time"
                     emptyMessage="No other slots available."
+                    timeZone={appointment.clinic.timezone}
                   />
                   {slot ? (
                     <p className="avail-selected muted">

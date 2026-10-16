@@ -38,11 +38,13 @@ function dobInput(value: string | null | undefined) {
   return value.slice(0, 10);
 }
 
-function todayYmd(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+function todayYmd(timeZone: string, d = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
 }
 
 const emptyForm = {
@@ -92,7 +94,17 @@ function PatientsPageInner() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const dayLabel = useMemo(() => format(new Date(), "EEEE d MMMM"), []);
+  const clinicTz = me?.clinic.timezone ?? "Europe/London";
+  const dayLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: clinicTz,
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      }).format(new Date()),
+    [clinicTz],
+  );
 
   const load = useCallback(() => {
     if (authLoading || !me) return;
@@ -100,7 +112,8 @@ function PatientsPageInner() {
     const qs = new URLSearchParams();
     if (q.trim()) qs.set("q", q.trim());
     if (isPractitioner) {
-      qs.set("appointmentOn", todayYmd());
+      // Search → own diary history; empty query → today's patients
+      if (!q.trim()) qs.set("appointmentOn", todayYmd(clinicTz));
       if (myPractitionerId) qs.set("practitionerId", myPractitionerId);
     }
     void api<{ patients: Patient[] }>(`/patients?${qs}`)
@@ -124,6 +137,7 @@ function PatientsPageInner() {
     me,
     authLoading,
     deepLinkId,
+    clinicTz,
   ]);
 
   useEffect(() => {
@@ -271,14 +285,22 @@ function PatientsPageInner() {
       title="Patients"
       subtitle={
         isPractitioner
-          ? `Today’s diary · ${dayLabel} — open a patient to read prior notes before the visit.`
+          ? q.trim()
+            ? `Searching your diary patients — matches anyone you’ve seen, not only today.`
+            : `Today’s diary · ${dayLabel} — search to find patients from other days.`
           : "Directory, contact details, NHS/GP fields — search then book from Calendar."
       }
     >
       <div className="patients-layout">
         <div className="panel">
           <div className="panel-head">
-            <h2>{isPractitioner ? "Today’s patients" : "Directory"}</h2>
+            <h2>
+              {isPractitioner
+                ? q.trim()
+                  ? "Diary search"
+                  : "Today’s patients"
+                : "Directory"}
+            </h2>
             {!isPractitioner ? (
               <button
                 type="button"

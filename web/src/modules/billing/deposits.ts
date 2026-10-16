@@ -87,7 +87,13 @@ export async function createDepositCheckout(appointmentId: string) {
     };
   }
 
-  // Console / pilot: treat as paid immediately
+  // Console marks paid immediately — never in production (fake money)
+  if (process.env.NODE_ENV === "production") {
+    throw badRequest(
+      "Card deposits require PAYMENT_PROVIDER=stripe and STRIPE_SECRET_KEY in production. Disable deposit requirements or configure Stripe.",
+    );
+  }
+
   await prisma.appointment.update({
     where: { id: apt.id },
     data: {

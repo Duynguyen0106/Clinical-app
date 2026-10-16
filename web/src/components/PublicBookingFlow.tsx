@@ -20,6 +20,7 @@ type Clinic = {
   id: string;
   name: string;
   slug: string;
+  timezone?: string;
   phone?: string | null;
   email?: string | null;
   address?: string | null;
@@ -340,6 +341,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                 value={slot}
                 practitionerId={practitionerId}
                 initialVisiblePerPeriod={4}
+                timeZone={clinic.timezone ?? "Europe/London"}
                 onSelect={(s) => {
                   setSlot(s.startsAt);
                   if (s.practitionerId) setPractitionerId(s.practitionerId);

@@ -11,6 +11,10 @@ import {
   type TimelineItem,
 } from "@/modules/patients/timeline";
 import { assertNoteDiaryAccess } from "@/modules/notes/access";
+import {
+  clinicDateKey,
+  clinicLocalDateTime,
+} from "@/modules/scheduling/clinic-time";
 
 export type { TimelineItem };
 export { buildPatientTimeline } from "@/modules/patients/timeline";
@@ -80,21 +84,26 @@ function patientSearchWhere(q: string | undefined) {
   };
 }
 
-/** Local calendar day bounds for YYYY-MM-DD (matches Today diary windowing). */
-export function dayBoundsFromYmd(ymd: string): { from: Date; to: Date } {
-  const from = new Date(`${ymd}T00:00:00`);
-  const to = new Date(`${ymd}T23:59:59.999`);
+/** Clinic-TZ calendar day bounds for YYYY-MM-DD. */
+export function dayBoundsFromYmd(
+  ymd: string,
+  timeZone: string,
+): { from: Date; to: Date } {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    throw badRequest("Invalid appointmentOn date");
+  }
+  const from = clinicLocalDateTime(ymd, 0, timeZone);
+  const to = new Date(
+    clinicLocalDateTime(ymd, 23 * 60 + 59, timeZone).getTime() + 999,
+  );
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
     throw badRequest("Invalid appointmentOn date");
   }
   return { from, to };
 }
 
-export function todayYmd(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+export function todayYmd(timeZone: string, d = new Date()) {
+  return clinicDateKey(d, timeZone);
 }
 
 export async function listPatients(
@@ -112,7 +121,14 @@ export async function listPatients(
 
   // Day-scoped list: patients with a non-cancelled appointment that day
   if (opts.appointmentOn) {
-    const { from, to } = dayBoundsFromYmd(opts.appointmentOn);
+    const clinic = await prisma.clinic.findUniqueOrThrow({
+      where: { id: ctx.clinicId },
+      select: { timezone: true },
+    });
+    const { from, to } = dayBoundsFromYmd(
+      opts.appointmentOn,
+      clinic.timezone,
+    );
     const appointments = await prisma.appointment.findMany({
       where: {
         clinicId: ctx.clinicId,
@@ -173,11 +189,22 @@ export async function listPatients(
     return Array.from(byPatient.values());
   }
 
+  // Own-diary history search when practitionerId set without a day filter
   return prisma.patient.findMany({
     where: {
       clinicId: ctx.clinicId,
       archivedAt: null,
       ...search,
+      ...(opts.practitionerId
+        ? {
+            appointments: {
+              some: {
+                practitionerId: opts.practitionerId,
+                status: { not: "CANCELLED" },
+              },
+            },
+          }
+        : {}),
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     take,
@@ -207,6 +234,7 @@ const noteMetaSelect = {
 } as const;
 
 export async function getPatient(ctx: AuthContext, id: string) {
+  const canViewNotes = canAccessClinicalRecord(ctx.role);
   const patient = await prisma.patient.findFirst({
     where: { id, clinicId: ctx.clinicId },
     include: {
@@ -233,6 +261,10 @@ export async function getPatient(ctx: AuthContext, id: string) {
     },
   });
   if (!patient) throw notFound("Patient not found");
+  // Reception must not receive note rows (need-to-know)
+  if (!canViewNotes) {
+    return { ...patient, notes: [] };
+  }
   return patient;
 }
 

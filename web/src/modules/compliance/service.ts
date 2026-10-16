@@ -8,7 +8,17 @@ export async function exportNoteAudits(
 ) {
   requireRole(ctx, ["OWNER", "PRACTITIONER", "RECEPTION"]);
 
-  const [noteEvents, accessEvents] = await Promise.all([
+  const createdFilter =
+    opts.from || opts.to
+      ? {
+          createdAt: {
+            ...(opts.from ? { gte: opts.from } : {}),
+            ...(opts.to ? { lte: opts.to } : {}),
+          },
+        }
+      : {};
+
+  const [noteEvents, accessEvents, scheduleEvents] = await Promise.all([
     prisma.noteAuditEvent.findMany({
       where: {
         note: {
@@ -17,14 +27,7 @@ export async function exportNoteAudits(
             ...(opts.patientId ? { id: opts.patientId } : {}),
           },
         },
-        ...(opts.from || opts.to
-          ? {
-              createdAt: {
-                ...(opts.from ? { gte: opts.from } : {}),
-                ...(opts.to ? { lte: opts.to } : {}),
-              },
-            }
-          : {}),
+        ...createdFilter,
       },
       include: {
         note: {
@@ -44,17 +47,32 @@ export async function exportNoteAudits(
       where: {
         clinicId: ctx.clinicId,
         ...(opts.patientId ? { patientId: opts.patientId } : {}),
-        ...(opts.from || opts.to
-          ? {
-              createdAt: {
-                ...(opts.from ? { gte: opts.from } : {}),
-                ...(opts.to ? { lte: opts.to } : {}),
-              },
-            }
-          : {}),
+        ...createdFilter,
       },
       include: {
         patient: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 2000,
+    }),
+    prisma.appointmentAuditEvent.findMany({
+      where: {
+        clinicId: ctx.clinicId,
+        ...(opts.patientId
+          ? { appointment: { patientId: opts.patientId } }
+          : {}),
+        ...createdFilter,
+      },
+      include: {
+        appointment: {
+          select: {
+            id: true,
+            startsAt: true,
+            status: true,
+            patientId: true,
+            patient: { select: { firstName: true, lastName: true } },
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
       take: 2000,
@@ -63,7 +81,7 @@ export async function exportNoteAudits(
 
   const actorIds = [
     ...new Set(
-      [...noteEvents, ...accessEvents]
+      [...noteEvents, ...accessEvents, ...scheduleEvents]
         .map((e) => e.actorId)
         .filter((id): id is string => Boolean(id)),
     ),
@@ -108,7 +126,30 @@ export async function exportNoteAudits(
     meta: e.meta,
   }));
 
-  return [...notes, ...access].sort(
+  const schedule = scheduleEvents.map((e) => ({
+    kind: "schedule" as const,
+    eventId: e.id,
+    action: e.action,
+    at: e.createdAt.toISOString(),
+    actorId: e.actorId,
+    actorEmail: e.actorId ? (actorMap.get(e.actorId)?.email ?? null) : null,
+    actorName: e.actorId ? (actorMap.get(e.actorId)?.name ?? null) : null,
+    noteId: null as string | null,
+    noteStatus: null as string | null,
+    patientId: e.appointment.patientId,
+    patientName: `${e.appointment.patient.firstName} ${e.appointment.patient.lastName}`,
+    signedAt: null as string | null,
+    meta: {
+      ...(typeof e.meta === "object" && e.meta && !Array.isArray(e.meta)
+        ? e.meta
+        : {}),
+      appointmentId: e.appointmentId,
+      appointmentStartsAt: e.appointment.startsAt.toISOString(),
+      appointmentStatus: e.appointment.status,
+    },
+  }));
+
+  return [...notes, ...access, ...schedule].sort(
     (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
   );
 }

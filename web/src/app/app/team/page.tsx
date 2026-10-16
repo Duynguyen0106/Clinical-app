@@ -132,6 +132,7 @@ export default function TeamPage() {
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
   const [editReg, setEditReg] = useState("");
+  const [tempPassword, setTempPassword] = useState("");
 
   const [editDays, setEditDays] = useState<
     Record<number, { on: boolean; start: string; end: string }>
@@ -325,6 +326,33 @@ export default function TeamPage() {
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Update failed");
+    }
+  }
+
+  async function setTemporaryPassword() {
+    if (!isOwner || !selected) return;
+    if (tempPassword.length < 8) {
+      setError("Temporary password must be at least 8 characters");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await api(`/team/${selected.id}/password`, {
+        method: "POST",
+        body: JSON.stringify({ password: tempPassword }),
+      });
+      setMessage(
+        `Temporary password set for ${selected.membership.user.email}. They must sign in again.`,
+      );
+      setTempPassword("");
+    } catch (e) {
+      setError(
+        e instanceof ApiError ? e.message : "Could not set temporary password",
+      );
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -592,6 +620,33 @@ export default function TeamPage() {
                       {selected.active ? "Deactivate" : "Activate"}
                     </button>
                   ) : null}
+                </div>
+              ) : null}
+              {isOwner ? (
+                <div className="team-temp-password" style={{ marginTop: 16 }}>
+                  <h3>Unlock / temporary password</h3>
+                  <p className="muted">
+                    Set a new password for {selected.membership.user.email} and
+                    sign them out of other devices.
+                  </p>
+                  <label className="field">
+                    <span>Temporary password</span>
+                    <input
+                      type="password"
+                      value={tempPassword}
+                      onChange={(e) => setTempPassword(e.target.value)}
+                      autoComplete="new-password"
+                      minLength={8}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={busy || tempPassword.length < 8}
+                    onClick={() => void setTemporaryPassword()}
+                  >
+                    Set temporary password
+                  </button>
                 </div>
               ) : null}
             </>
