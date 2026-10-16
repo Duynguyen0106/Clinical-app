@@ -123,6 +123,15 @@ export async function cancelManagedAppointment(token: string) {
     include: appointmentInclude,
   });
 
+  const { recordScheduleAudit } = await import("./audit");
+  await recordScheduleAudit({
+    clinicId: appointment.clinicId,
+    appointmentId: appointment.id,
+    actorId: null,
+    action: "patient_cancelled",
+    meta: { startsAt: appointment.startsAt.toISOString(), via: "manage_token" },
+  });
+
   try {
     const { sendAppointmentCancelled } = await import(
       "@/modules/notifications/appointments"
@@ -243,6 +252,19 @@ export async function rescheduleManagedAppointment(
       });
     },
   );
+
+  const { recordScheduleAudit } = await import("./audit");
+  await recordScheduleAudit({
+    clinicId: appointment.clinicId,
+    appointmentId: updated.id,
+    actorId: null,
+    action: "patient_rescheduled",
+    meta: {
+      fromStartsAt: previousStartsAt.toISOString(),
+      toStartsAt: updated.startsAt.toISOString(),
+      via: "manage_token",
+    },
+  });
 
   try {
     const { sendAppointmentRescheduled } = await import(

@@ -112,7 +112,8 @@ function PatientsPageInner() {
     const qs = new URLSearchParams();
     if (q.trim()) qs.set("q", q.trim());
     if (isPractitioner) {
-      qs.set("appointmentOn", todayYmd(clinicTz));
+      // Search → own diary history; empty query → today's patients
+      if (!q.trim()) qs.set("appointmentOn", todayYmd(clinicTz));
       if (myPractitionerId) qs.set("practitionerId", myPractitionerId);
     }
     void api<{ patients: Patient[] }>(`/patients?${qs}`)
@@ -284,14 +285,22 @@ function PatientsPageInner() {
       title="Patients"
       subtitle={
         isPractitioner
-          ? `Today’s diary · ${dayLabel} — open a patient to read prior notes before the visit.`
+          ? q.trim()
+            ? `Searching your diary patients — matches anyone you’ve seen, not only today.`
+            : `Today’s diary · ${dayLabel} — search to find patients from other days.`
           : "Directory, contact details, NHS/GP fields — search then book from Calendar."
       }
     >
       <div className="patients-layout">
         <div className="panel">
           <div className="panel-head">
-            <h2>{isPractitioner ? "Today’s patients" : "Directory"}</h2>
+            <h2>
+              {isPractitioner
+                ? q.trim()
+                  ? "Diary search"
+                  : "Today’s patients"
+                : "Directory"}
+            </h2>
             {!isPractitioner ? (
               <button
                 type="button"

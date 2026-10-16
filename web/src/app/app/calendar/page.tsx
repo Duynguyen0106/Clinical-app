@@ -137,6 +137,8 @@ export default function CalendarPage() {
   const [bookSlots, setBookSlots] = useState<string[]>([]);
   const [bookSlot, setBookSlot] = useState("");
   const [bookNotes, setBookNotes] = useState("");
+  /** 1 = single; 2–26 = weekly series including first slot */
+  const [bookWeeklyCount, setBookWeeklyCount] = useState(1);
   const [busy, setBusy] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   const [feedUrl, setFeedUrl] = useState<string | null>(null);
@@ -453,6 +455,11 @@ export default function CalendarPage() {
           emailSent?: boolean;
           smsSent?: boolean;
         };
+        series?: {
+          createdCount: number;
+          requestedCount: number;
+          skippedStartsAt: string[];
+        };
       }>("/appointments", {
         method: "POST",
         body: JSON.stringify({
@@ -463,12 +470,23 @@ export default function CalendarPage() {
           durationMinutes: bookDuration,
           notes: notes || null,
           feeCents: feeCents > 0 ? feeCents : undefined,
+          weeklyCount: bookWeeklyCount > 1 ? bookWeeklyCount : undefined,
         }),
       });
       setBookOpen(false);
       setBookSlotFixed(false);
       setBookIntakeNote(null);
+      setBookWeeklyCount(1);
       const c = res.confirmation;
+      const series = res.series;
+      const seriesBit =
+        series && series.requestedCount > 1
+          ? ` · ${series.createdCount}/${series.requestedCount} weekly slots created${
+              series.skippedStartsAt?.length
+                ? ` (${series.skippedStartsAt.length} skipped — busy/closed)`
+                : ""
+            }`
+          : "";
       if (c?.emailSent || c?.smsSent) {
         setMessage(
           `Appointment booked — confirmation sent${
@@ -477,11 +495,11 @@ export default function CalendarPage() {
               : c.emailSent
                 ? " by email"
                 : " by SMS"
-          }`,
+          }${seriesBit}`,
         );
       } else {
         setMessage(
-          "Appointment booked — add patient email or phone to send confirmations",
+          `Appointment booked — add patient email or phone to send confirmations${seriesBit}`,
         );
       }
       load();
@@ -1467,6 +1485,20 @@ export default function CalendarPage() {
               </label>
             ) : null}
             <label className="field">
+              <span>Repeat weekly</span>
+              <select
+                value={bookWeeklyCount}
+                onChange={(e) => setBookWeeklyCount(Number(e.target.value))}
+              >
+                <option value={1}>No repeat — one appointment</option>
+                {[2, 3, 4, 6, 8, 12].map((n) => (
+                  <option key={n} value={n}>
+                    {n} weeks (same day/time)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
               <span>Notes</span>
               <textarea
                 rows={2}
@@ -1480,7 +1512,11 @@ export default function CalendarPage() {
               disabled={busy || !bookSlot || !bookPatientId}
               onClick={() => void createBooking()}
             >
-              {busy ? "Booking…" : "Confirm booking"}
+              {busy
+                ? "Booking…"
+                : bookWeeklyCount > 1
+                  ? `Confirm ${bookWeeklyCount}-week series`
+                  : "Confirm booking"}
             </button>
           </div>
         </div>

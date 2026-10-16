@@ -189,11 +189,22 @@ export async function listPatients(
     return Array.from(byPatient.values());
   }
 
+  // Own-diary history search when practitionerId set without a day filter
   return prisma.patient.findMany({
     where: {
       clinicId: ctx.clinicId,
       archivedAt: null,
       ...search,
+      ...(opts.practitionerId
+        ? {
+            appointments: {
+              some: {
+                practitionerId: opts.practitionerId,
+                status: { not: "CANCELLED" },
+              },
+            },
+          }
+        : {}),
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     take,

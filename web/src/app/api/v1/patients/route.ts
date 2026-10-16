@@ -14,15 +14,18 @@ export const GET = withAuth(async (req, ctx) => {
   const parsed = parseListQuery(new URL(req.url));
   let { q, take, appointmentOn, practitionerId } = parsed;
 
-  // Practitioners only see patients with appointments today on their diary
+  // Practitioners: default to today's diary; with a search query, search own
+  // diary history (any day) instead of forcing today.
   if (ctx.role === "PRACTITIONER") {
-    const { prisma } = await import("@/server/db");
-    const clinic = await prisma.clinic.findUniqueOrThrow({
-      where: { id: ctx.clinicId },
-      select: { timezone: true },
-    });
-    appointmentOn = appointmentOn ?? todayYmd(clinic.timezone);
     practitionerId = ctx.practitionerProfileId ?? practitionerId;
+    if (!q?.trim()) {
+      const { prisma } = await import("@/server/db");
+      const clinic = await prisma.clinic.findUniqueOrThrow({
+        where: { id: ctx.clinicId },
+        select: { timezone: true },
+      });
+      appointmentOn = appointmentOn ?? todayYmd(clinic.timezone);
+    }
   }
 
   const patients = await listPatients(ctx, {

@@ -258,7 +258,7 @@ export default function SettingsPage() {
       a.click();
       URL.revokeObjectURL(url);
       setMessage(
-        `Exported ${d.count} audit events (note views + patient prep access).`,
+        `Exported ${d.count} audit events (notes, prep access, schedule changes).`,
       );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Export failed");

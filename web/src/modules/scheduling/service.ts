@@ -35,6 +35,11 @@ export const createAppointmentSchema = z.object({
   durationMinutes: z.number().int().min(5).max(480).optional(),
   /** Create a SENT invoice for this visit (pence). Extra fees can be added later. */
   feeCents: z.number().int().min(0).optional(),
+  /**
+   * Weekly series: total occurrences including the first (2–26).
+   * Same patient/practitioner/type; +7 days each; skips slots that conflict.
+   */
+  weeklyCount: z.number().int().min(2).max(26).optional(),
 });
 
 export const updateAppointmentStatusSchema = z.object({
@@ -169,67 +174,65 @@ export async function createAppointment(
     if (!room) throw notFound("Room not found");
   }
 
-  const startsAt = new Date(input.startsAt);
   const durationMinutes = input.durationMinutes ?? type.durationMinutes;
-  const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
+  const weeklyCount = input.weeklyCount ?? 1;
+  const recurrenceGroupId =
+    weeklyCount > 1
+      ? `series_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+      : null;
 
-  await assertWithinAvailability({
-    clinicId: ctx.clinicId,
-    practitionerId: input.practitionerId,
-    startsAt,
-    endsAt,
-  });
+  const { recordScheduleAudit } = await import("./audit");
+  const createdIds: string[] = [];
+  let firstAppointment: Awaited<
+    ReturnType<typeof createSingleStaffAppointment>
+  > | null = null;
+  const skipped: string[] = [];
 
-  let roomId = input.roomId ?? null;
-  if (!roomId) {
-    const { findAvailableRoom } = await import("./rooms");
-    const free = await findAvailableRoom({
-      clinicId: ctx.clinicId,
-      startsAt,
-      endsAt,
-    });
-    roomId = free?.id ?? null;
-  }
+  const firstStarts = new Date(input.startsAt);
+  for (let i = 0; i < weeklyCount; i++) {
+    const startsAt = new Date(
+      firstStarts.getTime() + i * 7 * 24 * 60 * 60 * 1000,
+    );
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
 
-  const appointment = await withScheduleLocks(
-    prisma,
-    { practitionerId: input.practitionerId, roomId },
-    async (tx) => {
-      await assertNoConflict(
-        {
-          clinicId: ctx.clinicId,
+    try {
+      const appointment = await createSingleStaffAppointment(ctx, {
+        patientId: input.patientId,
+        practitionerId: input.practitionerId,
+        appointmentTypeId: input.appointmentTypeId,
+        locationId: input.locationId ?? null,
+        roomId: input.roomId ?? null,
+        startsAt,
+        endsAt,
+        notes: input.notes ?? null,
+        bufferBefore: type.bufferBefore,
+        bufferAfter: type.bufferAfter,
+        recurrenceGroupId,
+      });
+      createdIds.push(appointment.id);
+      if (!firstAppointment) firstAppointment = appointment;
+
+      await recordScheduleAudit({
+        clinicId: ctx.clinicId,
+        appointmentId: appointment.id,
+        actorId: ctx.userId,
+        action: weeklyCount > 1 && i === 0 ? "series_created" : "created",
+        meta: {
+          startsAt: startsAt.toISOString(),
           practitionerId: input.practitionerId,
-          roomId,
-          startsAt,
-          endsAt,
-          bufferBefore: type.bufferBefore,
-          bufferAfter: type.bufferAfter,
-        },
-        tx as typeof prisma,
-      );
-
-      return tx.appointment.create({
-        data: {
-          clinicId: ctx.clinicId,
-          patientId: input.patientId,
-          practitionerId: input.practitionerId,
-          appointmentTypeId: input.appointmentTypeId,
-          locationId: input.locationId ?? null,
-          roomId,
-          startsAt,
-          endsAt,
-          notes: input.notes ?? null,
-          status: AppointmentStatus.BOOKED,
-        },
-        include: {
-          patient: true,
-          practitioner: true,
-          appointmentType: true,
-          room: true,
+          recurrenceGroupId,
+          seriesIndex: i + 1,
+          seriesCount: weeklyCount,
         },
       });
-    },
-  );
+    } catch (err) {
+      if (i === 0) throw err;
+      skipped.push(startsAt.toISOString());
+      console.warn("Weekly series skip", startsAt.toISOString(), err);
+    }
+  }
+
+  if (!firstAppointment) throw badRequest("Could not create appointment");
 
   const feeCents =
     input.feeCents ??
@@ -239,7 +242,7 @@ export async function createAppointment(
       data: {
         clinicId: ctx.clinicId,
         patientId: input.patientId,
-        appointmentId: appointment.id,
+        appointmentId: firstAppointment.id,
         amountCents: feeCents,
         currency: "GBP",
         status: InvoiceStatus.SENT,
@@ -257,14 +260,99 @@ export async function createAppointment(
     const { sendBookingConfirmation } = await import(
       "@/modules/notifications/appointments"
     );
-    confirmation = await sendBookingConfirmation(appointment.id, {
+    confirmation = await sendBookingConfirmation(firstAppointment.id, {
       source: "staff",
     });
   } catch (err) {
     console.error("Staff booking confirmation failed", err);
   }
 
-  return Object.assign(appointment, { confirmation });
+  return Object.assign(firstAppointment, {
+    confirmation,
+    series: {
+      recurrenceGroupId,
+      createdCount: createdIds.length,
+      requestedCount: weeklyCount,
+      appointmentIds: createdIds,
+      skippedStartsAt: skipped,
+    },
+  });
+}
+
+async function createSingleStaffAppointment(
+  ctx: AuthContext,
+  opts: {
+    patientId: string;
+    practitionerId: string;
+    appointmentTypeId: string;
+    locationId: string | null;
+    roomId: string | null;
+    startsAt: Date;
+    endsAt: Date;
+    notes: string | null;
+    bufferBefore: number;
+    bufferAfter: number;
+    recurrenceGroupId: string | null;
+  },
+) {
+  await assertWithinAvailability({
+    clinicId: ctx.clinicId,
+    practitionerId: opts.practitionerId,
+    startsAt: opts.startsAt,
+    endsAt: opts.endsAt,
+  });
+
+  let roomId = opts.roomId;
+  if (!roomId) {
+    const { findAvailableRoom } = await import("./rooms");
+    const free = await findAvailableRoom({
+      clinicId: ctx.clinicId,
+      startsAt: opts.startsAt,
+      endsAt: opts.endsAt,
+    });
+    roomId = free?.id ?? null;
+  }
+
+  return withScheduleLocks(
+    prisma,
+    { practitionerId: opts.practitionerId, roomId },
+    async (tx) => {
+      await assertNoConflict(
+        {
+          clinicId: ctx.clinicId,
+          practitionerId: opts.practitionerId,
+          roomId,
+          startsAt: opts.startsAt,
+          endsAt: opts.endsAt,
+          bufferBefore: opts.bufferBefore,
+          bufferAfter: opts.bufferAfter,
+        },
+        tx as typeof prisma,
+      );
+
+      return tx.appointment.create({
+        data: {
+          clinicId: ctx.clinicId,
+          patientId: opts.patientId,
+          practitionerId: opts.practitionerId,
+          appointmentTypeId: opts.appointmentTypeId,
+          locationId: opts.locationId,
+          roomId,
+          startsAt: opts.startsAt,
+          endsAt: opts.endsAt,
+          notes: opts.notes,
+          status: AppointmentStatus.BOOKED,
+          recurrenceGroupId: opts.recurrenceGroupId,
+        },
+        include: {
+          patient: true,
+          practitioner: true,
+          appointmentType: true,
+          room: true,
+        },
+      });
+    },
+  );
 }
 
 export async function updateAppointmentStatus(
@@ -283,10 +371,24 @@ export async function updateAppointmentStatus(
     },
   });
 
-  if (
+  const { recordScheduleAudit } = await import("./audit");
+  const cancelled =
     status === AppointmentStatus.CANCELLED &&
-    appointment.status !== AppointmentStatus.CANCELLED
-  ) {
+    appointment.status !== AppointmentStatus.CANCELLED;
+
+  await recordScheduleAudit({
+    clinicId: ctx.clinicId,
+    appointmentId: appointment.id,
+    actorId: ctx.userId,
+    action: cancelled ? "cancelled" : "status_changed",
+    meta: {
+      fromStatus: appointment.status,
+      toStatus: status,
+      startsAt: appointment.startsAt.toISOString(),
+    },
+  });
+
+  if (cancelled) {
     try {
       const { sendAppointmentCancelled } = await import(
         "@/modules/notifications/appointments"
@@ -378,6 +480,19 @@ export async function rescheduleAppointment(
     practitionerEmailSent: boolean;
     patientNotified: boolean;
   } | null = null;
+
+  const { recordScheduleAudit } = await import("./audit");
+  await recordScheduleAudit({
+    clinicId: ctx.clinicId,
+    appointmentId: updated.id,
+    actorId: ctx.userId,
+    action: "rescheduled",
+    meta: {
+      fromStartsAt: previousStartsAt.toISOString(),
+      toStartsAt: updated.startsAt.toISOString(),
+      notifyPatient,
+    },
+  });
 
   try {
     const { sendAppointmentRescheduled } = await import(
