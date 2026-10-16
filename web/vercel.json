@@ -5,14 +5,6 @@
   "buildCommand": "npx prisma generate && npm run build",
   "crons": [
     {
-      "path": "/api/v1/jobs/reminders",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/v1/jobs/organise",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/v1/jobs/retention",
       "schedule": "15 3 * * *"
     }
