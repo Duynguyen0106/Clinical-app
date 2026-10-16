@@ -3,7 +3,7 @@ import { jsonOk } from "@/server/http";
 import { badRequest } from "@/server/errors";
 import {
   createDepositCheckout,
-  markDepositPaid,
+  verifyStripeDepositSession,
 } from "@/modules/billing/deposits";
 import { enforcePublicDepositLimits } from "@/server/abuse";
 
@@ -12,13 +12,26 @@ export const POST = withPublic(async (req) => {
   const body = (await req.json()) as {
     appointmentId?: string;
     action?: string;
+    sessionId?: string;
   };
   if (!body.appointmentId) throw badRequest("appointmentId required");
-  if (body.action === "mark_paid") {
-    // Used by Stripe success redirect / console confirm
-    const appointment = await markDepositPaid(body.appointmentId);
-    return jsonOk({ appointment });
+
+  // Verify Stripe Checkout session — never trust a bare mark_paid from the client
+  if (body.action === "verify_session") {
+    if (!body.sessionId) throw badRequest("sessionId required");
+    const result = await verifyStripeDepositSession({
+      sessionId: body.sessionId,
+      appointmentId: body.appointmentId,
+    });
+    return jsonOk(result);
   }
+
+  if (body.action === "mark_paid") {
+    throw badRequest(
+      "Direct mark_paid is disabled. Complete Stripe Checkout or use verify_session.",
+    );
+  }
+
   const result = await createDepositCheckout(body.appointmentId);
   return jsonOk(result);
 });

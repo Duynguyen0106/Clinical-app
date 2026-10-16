@@ -1,11 +1,11 @@
 /**
  * Deposit payments — PAYMENT_PROVIDER=console|stripe
- * Console marks deposits paid immediately (pilot / demo).
- * Stripe returns a Checkout URL when configured.
+ * Console marks deposits paid immediately (pilot / demo only — blocked in production).
+ * Stripe returns a Checkout URL; PAID is set only via verified session or webhook.
  */
 import { DepositStatus, AppointmentStatus } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
-import { badRequest, notFound } from "@/server/errors";
+import { badRequest, notFound, unauthorized } from "@/server/errors";
 import { getAppBaseUrl } from "@/server/env";
 
 export function getPaymentProvider() {
@@ -43,7 +43,6 @@ export async function createDepositCheckout(appointmentId: string) {
     if (!key) {
       throw badRequest("STRIPE_SECRET_KEY is not configured");
     }
-    // Minimal Checkout Session via Stripe API (no SDK dependency)
     const params = new URLSearchParams();
     params.set("mode", "payment");
     params.set("success_url", `${successUrl}&session_id={CHECKOUT_SESSION_ID}`);
@@ -113,6 +112,7 @@ export async function createDepositCheckout(appointmentId: string) {
   };
 }
 
+/** Internal — only call after Stripe session/webhook verification (or console pilot). */
 export async function markDepositPaid(appointmentId: string) {
   const apt = await prisma.appointment.findUnique({
     where: { id: appointmentId },
@@ -127,6 +127,71 @@ export async function markDepositPaid(appointmentId: string) {
       status: AppointmentStatus.CONFIRMED,
     },
   });
+}
+
+/**
+ * Verify a Stripe Checkout session and mark the deposit paid.
+ * Public success page calls this with session_id from the redirect.
+ */
+export async function verifyStripeDepositSession(opts: {
+  sessionId: string;
+  appointmentId: string;
+}) {
+  const key = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!key) throw badRequest("STRIPE_SECRET_KEY is not configured");
+
+  const res = await fetch(
+    `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(opts.sessionId)}`,
+    {
+      headers: { Authorization: `Bearer ${key}` },
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("Stripe session retrieve failed", text);
+    throw badRequest("Could not verify payment session");
+  }
+
+  const session = (await res.json()) as {
+    id: string;
+    payment_status?: string;
+    mode?: string;
+    metadata?: { appointmentId?: string; clinicId?: string };
+  };
+
+  const metaApt = session.metadata?.appointmentId;
+  if (!metaApt || metaApt !== opts.appointmentId) {
+    throw unauthorized("Session does not match this appointment");
+  }
+  if (session.mode && session.mode !== "payment") {
+    throw badRequest("Unexpected checkout mode");
+  }
+  if (session.payment_status !== "paid") {
+    return {
+      status: "unpaid" as const,
+      appointment: await prisma.appointment.findUniqueOrThrow({
+        where: { id: opts.appointmentId },
+      }),
+    };
+  }
+
+  const appointment = await markDepositPaid(opts.appointmentId);
+  return { status: "paid" as const, appointment };
+}
+
+/** Apply deposit paid from Stripe webhook checkout.session.completed */
+export async function applyDepositCheckoutCompleted(session: {
+  id?: string;
+  mode?: string;
+  payment_status?: string;
+  metadata?: { appointmentId?: string; clinicId?: string };
+}) {
+  if (session.mode !== "payment") return { applied: false as const };
+  if (session.payment_status !== "paid") return { applied: false as const };
+  const appointmentId = session.metadata?.appointmentId;
+  if (!appointmentId) return { applied: false as const };
+  const appointment = await markDepositPaid(appointmentId);
+  return { applied: true as const, appointmentId: appointment.id };
 }
 
 export async function waiveDeposit(

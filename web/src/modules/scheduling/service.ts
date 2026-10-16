@@ -97,25 +97,60 @@ export async function listAppointments(
     throw badRequest("Invalid from/to");
   }
 
-  return prisma.appointment.findMany({
-    where: {
-      clinicId: ctx.clinicId,
-      startsAt: { gte: from, lte: to },
-      ...(opts.practitionerId
-        ? { practitionerId: opts.practitionerId }
-        : {}),
-      status: { not: AppointmentStatus.CANCELLED },
+  const [clinic, appointments] = await Promise.all([
+    prisma.clinic.findUnique({
+      where: { id: ctx.clinicId },
+      select: { calendarPrivacyMode: true },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        clinicId: ctx.clinicId,
+        startsAt: { gte: from, lte: to },
+        ...(opts.practitionerId
+          ? { practitionerId: opts.practitionerId }
+          : {}),
+        status: { not: AppointmentStatus.CANCELLED },
+      },
+      include: {
+        patient: true,
+        practitioner: true,
+        appointmentType: true,
+        location: true,
+        room: true,
+        visit: { select: { id: true, recordingConsentAt: true } },
+      },
+      orderBy: { startsAt: "asc" },
+    }),
+  ]);
+
+  if (clinic?.calendarPrivacyMode !== "INITIALS") {
+    return appointments;
+  }
+
+  // Server-side open-desk privacy — redact surnames for staff diary lists
+  return appointments.map((apt) => ({
+    ...apt,
+    patient: {
+      ...apt.patient,
+      lastName: (apt.patient.lastName[0] ?? "?").toUpperCase() + ".",
+      firstName: apt.patient.firstName,
+      email: null,
+      phone: null,
+      alerts: null,
     },
-    include: {
-      patient: true,
-      practitioner: true,
-      appointmentType: true,
-      location: true,
-      room: true,
-      visit: { select: { id: true, recordingConsentAt: true } },
-    },
-    orderBy: { startsAt: "asc" },
-  });
+  }));
+}
+
+function canSeeVisitClinicalMeta(
+  ctx: AuthContext,
+  practitionerId: string,
+): boolean {
+  if (ctx.role === "OWNER") return true;
+  if (ctx.role === "RECEPTION") return false;
+  return (
+    ctx.role === "PRACTITIONER" &&
+    ctx.practitionerProfileId === practitionerId
+  );
 }
 
 export async function getAppointment(ctx: AuthContext, id: string) {
@@ -139,11 +174,19 @@ export async function getAppointment(ctx: AuthContext, id: string) {
     },
   });
   if (!appointment) throw notFound("Appointment not found");
-  // Reception: strip note status stubs (need-to-know)
-  if (ctx.role === "RECEPTION" && appointment.visit) {
+  // Peer diary / reception: strip note stubs + recording status (need-to-know)
+  if (
+    appointment.visit &&
+    !canSeeVisitClinicalMeta(ctx, appointment.practitionerId)
+  ) {
     return {
       ...appointment,
-      visit: { ...appointment.visit, notes: [] },
+      visit: {
+        ...appointment.visit,
+        notes: [],
+        recording: null,
+        recordingConsentAt: null,
+      },
     };
   }
   return appointment;
@@ -364,6 +407,137 @@ export async function cancelFutureSeries(ctx: AuthContext, id: string) {
     recurrenceGroupId: appointment.recurrenceGroupId,
     cancelledCount: cancelledIds.length,
     cancelledIds,
+  };
+}
+
+/**
+ * Shift this appointment and all later BOOKED/CONFIRMED siblings by the same
+ * wall-clock delta (e.g. move series forward one hour / one week).
+ */
+export async function rescheduleFutureSeries(
+  ctx: AuthContext,
+  id: string,
+  startsAtIso: string,
+) {
+  const appointment = await prisma.appointment.findFirst({
+    where: { id, clinicId: ctx.clinicId },
+    include: { appointmentType: true },
+  });
+  if (!appointment) throw notFound("Appointment not found");
+  if (!appointment.recurrenceGroupId) {
+    throw badRequest("This appointment is not part of a series");
+  }
+
+  const newStarts = new Date(startsAtIso);
+  if (Number.isNaN(newStarts.getTime())) {
+    throw badRequest("Invalid startsAt");
+  }
+  const deltaMs = newStarts.getTime() - appointment.startsAt.getTime();
+  if (deltaMs === 0) {
+    throw badRequest("New time is the same as the current time");
+  }
+
+  const siblings = await prisma.appointment.findMany({
+    where: {
+      clinicId: ctx.clinicId,
+      recurrenceGroupId: appointment.recurrenceGroupId,
+      startsAt: { gte: appointment.startsAt },
+      status: {
+        in: [AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED],
+      },
+    },
+    orderBy: { startsAt: "asc" },
+  });
+
+  if (siblings.length === 0) {
+    throw badRequest("No future series appointments to reschedule");
+  }
+
+  const { recordScheduleAudit } = await import("./audit");
+  const movedIds: string[] = [];
+  const skipped: string[] = [];
+
+  for (const sibling of siblings) {
+    const startsAt = new Date(sibling.startsAt.getTime() + deltaMs);
+    const duration =
+      sibling.endsAt.getTime() - sibling.startsAt.getTime();
+    const endsAt = new Date(startsAt.getTime() + duration);
+
+    try {
+      await assertWithinAvailability({
+        clinicId: ctx.clinicId,
+        practitionerId: sibling.practitionerId,
+        startsAt,
+        endsAt,
+      });
+      await withScheduleLocks(
+        prisma,
+        {
+          practitionerId: sibling.practitionerId,
+          roomId: sibling.roomId ?? null,
+        },
+        async (tx) => {
+          await assertNoConflict(
+            {
+              clinicId: ctx.clinicId,
+              practitionerId: sibling.practitionerId,
+              roomId: sibling.roomId ?? null,
+              startsAt,
+              endsAt,
+              bufferBefore: appointment.appointmentType.bufferBefore,
+              bufferAfter: appointment.appointmentType.bufferAfter,
+              excludeAppointmentId: sibling.id,
+            },
+            tx as typeof prisma,
+          );
+          await tx.appointment.update({
+            where: { id: sibling.id },
+            data: { startsAt, endsAt },
+          });
+        },
+      );
+      movedIds.push(sibling.id);
+      await recordScheduleAudit({
+        clinicId: ctx.clinicId,
+        appointmentId: sibling.id,
+        actorId: ctx.userId,
+        action: "rescheduled",
+        meta: {
+          source: "series_shift",
+          recurrenceGroupId: appointment.recurrenceGroupId,
+          fromAppointmentId: appointment.id,
+          previousStartsAt: sibling.startsAt.toISOString(),
+          startsAt: startsAt.toISOString(),
+          deltaMs,
+        },
+      });
+    } catch (err) {
+      skipped.push(sibling.startsAt.toISOString());
+      console.warn("Series reschedule skip", sibling.id, err);
+    }
+  }
+
+  if (movedIds.length === 0) {
+    throw conflict("Could not move any series appointments (busy/closed)");
+  }
+
+  try {
+    const { sendAppointmentRescheduled } = await import(
+      "@/modules/notifications/appointments"
+    );
+    await sendAppointmentRescheduled({
+      appointmentId: appointment.id,
+      previousStartsAt: appointment.startsAt,
+    });
+  } catch (err) {
+    console.error("Series reschedule notification failed", err);
+  }
+
+  return {
+    recurrenceGroupId: appointment.recurrenceGroupId,
+    movedCount: movedIds.length,
+    movedIds,
+    skippedStartsAt: skipped,
   };
 }
 

@@ -19,6 +19,18 @@ export async function exportNoteAudits(
         }
       : {};
 
+  // Practitioners: own diary only; OWNER sees clinic-wide
+  const diaryId =
+    ctx.role === "PRACTITIONER" ? ctx.practitionerProfileId : null;
+  const ownDiaryNote = diaryId
+    ? {
+        OR: [
+          { visit: { appointment: { practitionerId: diaryId } } },
+          { signedById: ctx.userId },
+        ],
+      }
+    : {};
+
   const [noteEvents, accessEvents, scheduleEvents] = await Promise.all([
     prisma.noteAuditEvent.findMany({
       where: {
@@ -27,6 +39,7 @@ export async function exportNoteAudits(
             clinicId: ctx.clinicId,
             ...(opts.patientId ? { id: opts.patientId } : {}),
           },
+          ...ownDiaryNote,
         },
         ...createdFilter,
       },
@@ -48,6 +61,8 @@ export async function exportNoteAudits(
       where: {
         clinicId: ctx.clinicId,
         ...(opts.patientId ? { patientId: opts.patientId } : {}),
+        // Practitioners only see access events they performed
+        ...(diaryId ? { actorId: ctx.userId } : {}),
         ...createdFilter,
       },
       include: {
@@ -59,8 +74,13 @@ export async function exportNoteAudits(
     prisma.appointmentAuditEvent.findMany({
       where: {
         clinicId: ctx.clinicId,
-        ...(opts.patientId
-          ? { appointment: { patientId: opts.patientId } }
+        ...(opts.patientId || diaryId
+          ? {
+              appointment: {
+                ...(opts.patientId ? { patientId: opts.patientId } : {}),
+                ...(diaryId ? { practitionerId: diaryId } : {}),
+              },
+            }
           : {}),
         ...createdFilter,
       },

@@ -3,6 +3,7 @@ import { withPublic } from "@/server/api";
 import { jsonOk } from "@/server/http";
 import { unauthorized, badRequest } from "@/server/errors";
 import { applyStripeSubscriptionEvent } from "@/modules/billing/subscription";
+import { applyDepositCheckoutCompleted } from "@/modules/billing/deposits";
 
 function verifyStripeSignature(
   payload: string,
@@ -54,6 +55,20 @@ export const POST = withPublic(async (req) => {
     throw badRequest("Invalid JSON");
   }
 
+  let deposit: { applied: boolean; appointmentId?: string } = {
+    applied: false,
+  };
+  if (event.type === "checkout.session.completed") {
+    deposit = await applyDepositCheckoutCompleted(
+      event.data.object as {
+        id?: string;
+        mode?: string;
+        payment_status?: string;
+        metadata?: { appointmentId?: string; clinicId?: string };
+      },
+    );
+  }
+
   const result = await applyStripeSubscriptionEvent(event);
-  return jsonOk({ received: true, result });
+  return jsonOk({ received: true, result, deposit });
 });

@@ -93,8 +93,16 @@ jobs:
         env:
           DATABASE_URL: postgresql://treow:treow@localhost:5432/treow
         run: npm run db:rls
-      - name: Smoke clinic GUC isolation
+      - name: Smoke clinic GUC (ENABLE)
         working-directory: web
         env:
           DATABASE_URL: postgresql://treow:treow@localhost:5432/treow
         run: npx tsx scripts/rls-smoke.ts
+      - name: Apply FORCE RLS + denial smoke
+        working-directory: web
+        env:
+          DATABASE_URL: postgresql://treow:treow@localhost:5432/treow
+          APPLY_FORCE_RLS: "1"
+        run: |
+          npm run db:rls
+          npx tsx scripts/rls-smoke.ts

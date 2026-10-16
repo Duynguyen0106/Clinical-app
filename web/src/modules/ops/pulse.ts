@@ -56,12 +56,23 @@ export async function getPracticePulse(ctx: AuthContext) {
     prisma.availabilityRule.findMany({
       where: { practitioner: { membership: { clinicId: ctx.clinicId } } },
     }),
-    prisma.clinicalNote.count({
-      where: {
-        status: NoteStatus.DRAFT,
-        patient: { clinicId: ctx.clinicId },
-      },
-    }),
+    ctx.role === "RECEPTION"
+      ? Promise.resolve(0)
+      : prisma.clinicalNote.count({
+          where: {
+            status: NoteStatus.DRAFT,
+            patient: { clinicId: ctx.clinicId },
+            ...(ctx.role === "PRACTITIONER" && ctx.practitionerProfileId
+              ? {
+                  visit: {
+                    appointment: {
+                      practitionerId: ctx.practitionerProfileId,
+                    },
+                  },
+                }
+              : {}),
+          },
+        }),
     prisma.invoice.findMany({
       where: {
         clinicId: ctx.clinicId,

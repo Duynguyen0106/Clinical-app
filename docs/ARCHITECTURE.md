@@ -43,9 +43,9 @@
 - Auth session resolves membership → role → **app-layer** `clinicId` filters on every query (primary defence).
 - **Postgres RLS** (optional hardening): `web/prisma/sql/001_clinic_rls.sql` enables policies on Patient, Appointment, WaitlistEntry, Invoice, PatientAccessEvent, NoteTemplate, AiOrganiseJob, Visit, ClinicalNote, Recording, Transcript, AppointmentAuditEvent. Apply with `npm run db:rls`.
 - Use `withClinicTransaction(clinicId, fn)` / `SET LOCAL app.clinic_id` so pooled connections never leak tenant context (`src/server/clinic-rls.ts`). Clinical recording/transcript writes also set the clinic GUC.
-- Production hardening path: non-owner DB role + `FORCE ROW LEVEL SECURITY` (`web/prisma/sql/002_force_rls.sql`, `APPLY_FORCE_RLS=1 npm run db:rls`) + always set clinic GUC (or `app.rls_bypass=on` only for seed/cron). Until FORCE is on, the table-owner role bypasses RLS (Postgres default).
+- Production hardening path: non-owner DB role + `FORCE ROW LEVEL SECURITY` (`web/prisma/sql/002_force_rls.sql`, `APPLY_FORCE_RLS=1 npm run db:rls`) + always set clinic GUC (or `app.rls_bypass=on` only for seed/cron). Until FORCE is on, the table-owner role bypasses RLS (Postgres default). CI runs ENABLE then FORCE denial smoke (`web/scripts/rls-smoke.ts`).
 - Patient booking pages scoped by clinic slug / public booking token.
-- Rate limits: in-memory by default; set `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for shared multi-instance buckets.
+- Rate limits: in-memory by default; set `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for shared multi-instance buckets (required for multi-instance Vercel public book).
 
 ---
 
@@ -136,11 +136,13 @@ See `prisma/schema.prisma` for the living schema. Conceptual entities:
 
 ---
 
-## Billing (MVP)
+## Billing (MVP+)
 
-- Invoices in **GBP**; staff **mark paid / unpaid** (cash, card terminal, bank transfer — method noted, not processed in-app).
-- No Stripe/GoCardless in MVP.
-- `Payment` rows record manual settlements only.
+- Invoices in **GBP**; staff **mark paid / unpaid** (cash, card terminal, bank transfer — method noted).
+- Optional **online deposits** via Stripe Checkout (`PAYMENT_PROVIDER=stripe`). Production refuses console auto-PAID.
+  Deposits mark PAID only after verified Checkout session (`verify_session`) or `checkout.session.completed` webhook — never a bare public `mark_paid`.
+- Keep clinic `depositMode=OFF` until Stripe keys + webhook are live.
+- SaaS subscription billing (clinic → Treow) is separate Stripe mode.
 
 ## PWA recording
 

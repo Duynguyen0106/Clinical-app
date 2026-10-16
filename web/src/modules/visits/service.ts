@@ -106,12 +106,12 @@ export async function captureRecordingConsent(
 
   const now = new Date();
 
-  await prisma.$transaction([
-    prisma.visit.update({
+  await withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.visit.update({
       where: { id: visit.id },
       data: { recordingConsentAt: now },
-    }),
-    prisma.patientConsent.create({
+    });
+    await tx.patientConsent.create({
       data: {
         patientId: visit.appointment.patientId,
         type: "RECORDING",
@@ -119,8 +119,8 @@ export async function captureRecordingConsent(
         method: input.method,
         meta: { visitId: visit.id },
       },
-    }),
-  ]);
+    });
+  });
 
   return getVisit(ctx, visitId);
 }

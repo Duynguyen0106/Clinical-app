@@ -64,39 +64,40 @@ export async function enqueueOrganiseJob(
     name: ctx.name,
   };
 
-  await prisma.recording.update({
-    where: { id: visit.recording.id },
-    data: {
-      status: "TRANSCRIBING",
-      durationSec: input.durationSec ?? visit.recording.durationSec,
-      error: null,
-    },
-  });
+  const { withClinicTransaction } = await import("@/server/clinic-rls");
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.recording.update({
+      where: { id: visit.recording!.id },
+      data: {
+        status: "TRANSCRIBING",
+        durationSec: input.durationSec ?? visit.recording!.durationSec,
+        error: null,
+      },
+    });
 
-  // Collapse prior pending jobs for this visit
-  await prisma.aiOrganiseJob.updateMany({
-    where: {
-      visitId,
-      status: { in: [AiJobStatus.PENDING, AiJobStatus.RUNNING] },
-    },
-    data: {
-      status: AiJobStatus.FAILED,
-      error: "Superseded by newer organise request",
-      finishedAt: new Date(),
-    },
-  });
+    // Collapse prior pending jobs for this visit
+    await tx.aiOrganiseJob.updateMany({
+      where: {
+        visitId,
+        status: { in: [AiJobStatus.PENDING, AiJobStatus.RUNNING] },
+      },
+      data: {
+        status: AiJobStatus.FAILED,
+        error: "Superseded by newer organise request",
+        finishedAt: new Date(),
+      },
+    });
 
-  const job = await prisma.aiOrganiseJob.create({
-    data: {
-      visitId,
-      clinicId: ctx.clinicId,
-      actorUserId: ctx.userId,
-      status: AiJobStatus.PENDING,
-      payload: payload as unknown as Prisma.InputJsonValue,
-    },
+    return tx.aiOrganiseJob.create({
+      data: {
+        visitId,
+        clinicId: ctx.clinicId,
+        actorUserId: ctx.userId,
+        status: AiJobStatus.PENDING,
+        payload: payload as unknown as Prisma.InputJsonValue,
+      },
+    });
   });
-
-  return job;
 }
 
 export async function processOrganiseJob(jobId: string) {
