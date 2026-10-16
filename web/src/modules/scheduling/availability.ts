@@ -4,6 +4,12 @@ import { prisma } from "@/server/db";
 import type { AuthContext } from "@/server/auth";
 import { badRequest, conflict, forbidden, notFound } from "@/server/errors";
 import { isLeaveReason } from "@/modules/scheduling/leave-schema";
+import {
+  clinicDateKey,
+  clinicDayOfWeek,
+  clinicMinutesFromMidnight,
+  utcDateKey,
+} from "./clinic-time";
 
 export const createBlockSchema = z.object({
   practitionerId: z.string().min(1),
@@ -18,16 +24,6 @@ export const createBlockSchema = z.object({
 function parseDateOnly(isoDate: string) {
   const [y, m, d] = isoDate.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d));
-}
-
-/** Local calendar date key for in-process Date objects (slot loops). */
-function localDateKey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** UTC date key for Prisma `@db.Date` values. */
-function utcDateKey(d: Date) {
-  return d.toISOString().slice(0, 10);
 }
 
 export async function listBlocks(
@@ -136,13 +132,17 @@ export async function createBlock(
     },
   });
 
+  const clinic = await prisma.clinic.findFirst({
+    where: { id: ctx.clinicId },
+    select: { timezone: true },
+  });
+  const timeZone = clinic?.timezone ?? "Europe/London";
+
   for (const apt of appointments) {
-    // Compare in UTC minutes — block dates are stored as UTC @db.Date and the
-    // diary slot engine runs in server-local time (UTC in production containers).
-    const aptStart =
-      apt.startsAt.getUTCHours() * 60 + apt.startsAt.getUTCMinutes();
-    const aptEnd =
-      apt.endsAt.getUTCHours() * 60 + apt.endsAt.getUTCMinutes();
+    // Block minutes are clinic-local; compare appointments in the same zone.
+    if (clinicDateKey(apt.startsAt, timeZone) !== input.date) continue;
+    const aptStart = clinicMinutesFromMidnight(apt.startsAt, timeZone);
+    const aptEnd = clinicMinutesFromMidnight(apt.endsAt, timeZone);
     const blockStart = startMinute ?? 0;
     const blockEnd = endMinute ?? 24 * 60;
     if (aptStart < blockEnd && aptEnd > blockStart) {
@@ -213,7 +213,8 @@ function startOfUtcDay(d: Date) {
 
 /**
  * Returns whether [startMinute, endMinute) on `day` is bookable given weekly
- * rules and exceptions. Exceptions with isAvailable=false carve out time.
+ * rules and exceptions. Minutes and day-of-week are clinic-local when
+ * `timeZone` is set (required for production UK clinics on UTC hosts).
  */
 export function isWindowAvailable(args: {
   day: Date;
@@ -226,9 +227,12 @@ export function isWindowAvailable(args: {
     startMinute: number | null;
     endMinute: number | null;
   }[];
+  /** Clinic IANA timezone; defaults to Europe/London */
+  timeZone?: string;
 }) {
-  const dow = args.day.getDay();
-  const key = localDateKey(args.day);
+  const timeZone = args.timeZone ?? "Europe/London";
+  const dow = clinicDayOfWeek(args.day, timeZone);
+  const key = clinicDateKey(args.day, timeZone);
   const dayExceptions = args.exceptions.filter(
     (e) => utcDateKey(e.date) === key,
   );
@@ -256,6 +260,12 @@ export async function assertWithinAvailability(args: {
   startsAt: Date;
   endsAt: Date;
 }) {
+  const clinic = await prisma.clinic.findFirst({
+    where: { id: args.clinicId },
+    select: { timezone: true },
+  });
+  const timeZone = clinic?.timezone ?? "Europe/London";
+
   const practitioner = await prisma.practitionerProfile.findFirst({
     where: {
       id: args.practitionerId,
@@ -273,12 +283,10 @@ export async function assertWithinAvailability(args: {
     args.endsAt,
   );
 
-  const startMinute =
-    args.startsAt.getUTCHours() * 60 + args.startsAt.getUTCMinutes();
-  const endMinute =
-    args.endsAt.getUTCHours() * 60 + args.endsAt.getUTCMinutes();
+  const startMinute = clinicMinutesFromMidnight(args.startsAt, timeZone);
+  const endMinute = clinicMinutesFromMidnight(args.endsAt, timeZone);
 
-  const key = localDateKey(args.startsAt);
+  const key = clinicDateKey(args.startsAt, timeZone);
   for (const b of exceptions.filter((e) => !e.isAvailable)) {
     if (utcDateKey(b.date) !== key) continue;
     const bStart = b.startMinute ?? 0;
@@ -297,6 +305,7 @@ export async function assertWithinAvailability(args: {
       endMinute,
       rules: practitioner.availability,
       exceptions,
+      timeZone,
     });
     if (!ok) {
       throw conflict("Outside practitioner working hours");
