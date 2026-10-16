@@ -31,7 +31,8 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | GET | `/patients/:id` | Profile + booking timeline (note **metadata only**, no clinical bodies) |
 | GET | `/patients/:id?prep=1&source=` | Prep pack (logs `prep_opened`). Reception: bookings/alerts only. Clinicians: note stubs; bodies load on expand |
 | POST | `/patients/:id` | Clinician: `{ action: "note_expanded", noteId, source? }` — returns note sections + audits disclosure |
-| PATCH | `/patients/:id` | Update profile fields |
+| PATCH | `/patients/:id` | Update profile fields (blank email/DOB cleared to null) |
+| DELETE | `/patients/:id` | Delete patient (blocked if signed notes / upcoming appts; `?force=1` owner only) |
 | POST | `/patients/:id/consents` | `{ type, granted, method }` |
 
 Staff booking: Calendar empty cell → book sheet with patient lookup (`/app/calendar`). New patients use the same first-time intake as online booking (name, email, phone, reason, privacy + recording consents). Directory create/edit: `/app/patients`.
@@ -39,7 +40,7 @@ Staff booking: Calendar empty cell → book sheet with patient lookup (`/app/cal
 ## Appointments
 
 | GET | `/appointments?from=&to=&practitionerId=` | Calendar range (includes `room`) |
-| POST | `/appointments` | Create `{ patientId, practitionerId, appointmentTypeId, startsAt, durationMinutes?, feeCents?, notes? }` — conflict + hours/block checked; optional invoice; confirmation email |
+| POST | `/appointments` | Create `{ patientId, practitionerId, appointmentTypeId, startsAt, durationMinutes?, feeCents?, notes? }` — conflict + hours/block checked; optional invoice; patient confirmation + clinic inbox notify |
 | GET | `/appointments/:id` | Detail + visit pointers (no note bodies / transcripts) |
 | PATCH | `/appointments/:id` | Schedule changes (`startsAt`, `durationMinutes`, `appointmentTypeId`, `CANCELLED`, `NO_SHOW`): **OWNER/RECEPTION only**. Fees: OWNER/RECEPTION. Notes: any staff. Practitioners cannot modify the diary. Reschedule/cancel email+SMS the patient and email the practitioner. |
 | GET | `/slots?appointmentTypeId=&practitionerId=&durationMinutes=&days=` | Staff open slots (honours weekly hours + blocks) |
@@ -63,7 +64,7 @@ Blocks remove time from online + staff slot search.
 ## Patient self-serve
 
 | GET | `/public/manage?token=&slots=1` | Appointment (+ optional slots) via signed link |
-| POST | `/public/manage` | `{ action: "cancel"\|"reschedule", token, startsAt? }` — closes within 2h of start |
+| POST | `/public/manage` | `{ action: "cancel"\|"reschedule", token, startsAt? }` — needs ≥24h notice by default (`cancelMinNoticeHours`) |
 
 Manage links are emailed/SMS’d on confirmation and reminders. UI: `/book/manage/[token]`.
 

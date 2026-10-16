@@ -15,16 +15,18 @@ describe("buildBookingConfirmationEmail", () => {
       serviceName: "Follow-up Osteopathic Treatment",
       roomName: "Couch 1",
       manageLink: "https://treow-clinic.vercel.app/book/manage/token",
-      cancelNoticeHours: 2,
+      cancelNoticeHours: 24,
     });
 
     assert.match(msg.subject, /Nguyen's Osteopathic Clinic/);
     assert.match(msg.text, /Hi Sam/);
     assert.match(msg.text, /Follow-up Osteopathic Treatment/);
     assert.match(msg.text, /https:\/\/treow-clinic\.vercel\.app\/book\/manage\/token/);
+    assert.match(msg.text, /at least 24 hours/);
     assert.match(msg.html, /You're booked/);
     assert.match(msg.html, /Manage this booking/);
     assert.match(msg.html, /Austin Nguyen/);
+    assert.match(msg.html, /at least 24 hours/);
     assert.doesNotMatch(msg.html, /<script/i);
   });
 

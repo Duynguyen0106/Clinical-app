@@ -56,7 +56,13 @@ function serialize(appointment: {
   practitioner: { displayName: string };
   appointmentType: { name: string; durationMinutes: number };
   room: { name: string } | null;
-  clinic: { name: string; slug: string; timezone: string };
+  clinic: {
+    name: string;
+    slug: string;
+    timezone: string;
+    cancelMinNoticeHours: number;
+    bookingPolicyText: string;
+  };
 }) {
   return {
     id: appointment.id,
@@ -74,6 +80,12 @@ function serialize(appointment: {
       durationMinutes: appointment.appointmentType.durationMinutes,
     },
     room: appointment.room,
-    clinic: appointment.clinic,
+    clinic: {
+      name: appointment.clinic.name,
+      slug: appointment.clinic.slug,
+      timezone: appointment.clinic.timezone,
+      cancelMinNoticeHours: appointment.clinic.cancelMinNoticeHours,
+      bookingPolicyText: appointment.clinic.bookingPolicyText,
+    },
   };
 }

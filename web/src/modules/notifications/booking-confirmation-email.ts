@@ -17,7 +17,7 @@ export type BookingConfirmationContentInput = {
 export function buildBookingConfirmationEmail(
   input: BookingConfirmationContentInput,
 ) {
-  const notice = input.cancelNoticeHours ?? 2;
+  const notice = input.cancelNoticeHours ?? 24;
   const subject = `Booking confirmed — ${input.clinicName}`;
 
   const lines = [
@@ -35,7 +35,7 @@ export function buildBookingConfirmationEmail(
     "Manage your booking (cancel or reschedule):",
     input.manageLink,
     "",
-    `Online changes close within ${notice} hours of the appointment.`,
+    `Online cancel/reschedule needs at least ${notice} hours’ notice.`,
     "",
     `— ${input.clinicName}`,
   ].filter((line): line is string => line !== null);
@@ -96,7 +96,7 @@ export function buildBookingConfirmationEmail(
           </tr>
           <tr>
             <td style="padding-top:18px;font-size:13px;line-height:1.45;color:#6a7a74;font-family:system-ui,-apple-system,sans-serif;">
-              Online cancel/reschedule closes within ${notice} hours of the visit.
+              Online cancel/reschedule needs at least ${notice} hours’ notice.
               After that, please contact the clinic
               ${input.clinicPhone ? ` on ${escapeHtml(input.clinicPhone)}` : ""}.
             </td>

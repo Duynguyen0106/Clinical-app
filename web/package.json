@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test tests/unit/**/*.test.ts",
+    "test": "tsx --test tests/unit/*.test.ts",
     "smoke": "tsx scripts/smoke-api.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

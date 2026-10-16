@@ -3191,6 +3191,33 @@ h3 {
   border: 1px dashed var(--line);
 }
 
+button.cal-block-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+button.cal-block-btn:hover,
+button.cal-block-btn:focus-visible {
+  border-color: var(--accent);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+}
+
+.sheet-divider {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1rem 0;
+}
+
+.sheet-subhead {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+  font-family: var(--font-display);
+}
+
 .sheet-backdrop {
   position: fixed;
   inset: 0;
