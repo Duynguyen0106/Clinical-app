@@ -2128,6 +2128,41 @@ h3 {
   cursor: pointer;
 }
 
+.week-cell-closed {
+  background: color-mix(in srgb, var(--muted) 12%, var(--surface-solid));
+  cursor: default;
+}
+
+.cal-closed {
+  font-size: 0.7rem;
+  color: var(--muted);
+  opacity: 0.85;
+  padding: 0.15rem 0.2rem;
+}
+
+.cal-swatch-closed {
+  background: color-mix(in srgb, var(--muted) 28%, transparent) !important;
+  border: 1px solid var(--line);
+}
+
+.week-day-closed {
+  color: var(--muted);
+}
+
+.week-day-closed-tag {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+
+.cal-day-chip.is-closed {
+  opacity: 0.55;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
 .feed-hint-list {
   margin: 0.75rem 0 1rem;
   padding-left: 1.1rem;

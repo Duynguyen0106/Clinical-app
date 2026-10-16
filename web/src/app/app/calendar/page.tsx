@@ -17,7 +17,11 @@ import { PatientLookup } from "@/components/PatientLookup";
 import {
   appointmentOccupiesSlot,
   calendarEventStatusClass,
+  diaryHoursFromRules,
   humanStatusLabel,
+  isHourWithinRules,
+  rulesForPractitioner,
+  type AvailabilityRule,
 } from "@/modules/scheduling/calendar-ui";
 
 type Appointment = {
@@ -47,6 +51,12 @@ type Block = {
   practitioner: { id: string; displayName: string };
 };
 
+type CatalogPractitioner = {
+  id: string;
+  displayName: string;
+  availability?: AvailabilityRule[];
+};
+
 type Catalog = {
   appointmentTypes: {
     id: string;
@@ -54,10 +64,8 @@ type Catalog = {
     durationMinutes: number;
     defaultPriceCents: number;
   }[];
-  practitioners: { id: string; displayName: string }[];
+  practitioners: CatalogPractitioner[];
 };
-
-const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
 function minutesLabel(m: number) {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
@@ -153,6 +161,16 @@ export default function CalendarPage() {
     [weekStart, viewMode, dayFocus],
   );
 
+  const hours = useMemo(() => {
+    const list = catalog?.practitioners ?? [];
+    const relevant = filterPractitionerId
+      ? list.filter((p) => p.id === filterPractitionerId)
+      : list;
+    return diaryHoursFromRules(
+      relevant.map((p) => rulesForPractitioner(p.availability)),
+    );
+  }, [catalog, filterPractitionerId]);
+
   const load = useCallback(() => {
     const from = viewMode === "day" ? dayFocus : weekStart;
     const to = viewMode === "day" ? addDays(dayFocus, 1) : addDays(weekStart, 7);
@@ -169,10 +187,13 @@ export default function CalendarPage() {
           "yyyy-MM-dd",
         )}${pracQs}`,
       ),
+      // Refresh open hours so Team → Save hours updates the diary without a hard reload
+      api<Catalog>("/clinic/catalog"),
     ])
-      .then(([a, b]) => {
+      .then(([a, b, c]) => {
         setAppointments(a.appointments);
         setBlocks(b.blocks);
+        setCatalog(c);
       })
       .catch((e: Error) => setError(e.message));
   }, [weekStart, viewMode, dayFocus, filterPractitionerId]);
@@ -259,6 +280,20 @@ export default function CalendarPage() {
     setFeeNote("");
   }, [selected]);
 
+  function practitionerOpenAt(
+    practitionerId: string,
+    day: Date,
+    hour: number,
+  ): boolean {
+    const p = catalog?.practitioners.find((x) => x.id === practitionerId);
+    if (!p) return false;
+    return isHourWithinRules(
+      day.getDay(),
+      hour,
+      rulesForPractitioner(p.availability),
+    );
+  }
+
   /** Practitioners already occupied (appointment or block) in this hour. */
   function busyPractitionerIdsAt(day: Date, hour: number): Set<string> {
     const busy = new Set<string>();
@@ -280,14 +315,25 @@ export default function CalendarPage() {
   ): string | null {
     const busy = busyPractitionerIdsAt(day, hour);
     const list = catalog?.practitioners ?? [];
-    if (preferId && list.some((p) => p.id === preferId) && !busy.has(preferId)) {
+    const open = (id: string) =>
+      !busy.has(id) && practitionerOpenAt(id, day, hour);
+    if (preferId && list.some((p) => p.id === preferId) && open(preferId)) {
       return preferId;
     }
     if (filterPractitionerId) {
-      if (busy.has(filterPractitionerId)) return null;
-      return filterPractitionerId;
+      return open(filterPractitionerId) ? filterPractitionerId : null;
     }
-    return list.find((p) => !busy.has(p.id))?.id ?? null;
+    return list.find((p) => open(p.id))?.id ?? null;
+  }
+
+  function cellClosed(day: Date, hour: number): boolean {
+    const list = catalog?.practitioners ?? [];
+    if (list.length === 0) return false;
+    if (filterPractitionerId) {
+      return !practitionerOpenAt(filterPractitionerId, day, hour);
+    }
+    // All-practitioners view: closed only when nobody works this hour
+    return !list.some((p) => practitionerOpenAt(p.id, day, hour));
   }
 
   function openBookSheet(opts?: {
@@ -624,8 +670,8 @@ export default function CalendarPage() {
       title={me?.role === "PRACTITIONER" ? "Schedule" : "Calendar"}
       subtitle={
         me?.role === "PRACTITIONER"
-          ? "Your diary — tap an appointment to open the visit and take notes."
-          : "Click a time slot to book. Parallel bookings are allowed when another practitioner is free."
+          ? "Your diary — tap an appointment to open the visit and take notes. Grey cells are outside your open hours."
+          : "Click a time slot to book. Grey cells follow Team → Open hours (closed automatically — no diary block needed)."
       }
     >
       <div className="panel calendar-panel">
@@ -763,6 +809,7 @@ export default function CalendarPage() {
                   format(day, "yyyy-MM-dd") === format(dayFocus, "yyyy-MM-dd");
                 const isToday =
                   format(day, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
+                const dayClosed = hours.every((h) => cellClosed(day, h));
                 return (
                   <button
                     key={day.toISOString()}
@@ -771,7 +818,8 @@ export default function CalendarPage() {
                     aria-selected={selected}
                     className={`cal-day-chip ${selected ? "active" : ""} ${
                       isToday ? "is-today" : ""
-                    }`}
+                    } ${dayClosed ? "is-closed" : ""}`}
+                    title={dayClosed ? "Closed — outside open hours" : undefined}
                     onClick={() => {
                       setViewMode("day");
                       setDayFocus(day);
@@ -807,6 +855,9 @@ export default function CalendarPage() {
             <span className="cal-legend-item">
               <i className="cal-swatch status-in_progress" aria-hidden /> In progress
             </span>
+            <span className="cal-legend-item">
+              <i className="cal-swatch cal-swatch-closed" aria-hidden /> Closed
+            </span>
           </div>
         ) : null}
 
@@ -816,17 +867,27 @@ export default function CalendarPage() {
           aria-label={viewMode === "day" ? "Day calendar" : "Week calendar"}
         >
           <div className="week-corner" />
-          {days.map((day) => (
-            <div key={day.toISOString()} className="week-day-head">
-              <strong>{format(day, "EEE")}</strong>
-              <span className="week-day-full">{format(day, "d MMM")}</span>
-              <span className="week-day-short" aria-hidden>
-                {format(day, "d")}
-              </span>
-            </div>
-          ))}
+          {days.map((day) => {
+            const dayClosed = hours.every((h) => cellClosed(day, h));
+            return (
+              <div
+                key={day.toISOString()}
+                className={`week-day-head ${dayClosed ? "week-day-closed" : ""}`}
+                title={dayClosed ? "Closed — outside open hours" : undefined}
+              >
+                <strong>{format(day, "EEE")}</strong>
+                <span className="week-day-full">{format(day, "d MMM")}</span>
+                <span className="week-day-short" aria-hidden>
+                  {format(day, "d")}
+                </span>
+                {dayClosed ? (
+                  <span className="week-day-closed-tag">Closed</span>
+                ) : null}
+              </div>
+            );
+          })}
 
-          {HOURS.map((hour) => (
+          {hours.map((hour) => (
             <div key={hour} className="week-hour-row">
               <div className="week-hour">{`${String(hour).padStart(2, "0")}:00`}</div>
               {days.map((day) => {
@@ -837,28 +898,32 @@ export default function CalendarPage() {
                 const cellBlocks = blocks.filter((b) =>
                   blockCoversHour(b, dayKey, hour),
                 );
-                const freePracId = canEditSchedule
-                  ? pickFreePractitioner(day, hour, filterPractitionerId || null)
-                  : null;
+                const closed = cellClosed(day, hour);
+                const freePracId =
+                  canEditSchedule && !closed
+                    ? pickFreePractitioner(day, hour, filterPractitionerId || null)
+                    : null;
                 const canBookHere = Boolean(canEditSchedule && freePracId);
                 return (
                   <div
                     key={`${day.toISOString()}-${hour}`}
-                    className={`week-cell ${draggingId ? "droppable" : ""} ${
-                      canBookHere ? "week-cell-bookable" : ""
-                    }`}
+                    className={`week-cell ${closed ? "week-cell-closed" : ""} ${
+                      draggingId && !closed ? "droppable" : ""
+                    } ${canBookHere ? "week-cell-bookable" : ""}`}
                     role="button"
                     tabIndex={canBookHere ? 0 : -1}
                     aria-label={
-                      canBookHere
-                        ? `Book ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
-                        : `${format(day, "EEE d MMM")} ${String(hour).padStart(2, "0")}:00`
+                      closed
+                        ? `Closed ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
+                        : canBookHere
+                          ? `Book ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
+                          : `${format(day, "EEE d MMM")} ${String(hour).padStart(2, "0")}:00`
                     }
                     onDragOver={(e) => {
-                      if (canEditSchedule) e.preventDefault();
+                      if (canEditSchedule && !closed) e.preventDefault();
                     }}
                     onDrop={(e) => {
-                      if (!canEditSchedule) return;
+                      if (!canEditSchedule || closed) return;
                       e.preventDefault();
                       const id =
                         e.dataTransfer.getData("text/appointment-id") ||
@@ -877,6 +942,13 @@ export default function CalendarPage() {
                       openBookSheet({ day, hour });
                     }}
                   >
+                    {closed &&
+                    cellAppts.length === 0 &&
+                    cellBlocks.length === 0 ? (
+                      <div className="cal-closed" title="Outside open hours">
+                        Closed
+                      </div>
+                    ) : null}
                     {cellBlocks.map((b) =>
                       canEditSchedule ? (
                         <button

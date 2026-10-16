@@ -638,6 +638,12 @@ export async function listAppointmentTypes(ctx: AuthContext) {
 export async function listPractitioners(ctx: AuthContext) {
   return prisma.practitionerProfile.findMany({
     where: { active: true, membership: { clinicId: ctx.clinicId } },
+    include: {
+      availability: {
+        orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }],
+        select: { dayOfWeek: true, startMinute: true, endMinute: true },
+      },
+    },
     orderBy: { displayName: "asc" },
   });
 }

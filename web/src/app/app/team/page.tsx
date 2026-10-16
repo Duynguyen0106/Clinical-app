@@ -305,7 +305,9 @@ export default function TeamPage() {
         method: "PUT",
         body: JSON.stringify({ rules }),
       });
-      setMessage("Availability saved — online booking will use these hours.");
+      setMessage(
+        "Open hours saved — the calendar greys out closed times and online booking uses these hours.",
+      );
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not save hours");
@@ -599,11 +601,13 @@ export default function TeamPage() {
         </section>
 
         <section className="panel">
-          <h2>Weekly hours</h2>
+          <h2>Open hours</h2>
           {selected ? (
             <>
               <p className="muted">
-                Used for online booking and staff slot suggestions.
+                Permanent weekly schedule. Closed days and times show grey on
+                the calendar automatically — no need to add diary blocks.
+                Online booking only offers these hours.
               </p>
               <div className="hours-grid">
                 {DAYS.map((d) => {
