@@ -304,6 +304,8 @@ model Patient {
   gpEmail     String?
   /// Optional NHS number for correspondence
   nhsNumber   String?
+  /// Soft-delete / archive — clinical history is retained
+  archivedAt  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -316,6 +318,7 @@ model Patient {
   accessEvents    PatientAccessEvent[]
 
   @@index([clinicId, lastName, firstName])
+  @@index([clinicId, archivedAt])
 }
 
 /// Who opened a patient's prep / note history (UK access accountability)
@@ -383,6 +386,7 @@ model AvailabilityRule {
   practitioner PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
 
   @@index([practitionerId])
+  @@unique([practitionerId, dayOfWeek, startMinute, endMinute])
 }
 
 model AvailabilityException {
@@ -464,6 +468,7 @@ model Appointment {
   invoices        Invoice[]
 
   @@index([clinicId, startsAt])
+  @@index([clinicId, status, startsAt])
   @@index([practitionerId, startsAt])
   @@index([patientId])
   @@index([reminderSentAt, startsAt])

@@ -360,6 +360,12 @@ export default function SettingsPage() {
               onChange={(e) => setEmail(e.target.value)}
             />
           </label>
+          {!email.trim() ? (
+            <p className="form-error" role="status">
+              Add a clinic email so new online bookings can notify reception.
+              Without it, clinic booking notifications are skipped.
+            </p>
+          ) : null}
           {isOwner ? (
             <button
               type="button"

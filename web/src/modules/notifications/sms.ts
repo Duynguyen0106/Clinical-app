@@ -15,7 +15,14 @@ function normaliseUkPhone(raw: string) {
   return digits;
 }
 
-export async function sendSms(message: SmsMessage) {
+export type SmsSendResult = {
+  provider: "twilio" | "console";
+  to: string;
+  /** True only when handed to a real delivery provider successfully */
+  delivered: boolean;
+};
+
+export async function sendSms(message: SmsMessage): Promise<SmsSendResult> {
   const to = normaliseUkPhone(message.to);
   const provider = (process.env.SMS_PROVIDER ?? "console").toLowerCase();
 
@@ -45,11 +52,11 @@ export async function sendSms(message: SmsMessage) {
       const text = await res.text();
       throw new Error(`Twilio SMS failed: ${res.status} ${text}`);
     }
-    return { provider: "twilio" as const, to };
+    return { provider: "twilio", to, delivered: true };
   }
 
   console.log(
     `[sms:console] to=${to}\n${message.body}\n`,
   );
-  return { provider: "console" as const, to };
+  return { provider: "console", to, delivered: false };
 }

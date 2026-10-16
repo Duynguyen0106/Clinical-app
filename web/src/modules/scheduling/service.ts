@@ -742,6 +742,7 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     where: {
       clinicId: clinic.id,
       email: input.patient.email,
+      archivedAt: null,
     },
   });
 
@@ -767,16 +768,15 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
         alerts: alerts || null,
       },
     });
-  } else if (alerts) {
-    patient = await prisma.patient.update({
-      where: { id: patient.id },
-      data: {
-        phone: input.patient.phone ?? patient.phone,
-        firstName: input.patient.firstName,
-        lastName: input.patient.lastName,
-        alerts,
-      },
-    });
+  } else {
+    // Match by email and attach the booking only — never overwrite
+    // demographics or clinical alerts from an unauthenticated form.
+    if (!patient.phone && input.patient.phone) {
+      patient = await prisma.patient.update({
+        where: { id: patient.id },
+        data: { phone: input.patient.phone },
+      });
+    }
   }
 
   if (input.intake?.privacyConsent) {

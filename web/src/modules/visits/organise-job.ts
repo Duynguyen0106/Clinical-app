@@ -172,9 +172,13 @@ async function failJob(jobId: string, error: string) {
 }
 
 /** Drain a batch of pending organise jobs (cron / after()). */
-export async function processPendingOrganiseJobs(limit = 5) {
+export async function processPendingOrganiseJobs(
+  limit = 5,
+  opts: { clinicId?: string } = {},
+) {
   const pending = await prisma.aiOrganiseJob.findMany({
     where: {
+      ...(opts.clinicId ? { clinicId: opts.clinicId } : {}),
       status: AiJobStatus.PENDING,
       attempts: { lt: 3 },
     },

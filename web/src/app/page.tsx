@@ -16,7 +16,12 @@ import {
   Users,
   Bell,
 } from "lucide-react";
-import { BRAND, DEMO_CLINIC, LAUNCH } from "@/modules/config/brand";
+import {
+  BRAND,
+  DEMO_CLINIC,
+  LAUNCH,
+  showDemoLoginCredentials,
+} from "@/modules/config/brand";
 import { BrandLogo } from "@/components/BrandLogo";
 
 const PILLARS = [
@@ -111,6 +116,8 @@ const DEMO_ROLES = [
 ] as const;
 
 export default function HomePage() {
+  const demoLogin = showDemoLoginCredentials();
+
   return (
     <div className="landing">
       <header className="landing-nav">
@@ -126,7 +133,7 @@ export default function HomePage() {
         </nav>
         <div className="landing-nav-cta">
           <Link href="/login" className="btn-ghost">
-            Try the demo
+            {demoLogin ? "Try the demo" : "Sign in"}
           </Link>
           <a href="#pilot" className="btn-primary">
             Start a pilot
@@ -500,31 +507,59 @@ export default function HomePage() {
         aria-labelledby="demo-heading"
       >
         <div className="landing-close-inner">
-          <p className="landing-eyebrow">Live demo</p>
-          <h2 id="demo-heading">
-            Try {DEMO_CLINIC.name} — the full clinic day.
-          </h2>
-          <p>
-            Sign in as owner, practitioner, or reception. Password{" "}
-            <code>treow-demo</code>. Same roles you would run on a busy day —
-            diary, notes, money, and patient booking included.
-          </p>
-          <ul className="landing-demo-roles">
-            {DEMO_ROLES.map((r) => (
-              <li key={r.role}>
-                <span className="landing-demo-role">{r.role}</span>
-                <code>{r.email}</code>
-              </li>
-            ))}
-          </ul>
-          <div className="landing-cta">
-            <Link href="/login" className="btn-primary">
-              Clinic sign in
-            </Link>
-            <Link href={`/book/${DEMO_CLINIC.slug}`} className="btn-secondary">
-              Book as patient
-            </Link>
-          </div>
+          {demoLogin ? (
+            <>
+              <p className="landing-eyebrow">Live demo</p>
+              <h2 id="demo-heading">
+                Try {DEMO_CLINIC.name} — the full clinic day.
+              </h2>
+              <p>
+                Sign in as owner, practitioner, or reception. Password{" "}
+                <code>treow-demo</code>. Same roles you would run on a busy day
+                — diary, notes, money, and patient booking included.
+              </p>
+              <ul className="landing-demo-roles">
+                {DEMO_ROLES.map((r) => (
+                  <li key={r.role}>
+                    <span className="landing-demo-role">{r.role}</span>
+                    <code>{r.email}</code>
+                  </li>
+                ))}
+              </ul>
+              <div className="landing-cta">
+                <Link href="/login" className="btn-primary">
+                  Clinic sign in
+                </Link>
+                <Link
+                  href={`/book/${DEMO_CLINIC.slug}`}
+                  className="btn-secondary"
+                >
+                  Book as patient
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="landing-eyebrow">Clinic access</p>
+              <h2 id="demo-heading">Sign in to your clinic.</h2>
+              <p>
+                Staff use their {BRAND.name} account. Patients book online from
+                your clinic&apos;s public page — no shared demo passwords on
+                this deployment.
+              </p>
+              <div className="landing-cta">
+                <Link href="/login" className="btn-primary">
+                  Clinic sign in
+                </Link>
+                <a
+                  className="btn-secondary"
+                  href="mailto:ops@northbank.example?subject=Treow%20Clinic%20pilot"
+                >
+                  Email to start a pilot
+                </a>
+              </div>
+            </>
+          )}
         </div>
       </section>
 

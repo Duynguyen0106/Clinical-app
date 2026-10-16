@@ -14,6 +14,7 @@ import {
 } from "@/modules/ai/map-to-template";
 import { saveAudioUpload, readAudioFile } from "@/server/storage";
 import { NoteStatus } from "@/generated/prisma/client";
+import { assertOwnsDiaryOrOwner } from "@/server/rbac";
 
 export async function startVisit(ctx: AuthContext, appointmentId: string) {
   const appointment = await prisma.appointment.findFirst({
@@ -21,6 +22,7 @@ export async function startVisit(ctx: AuthContext, appointmentId: string) {
     include: { visit: true, patient: true, appointmentType: true },
   });
   if (!appointment) throw notFound("Appointment not found");
+  assertOwnsDiaryOrOwner(ctx, appointment.practitionerId);
 
   if (appointment.visit) {
     return prisma.visit.findUniqueOrThrow({
@@ -74,6 +76,7 @@ export async function getVisit(ctx: AuthContext, visitId: string) {
     },
   });
   if (!visit) throw notFound("Visit not found");
+  assertOwnsDiaryOrOwner(ctx, visit.appointment.practitionerId);
   return visit;
 }
 

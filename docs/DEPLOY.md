@@ -84,14 +84,22 @@ For a real clinic: create the clinic + owner via seed variant or admin SQL; neve
 
 ## 4. Jobs (cron)
 
-Set `CRON_SECRET` (≥24 chars) and call with `Authorization: Bearer $CRON_SECRET`.
-Staff sessions still work from Settings for manual runs.
+Set `CRON_SECRET` (≥24 chars). Vercel Cron in `web/vercel.json` hits the job
+routes on a schedule and sends `Authorization: Bearer $CRON_SECRET` when the
+secret is configured in the project env.
+
+Staff sessions may still trigger **their own clinic only** from Settings
+(reminders / organise / retention). Cron bearer sweeps all clinics.
 
 | Schedule | Endpoint |
 |----------|----------|
-| Every hour | `POST /api/v1/jobs/reminders` |
-| Every 2–5 min | `POST /api/v1/jobs/organise` (drain AI note jobs) |
-| Daily | `POST /api/v1/jobs/retention` (all clinics when using cron secret) |
+| Every hour | `GET /api/v1/jobs/reminders` (Vercel Cron; staff may `POST`) |
+| Every 5 min | `GET /api/v1/jobs/organise` (drain AI note jobs) |
+| Daily 03:15 UTC | `GET /api/v1/jobs/retention` |
+
+Production boots warn if `CRON_SECRET` is missing or shorter than 24 characters.
+Do not set `NEXT_PUBLIC_DEMO_LOGIN=true` on live clinic deployments — that advertises
+demo emails and the `treow-demo` password on marketing/login surfaces.
 
 Audio: set `S3_BUCKET` + `S3_REGION=eu-west-2` + keys for durable UK object storage; otherwise files stay under `web/storage/`.
 

@@ -120,9 +120,11 @@ export async function listPatients(
         ...(opts.practitionerId
           ? { practitionerId: opts.practitionerId }
           : {}),
-        ...(Object.keys(search).length
-          ? { patient: { clinicId: ctx.clinicId, ...search } }
-          : {}),
+        patient: {
+          clinicId: ctx.clinicId,
+          archivedAt: null,
+          ...search,
+        },
       },
       include: {
         patient: true,
@@ -173,6 +175,7 @@ export async function listPatients(
   return prisma.patient.findMany({
     where: {
       clinicId: ctx.clinicId,
+      archivedAt: null,
       ...search,
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -497,12 +500,19 @@ export async function deletePatient(
 
   if ((signedNotes > 0 || upcoming > 0) && !opts.force) {
     throw badRequest(
-      `Cannot delete: ${signedNotes} signed note(s) and ${upcoming} upcoming appointment(s). Remove or cancel those first, or ask an owner to force-delete.`,
+      `Cannot archive: ${signedNotes} signed note(s) and ${upcoming} upcoming appointment(s). Remove or cancel those first, or ask an owner to force-archive.`,
     );
   }
 
-  // Cascades consents, appointments, notes, invoices, waitlist, access events.
-  return prisma.patient.delete({ where: { id } });
+  // Soft-delete — keep clinical history; hide from directory and booking match.
+  return prisma.patient.update({
+    where: { id },
+    data: {
+      archivedAt: new Date(),
+      // Clear email so a future online book can create a fresh record safely
+      email: null,
+    },
+  });
 }
 
 export const consentSchema = z.object({

@@ -83,4 +83,31 @@ describe("isWindowAvailable clinic timezone", () => {
       false,
     );
   });
+
+  it("after UK clocks change, London 09:00 is 09:00Z", () => {
+    // First Sunday after 25 Oct 2026 — GMT
+    const startsAt = new Date("2026-10-27T09:00:00.000Z"); // Tue
+    assert.equal(clinicDateKey(startsAt, TZ), "2026-10-27");
+    assert.equal(clinicMinutesFromMidnight(startsAt, TZ), 9 * 60);
+    assert.equal(clinicDayOfWeek(startsAt, TZ), 2);
+    assert.equal(
+      isWindowAvailable({
+        day: startsAt,
+        startMinute: 9 * 60,
+        endMinute: 9 * 60 + 30,
+        rules: RULES,
+        exceptions: [],
+        timeZone: TZ,
+      }),
+      true,
+    );
+  });
+
+  it("calendar cell hour matches clinic-local wall time (not browser TZ)", () => {
+    const londonNine = new Date("2026-10-20T08:00:00.000Z");
+    const day = clinicLocalDateTime("2026-10-20", 0, TZ);
+    const hour = Math.floor(clinicMinutesFromMidnight(londonNine, TZ) / 60);
+    assert.equal(clinicDateKey(londonNine, TZ), clinicDateKey(day, TZ));
+    assert.equal(hour, 9);
+  });
 });

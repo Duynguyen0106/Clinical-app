@@ -2,13 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  addDays,
-  format,
-  setHours,
-  setMinutes,
-  startOfWeek,
-} from "date-fns";
+import { addDays, format, startOfWeek } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
@@ -23,6 +17,12 @@ import {
   rulesForPractitioner,
   type AvailabilityRule,
 } from "@/modules/scheduling/calendar-ui";
+import {
+  clinicDateKey,
+  clinicDayOfWeek,
+  clinicLocalDateTime,
+  clinicMinutesFromMidnight,
+} from "@/modules/scheduling/clinic-time";
 
 type Appointment = {
   id: string;
@@ -78,13 +78,16 @@ function durationOf(apt: Appointment) {
   );
 }
 
-function sameDayHour(iso: string, day: Date, hour: number) {
+function sameDayHour(
+  iso: string,
+  day: Date,
+  hour: number,
+  timeZone: string,
+) {
   const s = new Date(iso);
   return (
-    s.getFullYear() === day.getFullYear() &&
-    s.getMonth() === day.getMonth() &&
-    s.getDate() === day.getDate() &&
-    s.getHours() === hour
+    clinicDateKey(s, timeZone) === clinicDateKey(day, timeZone) &&
+    Math.floor(clinicMinutesFromMidnight(s, timeZone) / 60) === hour
   );
 }
 
@@ -99,6 +102,7 @@ function blockCoversHour(b: Block, dayKey: string, hour: number) {
 export default function CalendarPage() {
   const { me } = useAuth();
   const router = useRouter();
+  const timeZone = me?.clinic.timezone ?? "Europe/London";
   const canEditSchedule =
     me?.role === "OWNER" || me?.role === "RECEPTION";
   const [weekStart, setWeekStart] = useState(() =>
@@ -182,9 +186,9 @@ export default function CalendarPage() {
         `/appointments?from=${from.toISOString()}&to=${to.toISOString()}${pracQs}`,
       ),
       api<{ blocks: Block[] }>(
-        `/blocks?from=${format(from, "yyyy-MM-dd")}&to=${format(
+        `/blocks?from=${clinicDateKey(from, timeZone)}&to=${clinicDateKey(
           viewMode === "day" ? dayFocus : addDays(weekStart, 6),
-          "yyyy-MM-dd",
+          timeZone,
         )}${pracQs}`,
       ),
       // Refresh open hours so Team → Save hours updates the diary without a hard reload
@@ -196,7 +200,7 @@ export default function CalendarPage() {
         setCatalog(c);
       })
       .catch((e: Error) => setError(e.message));
-  }, [weekStart, viewMode, dayFocus, filterPractitionerId]);
+  }, [weekStart, viewMode, dayFocus, filterPractitionerId, timeZone]);
 
   useEffect(() => {
     if (!filterReady) return;
@@ -288,7 +292,7 @@ export default function CalendarPage() {
     const p = catalog?.practitioners.find((x) => x.id === practitionerId);
     if (!p) return false;
     return isHourWithinRules(
-      day.getDay(),
+      clinicDayOfWeek(day, timeZone),
       hour,
       rulesForPractitioner(p.availability),
     );
@@ -297,10 +301,11 @@ export default function CalendarPage() {
   /** Practitioners already occupied (appointment or block) in this hour. */
   function busyPractitionerIdsAt(day: Date, hour: number): Set<string> {
     const busy = new Set<string>();
-    const dayKey = format(day, "yyyy-MM-dd");
+    const dayKey = clinicDateKey(day, timeZone);
     for (const a of appointments) {
       if (!appointmentOccupiesSlot(a.status)) continue;
-      if (sameDayHour(a.startsAt, day, hour)) busy.add(a.practitioner.id);
+      if (sameDayHour(a.startsAt, day, hour, timeZone))
+        busy.add(a.practitioner.id);
     }
     for (const b of blocks) {
       if (blockCoversHour(b, dayKey, hour)) busy.add(b.practitioner.id);
@@ -349,7 +354,11 @@ export default function CalendarPage() {
     setBookIntakeNote(null);
     setBookNotes("");
     if (opts?.day != null && opts.hour != null) {
-      const startsAt = setMinutes(setHours(opts.day, opts.hour), 0);
+      const startsAt = clinicLocalDateTime(
+        clinicDateKey(opts.day, timeZone),
+        opts.hour * 60,
+        timeZone,
+      );
       setBookSlot(startsAt.toISOString());
       setBookSlotFixed(true);
       const free = pickFreePractitioner(
@@ -369,7 +378,7 @@ export default function CalendarPage() {
 
   function openBookAlongside(apt: Appointment) {
     const day = new Date(apt.startsAt);
-    const hour = day.getHours();
+    const hour = Math.floor(clinicMinutesFromMidnight(day, timeZone) / 60);
     const free = pickFreePractitioner(day, hour, null);
     if (!free) {
       setError("No other practitioner is free at this time");
@@ -379,7 +388,11 @@ export default function CalendarPage() {
   }
 
   async function reschedule(id: string, day: Date, hour: number) {
-    const startsAt = setMinutes(setHours(day, hour), 0);
+    const startsAt = clinicLocalDateTime(
+      clinicDateKey(day, timeZone),
+      hour * 60,
+      timeZone,
+    );
     try {
       const res = await api<{
         appointment: Appointment;
@@ -892,9 +905,9 @@ export default function CalendarPage() {
               <div className="week-hour">{`${String(hour).padStart(2, "0")}:00`}</div>
               {days.map((day) => {
                 const cellAppts = appointments.filter((a) =>
-                  sameDayHour(a.startsAt, day, hour),
+                  sameDayHour(a.startsAt, day, hour, timeZone),
                 );
-                const dayKey = format(day, "yyyy-MM-dd");
+                const dayKey = clinicDateKey(day, timeZone);
                 const cellBlocks = blocks.filter((b) =>
                   blockCoversHour(b, dayKey, hour),
                 );
@@ -904,20 +917,24 @@ export default function CalendarPage() {
                     ? pickFreePractitioner(day, hour, filterPractitionerId || null)
                     : null;
                 const canBookHere = Boolean(canEditSchedule && freePracId);
+                const canDropMove =
+                  Boolean(canEditSchedule && !closed && draggingId);
                 return (
                   <div
                     key={`${day.toISOString()}-${hour}`}
                     className={`week-cell ${closed ? "week-cell-closed" : ""} ${
-                      draggingId && !closed ? "droppable" : ""
-                    } ${canBookHere ? "week-cell-bookable" : ""}`}
+                      canDropMove ? "droppable" : ""
+                    } ${canBookHere || canDropMove ? "week-cell-bookable" : ""}`}
                     role="button"
-                    tabIndex={canBookHere ? 0 : -1}
+                    tabIndex={canBookHere || canDropMove ? 0 : -1}
                     aria-label={
                       closed
                         ? `Closed ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
-                        : canBookHere
-                          ? `Book ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
-                          : `${format(day, "EEE d MMM")} ${String(hour).padStart(2, "0")}:00`
+                        : draggingId
+                          ? `Move appointment to ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
+                          : canBookHere
+                            ? `Book ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
+                            : `${format(day, "EEE d MMM")} ${String(hour).padStart(2, "0")}:00`
                     }
                     onDragOver={(e) => {
                       if (canEditSchedule && !closed) e.preventDefault();
@@ -932,13 +949,24 @@ export default function CalendarPage() {
                       setDraggingId(null);
                     }}
                     onClick={() => {
+                      // Touch-friendly move: tap appointment (sets draggingId), then tap slot
+                      if (draggingId && !closed) {
+                        void reschedule(draggingId, day, hour);
+                        setDraggingId(null);
+                        return;
+                      }
                       if (!canBookHere) return;
                       openBookSheet({ day, hour });
                     }}
                     onKeyDown={(e) => {
-                      if (!canBookHere) return;
                       if (e.key !== "Enter" && e.key !== " ") return;
                       e.preventDefault();
+                      if (draggingId && !closed) {
+                        void reschedule(draggingId, day, hour);
+                        setDraggingId(null);
+                        return;
+                      }
+                      if (!canBookHere) return;
                       openBookSheet({ day, hour });
                     }}
                   >
@@ -1079,21 +1107,7 @@ export default function CalendarPage() {
                 />
                 <span>
                   Notify patient by email/SMS when time or length changes
-                  (also applies when you drag to a new slot)
-                </span>
-              </label>
-            ) : null}
-
-            {canEditSchedule ? (
-              <label className="consent-label notify-patient-toggle">
-                <input
-                  type="checkbox"
-                  checked={notifyPatientOnChange}
-                  onChange={(e) => setNotifyPatientOnChange(e.target.checked)}
-                />
-                <span>
-                  Notify patient by email/SMS when time or length changes
-                  (also applies when you drag to a new slot)
+                  (also applies when you move to a new slot)
                 </span>
               </label>
             ) : null}
@@ -1118,13 +1132,32 @@ export default function CalendarPage() {
                       busy ||
                       !pickFreePractitioner(
                         new Date(selected.startsAt),
-                        new Date(selected.startsAt).getHours(),
+                        Math.floor(
+                          clinicMinutesFromMidnight(
+                            new Date(selected.startsAt),
+                            timeZone,
+                          ) / 60,
+                        ),
                         null,
                       )
                     }
                     onClick={() => openBookAlongside(selected)}
                   >
                     Book another practitioner
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={busy || selected.status === "CANCELLED"}
+                    onClick={() => {
+                      setDraggingId(selected.id);
+                      setSelected(null);
+                      setMessage(
+                        "Tap a diary slot to move this appointment (or drag on desktop).",
+                      );
+                    }}
+                  >
+                    Move to another slot
                   </button>
                   <button
                     type="button"
@@ -1373,7 +1406,12 @@ export default function CalendarPage() {
                     bookSlotFixed && bookSlot
                       ? busyPractitionerIdsAt(
                           new Date(bookSlot),
-                          new Date(bookSlot).getHours(),
+                          Math.floor(
+                            clinicMinutesFromMidnight(
+                              new Date(bookSlot),
+                              timeZone,
+                            ) / 60,
+                          ),
                         ).has(p.id)
                       : false;
                   return (

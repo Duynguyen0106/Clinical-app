@@ -74,6 +74,7 @@ const navGroups: NavGroup[] = [
         label: "Notes",
         icon: ClipboardList,
         clinicianOnly: true,
+        mobileTab: true,
       },
     ],
   },

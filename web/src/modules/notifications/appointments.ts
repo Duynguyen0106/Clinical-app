@@ -358,12 +358,16 @@ export async function sendAppointmentCancelled(appointmentId: string) {
   return { patientEmailSent, patientSmsSent, practitionerEmailSent };
 }
 
-export async function sendUpcomingReminders(withinHours = 24) {
+export async function sendUpcomingReminders(
+  withinHours = 24,
+  opts: { clinicId?: string } = {},
+) {
   const now = new Date();
   const until = new Date(now.getTime() + withinHours * 60 * 60_000);
 
   const due = await prisma.appointment.findMany({
     where: {
+      ...(opts.clinicId ? { clinicId: opts.clinicId } : {}),
       startsAt: { gte: now, lte: until },
       status: {
         in: [
@@ -394,7 +398,7 @@ export async function sendUpcomingReminders(withinHours = 24) {
     const manageLink = manageUrl(apt.id);
 
     if (!apt.reminderSentAt && apt.patient.email) {
-      await sendEmail({
+      const emailResult = await sendEmail({
         to: apt.patient.email,
         subject: `Reminder — ${apt.clinic.name}`,
         text: [
@@ -414,23 +418,28 @@ export async function sendUpcomingReminders(withinHours = 24) {
           .filter((line) => line !== null)
           .join("\n"),
       });
-      await prisma.appointment.update({
-        where: { id: apt.id },
-        data: { reminderSentAt: new Date() },
-      });
-      emailIds.push(apt.id);
+      // Only mark sent when a real provider accepted the message
+      if (emailResult.delivered) {
+        await prisma.appointment.update({
+          where: { id: apt.id },
+          data: { reminderSentAt: new Date() },
+        });
+        emailIds.push(apt.id);
+      }
     }
 
     if (!apt.smsReminderSentAt && apt.patient.phone) {
-      await sendSms({
+      const smsResult = await sendSms({
         to: apt.patient.phone,
         body: `${apt.clinic.name} reminder: ${when} with ${apt.practitioner.displayName}.${roomBit} Manage: ${manageLink}`.trim(),
       });
-      await prisma.appointment.update({
-        where: { id: apt.id },
-        data: { smsReminderSentAt: new Date() },
-      });
-      smsIds.push(apt.id);
+      if (smsResult.delivered) {
+        await prisma.appointment.update({
+          where: { id: apt.id },
+          data: { smsReminderSentAt: new Date() },
+        });
+        smsIds.push(apt.id);
+      }
     }
   }
 

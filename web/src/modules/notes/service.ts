@@ -5,8 +5,33 @@ import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
 import type { NoteContent } from "@/modules/ai/providers";
 import { hashNoteContent } from "@/modules/notes/hash";
+import { assertOwnsDiaryOrOwner } from "@/server/rbac";
 
 export { hashNoteContent } from "@/modules/notes/hash";
+
+async function assertNoteDiaryAccess(ctx: AuthContext, noteId: string) {
+  const note = await prisma.clinicalNote.findFirst({
+    where: { id: noteId, patient: { clinicId: ctx.clinicId } },
+    select: {
+      signedById: true,
+      visit: {
+        select: {
+          appointment: { select: { practitionerId: true } },
+        },
+      },
+    },
+  });
+  if (!note) throw notFound("Note not found");
+  const diaryId = note.visit?.appointment.practitionerId;
+  // Owner always; practitioner if own diary; or signer of a note without visit link
+  if (ctx.role === "OWNER") return;
+  if (diaryId) {
+    assertOwnsDiaryOrOwner(ctx, diaryId);
+    return;
+  }
+  if (note.signedById && note.signedById === ctx.userId) return;
+  throw notFound("Note not found");
+}
 
 export async function listNoteTemplates(ctx: AuthContext) {
   return prisma.noteTemplate.findMany({
@@ -59,6 +84,8 @@ export async function listNotes(
 }
 
 export async function getNote(ctx: AuthContext, id: string) {
+  await assertNoteDiaryAccess(ctx, id);
+
   const note = await prisma.clinicalNote.findFirst({
     where: { id, patient: { clinicId: ctx.clinicId } },
     include: {
@@ -183,6 +210,7 @@ export async function updateDraftNote(
 }
 
 export async function signNote(ctx: AuthContext, id: string) {
+  await assertNoteDiaryAccess(ctx, id);
   const note = await prisma.clinicalNote.findFirst({
     where: { id, patient: { clinicId: ctx.clinicId } },
   });
@@ -221,6 +249,7 @@ export async function voidSignedNote(
   id: string,
   input: z.infer<typeof voidNoteSchema>,
 ) {
+  await assertNoteDiaryAccess(ctx, id);
   const note = await prisma.clinicalNote.findFirst({
     where: { id, patient: { clinicId: ctx.clinicId } },
   });

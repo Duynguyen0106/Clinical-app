@@ -207,7 +207,7 @@ export async function loadExceptions(
 
 function startOfUtcDay(d: Date) {
   return new Date(
-    Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()),
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
   );
 }
 
