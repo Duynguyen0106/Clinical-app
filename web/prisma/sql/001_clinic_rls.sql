@@ -202,3 +202,94 @@ CREATE POLICY appointment_audit_clinic_isolation ON "AppointmentAuditEvent"
     current_setting('app.rls_bypass', true) = 'on'
     OR "clinicId" = nullif(current_setting('app.clinic_id', true), '')
   );
+
+-- Note audit events (via note → patient)
+ALTER TABLE "NoteAuditEvent" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS note_audit_clinic_isolation ON "NoteAuditEvent";
+CREATE POLICY note_audit_clinic_isolation ON "NoteAuditEvent"
+  USING (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR EXISTS (
+      SELECT 1 FROM "ClinicalNote" n
+      JOIN "Patient" p ON p.id = n."patientId"
+      WHERE n.id = "NoteAuditEvent"."noteId"
+        AND p."clinicId" = nullif(current_setting('app.clinic_id', true), '')
+    )
+  )
+  WITH CHECK (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR EXISTS (
+      SELECT 1 FROM "ClinicalNote" n
+      JOIN "Patient" p ON p.id = n."patientId"
+      WHERE n.id = "NoteAuditEvent"."noteId"
+        AND p."clinicId" = nullif(current_setting('app.clinic_id', true), '')
+    )
+  );
+
+-- Patient consents (via patient)
+ALTER TABLE "PatientConsent" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS patient_consent_clinic_isolation ON "PatientConsent";
+CREATE POLICY patient_consent_clinic_isolation ON "PatientConsent"
+  USING (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR EXISTS (
+      SELECT 1 FROM "Patient" p
+      WHERE p.id = "PatientConsent"."patientId"
+        AND p."clinicId" = nullif(current_setting('app.clinic_id', true), '')
+    )
+  )
+  WITH CHECK (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR EXISTS (
+      SELECT 1 FROM "Patient" p
+      WHERE p.id = "PatientConsent"."patientId"
+        AND p."clinicId" = nullif(current_setting('app.clinic_id', true), '')
+    )
+  );
+
+-- Leave requests
+ALTER TABLE "LeaveRequest" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS leave_request_clinic_isolation ON "LeaveRequest";
+CREATE POLICY leave_request_clinic_isolation ON "LeaveRequest"
+  USING (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR "clinicId" = nullif(current_setting('app.clinic_id', true), '')
+  )
+  WITH CHECK (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR "clinicId" = nullif(current_setting('app.clinic_id', true), '')
+  );
+
+-- Rooms
+ALTER TABLE "Room" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS room_clinic_isolation ON "Room";
+CREATE POLICY room_clinic_isolation ON "Room"
+  USING (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR "clinicId" = nullif(current_setting('app.clinic_id', true), '')
+  )
+  WITH CHECK (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR "clinicId" = nullif(current_setting('app.clinic_id', true), '')
+  );
+
+-- Payments (via invoice)
+ALTER TABLE "Payment" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS payment_clinic_isolation ON "Payment";
+CREATE POLICY payment_clinic_isolation ON "Payment"
+  USING (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR EXISTS (
+      SELECT 1 FROM "Invoice" i
+      WHERE i.id = "Payment"."invoiceId"
+        AND i."clinicId" = nullif(current_setting('app.clinic_id', true), '')
+    )
+  )
+  WITH CHECK (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR EXISTS (
+      SELECT 1 FROM "Invoice" i
+      WHERE i.id = "Payment"."invoiceId"
+        AND i."clinicId" = nullif(current_setting('app.clinic_id', true), '')
+    )
+  );

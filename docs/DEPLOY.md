@@ -84,9 +84,9 @@ For a real clinic: create the clinic + owner via seed variant or admin SQL; neve
 
 ## 3b. Live ship checklist (Nguyen’s / design partner)
 
-After stacking clinical-safety + leak/live-day + re-audit improve PRs:
+After stacking clinical-safety → leak/live-day → re-audit-improve → post-65-harden PRs:
 
-1. Merge to `main` in order: clinical-safety → leak/live-day → re-audit-improve (or squash-equivalent tip).
+1. Merge to `main` in that order (or squash-equivalent tip).
 2. Deploy Vercel (`web` root). Apply schema:
    ```bash
    cd web && DATABASE_URL="…" npx prisma db push
@@ -98,9 +98,19 @@ After stacking clinical-safety + leak/live-day + re-audit improve PRs:
    - `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` + `EMAIL_FROM` + clinic email in Settings
    - `NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY`
    - Do **not** set `NEXT_PUBLIC_DEMO_LOGIN`
-   - `AI_PROVIDER=mock` until LLM DPA; deposits = Stripe or OFF
+   - `AI_PROVIDER=mock` until LLM DPA
+   - **Deposits = OFF** in clinic booking settings until Stripe confirm is live
+     (`PAYMENT_PROVIDER=stripe` + `STRIPE_SECRET_KEY`; never rely on public `mark_paid`)
 4. Wire reminders + organise (see §4). Confirm `GET /api/v1/health` shows `cronConfigured: true` and intended `smsProvider` / `emailProvider`.
-5. Optional hardening: `npm run db:rls`; for FORCE + non-owner role see `prisma/sql/002_force_rls.sql` and ARCHITECTURE.
+5. Optional hardening — FORCE RLS runbook:
+   ```bash
+   # As migration/owner role:
+   cd web && npm run db:rls
+   # Create non-owner app role, grant DML, point DATABASE_URL at it, then:
+   APPLY_FORCE_RLS=1 npm run db:rls
+   ```
+   Details: `prisma/sql/002_force_rls.sql` and ARCHITECTURE. Multi-instance public book:
+   set `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`.
 
 ## 4. Jobs (cron)
 

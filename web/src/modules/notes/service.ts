@@ -7,6 +7,7 @@ import type { NoteContent } from "@/modules/ai/providers";
 import { hashNoteContent } from "@/modules/notes/hash";
 import { assertNoteDiaryAccess } from "@/modules/notes/access";
 import { withClinicTransaction } from "@/server/clinic-rls";
+import { assertOwnsDiaryOrOwner } from "@/server/rbac";
 
 export { hashNoteContent } from "@/modules/notes/hash";
 export { assertNoteDiaryAccess } from "@/modules/notes/access";
@@ -86,12 +87,14 @@ export async function getNote(ctx: AuthContext, id: string) {
   });
   if (!note) throw notFound("Note not found");
 
-  await prisma.noteAuditEvent.create({
-    data: {
-      noteId: note.id,
-      actorId: ctx.userId,
-      action: "viewed",
-    },
+  await withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.noteAuditEvent.create({
+      data: {
+        noteId: note.id,
+        actorId: ctx.userId,
+        action: "viewed",
+      },
+    });
   });
 
   return note;
@@ -106,60 +109,78 @@ export async function createDraftFromAi(
     templateId?: string;
   },
 ) {
-  let templateId = args.templateId;
-  if (!templateId) {
-    const def = await prisma.noteTemplate.findFirst({
-      where: { clinicId: ctx.clinicId, isDefault: true },
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    const visit = await tx.visit.findFirst({
+      where: {
+        id: args.visitId,
+        appointment: { clinicId: ctx.clinicId },
+      },
+      include: {
+        appointment: {
+          select: { practitionerId: true, patientId: true },
+        },
+      },
     });
-    templateId = def?.id;
-  }
+    if (!visit) throw notFound("Visit not found");
+    if (visit.appointment.patientId !== args.patientId) {
+      throw badRequest("Visit does not belong to this patient");
+    }
+    assertOwnsDiaryOrOwner(ctx, visit.appointment.practitionerId);
 
-  // Idempotent: retries after STT/organise timeout must not spawn duplicate drafts
-  const existing = await prisma.clinicalNote.findFirst({
-    where: {
-      visitId: args.visitId,
-      status: NoteStatus.DRAFT,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+    let templateId = args.templateId;
+    if (!templateId) {
+      const def = await tx.noteTemplate.findFirst({
+        where: { clinicId: ctx.clinicId, isDefault: true },
+      });
+      templateId = def?.id;
+    }
 
-  if (existing) {
-    return prisma.clinicalNote.update({
-      where: { id: existing.id },
+    // Idempotent: retries after STT/organise timeout must not spawn duplicate drafts
+    const existing = await tx.clinicalNote.findFirst({
+      where: {
+        visitId: args.visitId,
+        status: NoteStatus.DRAFT,
+        patient: { clinicId: ctx.clinicId },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existing) {
+      return tx.clinicalNote.update({
+        where: { id: existing.id },
+        data: {
+          templateId: templateId ?? existing.templateId,
+          source: "ai",
+          content: args.content as unknown as Prisma.InputJsonValue,
+          audits: {
+            create: {
+              actorId: ctx.userId,
+              action: "updated",
+              meta: { source: "ai", reason: "organise_retry" },
+            },
+          },
+        },
+      });
+    }
+
+    return tx.clinicalNote.create({
       data: {
-        templateId: templateId ?? existing.templateId,
+        patientId: args.patientId,
+        visitId: args.visitId,
+        templateId: templateId ?? null,
+        status: NoteStatus.DRAFT,
         source: "ai",
         content: args.content as unknown as Prisma.InputJsonValue,
         audits: {
           create: {
             actorId: ctx.userId,
-            action: "updated",
-            meta: { source: "ai", reason: "organise_retry" },
+            action: "created",
+            meta: { source: "ai" },
           },
         },
       },
     });
-  }
-
-  const note = await prisma.clinicalNote.create({
-    data: {
-      patientId: args.patientId,
-      visitId: args.visitId,
-      templateId: templateId ?? null,
-      status: NoteStatus.DRAFT,
-      source: "ai",
-      content: args.content as unknown as Prisma.InputJsonValue,
-      audits: {
-        create: {
-          actorId: ctx.userId,
-          action: "created",
-          meta: { source: "ai" },
-        },
-      },
-    },
   });
-
-  return note;
 }
 
 export const updateNoteSchema = z.object({

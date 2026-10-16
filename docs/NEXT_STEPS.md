@@ -1,6 +1,6 @@
 # Treow Clinic — Next steps analysis
 
-As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and shipped backend `/api/v1`.
+As of 2026-10-16. Assumes locked decisions (UK, mixed MSK, PWA) and shipped backend `/api/v1`.
 
 ---
 
@@ -15,8 +15,11 @@ As of 2026-08-16. Assumes locked decisions (UK, mixed MSK, mark-paid, PWA) and s
 | Template-aware organise | Done |
 | PWA shell | Done (manifest + SW) |
 | Native installers | Scaffolded — Electron desktop + Capacitor Android (`native/`, `docs/NATIVE_APP.md`); iOS add on Mac |
+| Cron | Hobby: daily retention in `vercel.json`; reminders + organise via external/Pro cron (`docs/DEPLOY.md`) |
+| SMS | Done (`SMS_PROVIDER=console|twilio`); console is honest (no false “sent”) |
+| Deposits | Stripe Checkout + session verify; keep mode OFF until Stripe live |
 
-**Next product focus:** Design-partner **launch** — see `docs/LAUNCH.md` (merge RC, UK/EU host, DPAs, pilot 5 visits). Rooms/webhooks wait unless a partner asks.
+**Next product focus:** Design-partner **launch** — see `docs/LAUNCH.md` (merge tip stack #63–#65+, UK/EU host, DPAs, pilot 5 visits).
 
 ### P1 status
 - Week calendar + drag reschedule — done

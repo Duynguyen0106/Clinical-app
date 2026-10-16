@@ -39,6 +39,8 @@ jobs:
           test -f prisma/sql/002_force_rls.sql
           grep -q "ClinicalNote" prisma/sql/001_clinic_rls.sql
           grep -q "AppointmentAuditEvent" prisma/sql/001_clinic_rls.sql
+          grep -q "NoteAuditEvent" prisma/sql/001_clinic_rls.sql
+          grep -q "LeaveRequest" prisma/sql/001_clinic_rls.sql
           grep -qE "nullif\\(current_setting\\('app\\.clinic_id'" prisma/sql/001_clinic_rls.sql
           grep -q "FORCE ROW LEVEL SECURITY" prisma/sql/002_force_rls.sql
 
@@ -93,8 +95,16 @@ jobs:
         env:
           DATABASE_URL: postgresql://treow:treow@localhost:5432/treow
         run: npm run db:rls
-      - name: Smoke clinic GUC isolation
+      - name: Smoke clinic GUC (ENABLE)
         working-directory: web
         env:
           DATABASE_URL: postgresql://treow:treow@localhost:5432/treow
         run: npx tsx scripts/rls-smoke.ts
+      - name: Apply FORCE RLS + denial smoke
+        working-directory: web
+        env:
+          DATABASE_URL: postgresql://treow:treow@localhost:5432/treow
+          APPLY_FORCE_RLS: "1"
+        run: |
+          npm run db:rls
+          npx tsx scripts/rls-smoke.ts

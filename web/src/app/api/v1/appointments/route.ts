@@ -1,6 +1,10 @@
 import { withAuth } from "@/server/api";
 import { jsonCreated, jsonOk } from "@/server/http";
-import { requireStaff } from "@/server/rbac";
+import {
+  assertCanManageSchedule,
+  assertOwnsDiaryOrOwner,
+  requireStaff,
+} from "@/server/rbac";
 import {
   createAppointment,
   createAppointmentSchema,
@@ -21,6 +25,12 @@ export const GET = withAuth(async (req, ctx) => {
 export const POST = withAuth(async (req, ctx) => {
   requireStaff(ctx);
   const body = createAppointmentSchema.parse(await req.json());
+  // Practitioners may only book their own diary; reception/owner any diary
+  if (ctx.role === "PRACTITIONER") {
+    assertOwnsDiaryOrOwner(ctx, body.practitionerId);
+  } else {
+    assertCanManageSchedule(ctx);
+  }
   const appointment = await createAppointment(ctx, body);
   const confirmation =
     appointment &&

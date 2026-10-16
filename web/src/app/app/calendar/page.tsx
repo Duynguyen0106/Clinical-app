@@ -136,6 +136,8 @@ export default function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  /** When set with draggingId, slot tap shifts the whole series from that appointment */
+  const [seriesMove, setSeriesMove] = useState(false);
 
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [bookOpen, setBookOpen] = useState(false);
@@ -424,6 +426,36 @@ export default function CalendarPage() {
       hour * 60,
       timeZone,
     );
+    if (seriesMove) {
+      setBusy(true);
+      setError(null);
+      try {
+        const d = await api<{
+          movedCount: number;
+          skippedStartsAt: string[];
+        }>(`/appointments/${id}/reschedule-series`, {
+          method: "POST",
+          body: JSON.stringify({ startsAt: startsAt.toISOString() }),
+        });
+        setMessage(
+          `Moved ${d.movedCount} series appointments${
+            d.skippedStartsAt?.length
+              ? ` (${d.skippedStartsAt.length} skipped — busy/closed)`
+              : ""
+          }.`,
+        );
+        setSeriesMove(false);
+        setDraggingId(null);
+        load();
+      } catch (e) {
+        setError(
+          e instanceof ApiError ? e.message : "Could not move series",
+        );
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     try {
       const res = await api<{
         appointment: Appointment;
@@ -1207,6 +1239,7 @@ export default function CalendarPage() {
                     className="btn-secondary"
                     disabled={busy || selected.status === "CANCELLED"}
                     onClick={() => {
+                      setSeriesMove(false);
                       setDraggingId(selected.id);
                       setSelected(null);
                       setMessage(
@@ -1260,6 +1293,23 @@ export default function CalendarPage() {
                       }}
                     >
                       Cancel series from here
+                    </button>
+                  ) : null}
+                  {selected.recurrenceGroupId ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={busy || selected.status === "CANCELLED"}
+                      onClick={() => {
+                        setSeriesMove(true);
+                        setDraggingId(selected.id);
+                        setSelected(null);
+                        setMessage(
+                          "Tap a diary slot to move this and later series appointments by the same amount.",
+                        );
+                      }}
+                    >
+                      Move series from here
                     </button>
                   ) : null}
                   <button
