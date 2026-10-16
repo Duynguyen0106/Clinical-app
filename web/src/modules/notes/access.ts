@@ -1,5 +1,4 @@
 import type { AuthContext } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { notFound } from "@/server/errors";
 import { assertOwnsDiaryOrOwner } from "@/server/rbac";
 import { withClinicTransaction } from "@/server/clinic-rls";
@@ -31,20 +30,4 @@ export async function assertNoteDiaryAccess(ctx: AuthContext, noteId: string) {
   }
   if (note.signedById && note.signedById === ctx.userId) return;
   throw notFound("Note not found");
-}
-
-/** Resolve diary practitioner for a note (clinic-scoped). */
-export async function noteDiaryPractitionerId(
-  clinicId: string,
-  noteId: string,
-): Promise<string | null> {
-  const note = await prisma.clinicalNote.findFirst({
-    where: { id: noteId, patient: { clinicId } },
-    select: {
-      visit: {
-        select: { appointment: { select: { practitionerId: true } } },
-      },
-    },
-  });
-  return note?.visit?.appointment.practitionerId ?? null;
 }
