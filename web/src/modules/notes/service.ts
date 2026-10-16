@@ -5,33 +5,11 @@ import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
 import type { NoteContent } from "@/modules/ai/providers";
 import { hashNoteContent } from "@/modules/notes/hash";
-import { assertOwnsDiaryOrOwner } from "@/server/rbac";
+import { assertNoteDiaryAccess } from "@/modules/notes/access";
+import { withClinicTransaction } from "@/server/clinic-rls";
 
 export { hashNoteContent } from "@/modules/notes/hash";
-
-async function assertNoteDiaryAccess(ctx: AuthContext, noteId: string) {
-  const note = await prisma.clinicalNote.findFirst({
-    where: { id: noteId, patient: { clinicId: ctx.clinicId } },
-    select: {
-      signedById: true,
-      visit: {
-        select: {
-          appointment: { select: { practitionerId: true } },
-        },
-      },
-    },
-  });
-  if (!note) throw notFound("Note not found");
-  const diaryId = note.visit?.appointment.practitionerId;
-  // Owner always; practitioner if own diary; or signer of a note without visit link
-  if (ctx.role === "OWNER") return;
-  if (diaryId) {
-    assertOwnsDiaryOrOwner(ctx, diaryId);
-    return;
-  }
-  if (note.signedById && note.signedById === ctx.userId) return;
-  throw notFound("Note not found");
-}
+export { assertNoteDiaryAccess } from "@/modules/notes/access";
 
 export async function listNoteTemplates(ctx: AuthContext) {
   return prisma.noteTemplate.findMany({
@@ -44,18 +22,24 @@ export async function listNotes(
   ctx: AuthContext,
   opts: { status?: NoteStatus; take?: number; practitionerId?: string } = {},
 ) {
+  // Practitioners default to own diary; cannot list a peer's diary metadata
+  let practitionerId = opts.practitionerId;
+  if (ctx.role === "PRACTITIONER") {
+    practitionerId = ctx.practitionerProfileId ?? undefined;
+  }
+
   // Metadata only — never ship clinical content on list endpoints
   return prisma.clinicalNote.findMany({
     where: {
       patient: { clinicId: ctx.clinicId },
       ...(opts.status ? { status: opts.status } : {}),
-      ...(opts.practitionerId
+      ...(practitionerId
         ? {
             OR: [
               // Notes on this practitioner's diary visits
               {
                 visit: {
-                  appointment: { practitionerId: opts.practitionerId },
+                  appointment: { practitionerId },
                 },
               },
               // Notes this user signed (covers another diary / addenda)
@@ -187,55 +171,62 @@ export async function updateDraftNote(
   id: string,
   content: Record<string, unknown>,
 ) {
-  const note = await prisma.clinicalNote.findFirst({
-    where: { id, patient: { clinicId: ctx.clinicId } },
-  });
-  if (!note) throw notFound("Note not found");
-  if (note.status !== NoteStatus.DRAFT) {
-    throw badRequest("Only draft notes can be edited");
-  }
+  await assertNoteDiaryAccess(ctx, id);
 
-  return prisma.clinicalNote.update({
-    where: { id },
-    data: {
-      content: content as Prisma.InputJsonValue,
-      audits: {
-        create: {
-          actorId: ctx.userId,
-          action: "updated",
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    const note = await tx.clinicalNote.findFirst({
+      where: { id, patient: { clinicId: ctx.clinicId } },
+    });
+    if (!note) throw notFound("Note not found");
+    if (note.status !== NoteStatus.DRAFT) {
+      throw badRequest("Only draft notes can be edited");
+    }
+
+    return tx.clinicalNote.update({
+      where: { id },
+      data: {
+        content: content as Prisma.InputJsonValue,
+        audits: {
+          create: {
+            actorId: ctx.userId,
+            action: "updated",
+          },
         },
       },
-    },
+    });
   });
 }
 
 export async function signNote(ctx: AuthContext, id: string) {
   await assertNoteDiaryAccess(ctx, id);
-  const note = await prisma.clinicalNote.findFirst({
-    where: { id, patient: { clinicId: ctx.clinicId } },
-  });
-  if (!note) throw notFound("Note not found");
-  if (note.status !== NoteStatus.DRAFT) {
-    throw badRequest("Only draft notes can be signed");
-  }
 
-  const contentHash = hashNoteContent(note.content);
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    const note = await tx.clinicalNote.findFirst({
+      where: { id, patient: { clinicId: ctx.clinicId } },
+    });
+    if (!note) throw notFound("Note not found");
+    if (note.status !== NoteStatus.DRAFT) {
+      throw badRequest("Only draft notes can be signed");
+    }
 
-  return prisma.clinicalNote.update({
-    where: { id },
-    data: {
-      status: NoteStatus.SIGNED,
-      signedAt: new Date(),
-      signedById: ctx.userId,
-      contentHash,
-      audits: {
-        create: {
-          actorId: ctx.userId,
-          action: "signed",
-          meta: { contentHash },
+    const contentHash = hashNoteContent(note.content);
+
+    return tx.clinicalNote.update({
+      where: { id },
+      data: {
+        status: NoteStatus.SIGNED,
+        signedAt: new Date(),
+        signedById: ctx.userId,
+        contentHash,
+        audits: {
+          create: {
+            actorId: ctx.userId,
+            action: "signed",
+            meta: { contentHash },
+          },
         },
       },
-    },
+    });
   });
 }
 
@@ -250,28 +241,31 @@ export async function voidSignedNote(
   input: z.infer<typeof voidNoteSchema>,
 ) {
   await assertNoteDiaryAccess(ctx, id);
-  const note = await prisma.clinicalNote.findFirst({
-    where: { id, patient: { clinicId: ctx.clinicId } },
-  });
-  if (!note) throw notFound("Note not found");
-  if (note.status !== NoteStatus.SIGNED) {
-    throw badRequest("Only signed notes can be voided");
-  }
 
-  return prisma.clinicalNote.update({
-    where: { id },
-    data: {
-      status: NoteStatus.VOIDED,
-      voidedAt: new Date(),
-      voidReason: input.reason,
-      audits: {
-        create: {
-          actorId: ctx.userId,
-          action: "voided",
-          meta: { reason: input.reason },
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    const note = await tx.clinicalNote.findFirst({
+      where: { id, patient: { clinicId: ctx.clinicId } },
+    });
+    if (!note) throw notFound("Note not found");
+    if (note.status !== NoteStatus.SIGNED) {
+      throw badRequest("Only signed notes can be voided");
+    }
+
+    return tx.clinicalNote.update({
+      where: { id },
+      data: {
+        status: NoteStatus.VOIDED,
+        voidedAt: new Date(),
+        voidReason: input.reason,
+        audits: {
+          create: {
+            actorId: ctx.userId,
+            action: "voided",
+            meta: { reason: input.reason },
+          },
         },
       },
-    },
+    });
   });
 }
 
@@ -288,45 +282,49 @@ export async function createAddendumDraft(
   parentId: string,
   input: z.infer<typeof addendumSchema>,
 ) {
-  const parent = await prisma.clinicalNote.findFirst({
-    where: { id: parentId, patient: { clinicId: ctx.clinicId } },
-  });
-  if (!parent) throw notFound("Note not found");
-  if (parent.status !== NoteStatus.SIGNED) {
-    throw badRequest("Addenda can only be attached to signed notes");
-  }
+  await assertNoteDiaryAccess(ctx, parentId);
 
-  const existingDraft = await prisma.clinicalNote.findFirst({
-    where: {
-      parentNoteId: parent.id,
-      status: NoteStatus.DRAFT,
-    },
-  });
-  if (existingDraft) {
-    throw badRequest("An unsigned addendum already exists for this note");
-  }
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    const parent = await tx.clinicalNote.findFirst({
+      where: { id: parentId, patient: { clinicId: ctx.clinicId } },
+    });
+    if (!parent) throw notFound("Note not found");
+    if (parent.status !== NoteStatus.SIGNED) {
+      throw badRequest("Addenda can only be attached to signed notes");
+    }
 
-  return prisma.clinicalNote.create({
-    data: {
-      patientId: parent.patientId,
-      visitId: parent.visitId,
-      templateId: parent.templateId,
-      parentNoteId: parent.id,
-      status: NoteStatus.DRAFT,
-      source: "addendum",
-      content: {
-        addendum: input.text,
-        clinician_review_flags: [
-          "Addendum to a signed note — review carefully before signing.",
-        ],
-      } as Prisma.InputJsonValue,
-      audits: {
-        create: {
-          actorId: ctx.userId,
-          action: "created",
-          meta: { source: "addendum", parentNoteId: parent.id },
+    const existingDraft = await tx.clinicalNote.findFirst({
+      where: {
+        parentNoteId: parent.id,
+        status: NoteStatus.DRAFT,
+      },
+    });
+    if (existingDraft) {
+      throw badRequest("An unsigned addendum already exists for this note");
+    }
+
+    return tx.clinicalNote.create({
+      data: {
+        patientId: parent.patientId,
+        visitId: parent.visitId,
+        templateId: parent.templateId,
+        parentNoteId: parent.id,
+        status: NoteStatus.DRAFT,
+        source: "addendum",
+        content: {
+          addendum: input.text,
+          clinician_review_flags: [
+            "Addendum to a signed note — review carefully before signing.",
+          ],
+        } as Prisma.InputJsonValue,
+        audits: {
+          create: {
+            actorId: ctx.userId,
+            action: "created",
+            meta: { source: "addendum", parentNoteId: parent.id },
+          },
         },
       },
-    },
+    });
   });
 }

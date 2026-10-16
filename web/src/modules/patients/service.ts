@@ -10,6 +10,7 @@ import {
   buildPatientTimeline,
   type TimelineItem,
 } from "@/modules/patients/timeline";
+import { assertNoteDiaryAccess } from "@/modules/notes/access";
 
 export type { TimelineItem };
 export { buildPatientTimeline } from "@/modules/patients/timeline";
@@ -338,6 +339,7 @@ export async function recordNoteHistoryExpand(
 ) {
   assertCanAccessClinicalRecord(ctx);
   await assertPatientInClinic(ctx.clinicId, patientId);
+  await assertNoteDiaryAccess(ctx, noteId);
 
   const note = await prisma.clinicalNote.findFirst({
     where: { id: noteId, patientId, patient: { clinicId: ctx.clinicId } },

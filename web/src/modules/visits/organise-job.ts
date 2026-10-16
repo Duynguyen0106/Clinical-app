@@ -6,6 +6,7 @@ import {
   stopRecordingAndOrganise,
   stopRecordingSchema,
 } from "@/modules/visits/service";
+import { assertOwnsDiaryOrOwner } from "@/server/rbac";
 import { z } from "zod";
 
 export { organiseAsyncEnabled } from "@/modules/visits/organise-flags";
@@ -36,9 +37,11 @@ export async function enqueueOrganiseJob(
     include: {
       recording: true,
       notes: { select: { status: true } },
+      appointment: { select: { practitionerId: true } },
     },
   });
   if (!visit) throw notFound("Visit not found");
+  assertOwnsDiaryOrOwner(ctx, visit.appointment.practitionerId);
   if (!visit.recording) throw badRequest("No active recording");
   if (!visit.recordingConsentAt) {
     throw badRequest("Recording consent required");
