@@ -4,15 +4,17 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
-import { BRAND } from "@/modules/config/brand";
+import { BRAND, showDemoLoginCredentials } from "@/modules/config/brand";
 import { BrandLogo } from "@/components/BrandLogo";
 import { ApiError } from "@/lib/api";
+
+const DEMO = showDemoLoginCredentials();
 
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState("alex@northbank.example");
-  const [password, setPassword] = useState("treow-demo");
+  const [email, setEmail] = useState(DEMO ? "alex@northbank.example" : "");
+  const [password, setPassword] = useState(DEMO ? "treow-demo" : "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -39,31 +41,35 @@ export default function LoginPage() {
       <form className="auth-form" onSubmit={onSubmit}>
         <h1>Sign in</h1>
         <p className="muted">
-          {BRAND.name} — full clinic demo for UK staff.
+          {DEMO
+            ? `${BRAND.name} — full clinic demo for UK staff.`
+            : "Sign in to your clinic."}
         </p>
-        <div className="demo-role-chips" role="group" aria-label="Demo accounts">
-          <button
-            type="button"
-            className="btn-ghost btn-sm"
-            onClick={() => setEmail("alex@northbank.example")}
-          >
-            Owner
-          </button>
-          <button
-            type="button"
-            className="btn-ghost btn-sm"
-            onClick={() => setEmail("jordan@northbank.example")}
-          >
-            Practitioner
-          </button>
-          <button
-            type="button"
-            className="btn-ghost btn-sm"
-            onClick={() => setEmail("reception@northbank.example")}
-          >
-            Reception
-          </button>
-        </div>
+        {DEMO ? (
+          <div className="demo-role-chips" role="group" aria-label="Demo accounts">
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => setEmail("alex@northbank.example")}
+            >
+              Owner
+            </button>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => setEmail("jordan@northbank.example")}
+            >
+              Practitioner
+            </button>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => setEmail("reception@northbank.example")}
+            >
+              Reception
+            </button>
+          </div>
+        ) : null}
         <label className="field">
           <span>Email</span>
           <input

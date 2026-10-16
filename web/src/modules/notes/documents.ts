@@ -2,7 +2,7 @@ import { NoteStatus } from "@/generated/prisma/client";
 import type { AuthContext } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
-import { assertCanAccessClinicalRecord } from "@/server/rbac";
+import { assertNoteDiaryAccess } from "@/modules/notes/access";
 import { clinicLogoDataUrl } from "@/modules/clinic/profile";
 
 export type DocumentSection = { key: string; label: string; value: string };
@@ -221,7 +221,7 @@ function composeLetterBody(args: {
 }
 
 async function loadSignedNoteForDocuments(ctx: AuthContext, noteId: string) {
-  assertCanAccessClinicalRecord(ctx);
+  await assertNoteDiaryAccess(ctx, noteId);
 
   const note = await prisma.clinicalNote.findFirst({
     where: { id: noteId, patient: { clinicId: ctx.clinicId } },

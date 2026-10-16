@@ -33,7 +33,16 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: RLS SQL present
+        run: |
+          test -f prisma/sql/001_clinic_rls.sql
+          grep -q "ClinicalNote" prisma/sql/001_clinic_rls.sql
+          grep -qE "nullif\\(current_setting\\('app\\.clinic_id'" prisma/sql/001_clinic_rls.sql
+
+      - name: Migration SQL present
+        run: test -f prisma/migrations/20261016_patient_archive_indexes/migration.sql
+
       # Full eslint currently flags pre-existing react-hooks setState-in-effect
       # patterns across pages; keep typecheck + unit tests as the merge gate.
       - name: Lint (targeted)
-        run: npx eslint "src/modules/scheduling/conflict.ts" "src/modules/scheduling/locks.ts" "src/modules/notes/hash.ts" "src/modules/notes/service.ts" "src/app/api/v1/notes/[id]/void/route.ts" "src/app/api/v1/notes/[id]/addendum/route.ts"
+        run: npx eslint "src/modules/scheduling/conflict.ts" "src/modules/scheduling/locks.ts" "src/modules/notes/hash.ts" "src/modules/notes/service.ts" "src/modules/scheduling/clinic-time.ts" "src/server/rbac.ts" "src/app/api/v1/notes/[id]/void/route.ts" "src/app/api/v1/notes/[id]/addendum/route.ts"

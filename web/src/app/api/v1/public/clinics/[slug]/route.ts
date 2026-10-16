@@ -25,8 +25,32 @@ export const POST = withPublic(async (req, params) => {
   await assertTurnstileToken(body.captchaToken, { ip: clientIp(req) });
   const result = await publicBook(params.slug, body);
   const appointment = result.appointment;
+  // Avoid returning full nested patient / clinic records on an unauthenticated response
   return jsonCreated({
-    appointment,
+    appointment: {
+      id: appointment.id,
+      startsAt: appointment.startsAt,
+      endsAt: appointment.endsAt,
+      status: appointment.status,
+      depositCents: appointment.depositCents,
+      depositStatus: appointment.depositStatus,
+      patient: {
+        firstName: appointment.patient.firstName,
+        email: appointment.patient.email,
+      },
+      practitioner: {
+        displayName: appointment.practitioner.displayName,
+      },
+      appointmentType: {
+        name: appointment.appointmentType.name,
+        durationMinutes: appointment.appointmentType.durationMinutes,
+      },
+      room: appointment.room ? { name: appointment.room.name } : null,
+      clinic: {
+        name: appointment.clinic.name,
+        timezone: appointment.clinic.timezone,
+      },
+    },
     manageUrl: manageUrl(appointment.id),
     deposit: result.deposit,
     policyText: result.policyText,

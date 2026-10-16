@@ -40,3 +40,14 @@ export const DEMO_CLINIC = {
   practitioner: "Alex Nguyen",
   disciplines: ["Physiotherapy", "Osteopathy", "Manual therapy"] as const,
 } as const;
+
+/**
+ * Whether login/landing may advertise demo emails + `treow-demo`.
+ * Production is off unless NEXT_PUBLIC_DEMO_LOGIN=true (staging demos only).
+ */
+export function showDemoLoginCredentials() {
+  const flag = process.env.NEXT_PUBLIC_DEMO_LOGIN?.trim().toLowerCase();
+  if (flag === "true" || flag === "1") return true;
+  if (flag === "false" || flag === "0") return false;
+  return process.env.NODE_ENV !== "production";
+}

@@ -145,13 +145,16 @@ export async function buildCalendarFeedIcs(token: string) {
   const nowStamp = icsDateUtc(new Date());
 
   for (const apt of appointments) {
-    const summary = `${apt.patient.firstName} ${apt.patient.lastName} — ${apt.appointmentType.name}`;
+    // Tokenised ICS feeds are unauthenticated — use initials, not full names / free-text notes
+    const initial =
+      `${apt.patient.firstName?.charAt(0) ?? ""}${apt.patient.lastName?.charAt(0) ?? ""}`.toUpperCase() ||
+      "PT";
+    const summary = `${initial} — ${apt.appointmentType.name}`;
     const descParts = [
-      `Patient: ${apt.patient.firstName} ${apt.patient.lastName}`,
+      `Patient: ${initial}`,
       `Service: ${apt.appointmentType.name}`,
       apt.room ? `Room: ${apt.room.name}` : null,
       `Status: ${apt.status}`,
-      apt.notes ? `Notes: ${apt.notes}` : null,
     ].filter(Boolean);
     const uid = `treow-${apt.id}@${profile.membership.clinic.slug || "clinic"}`;
     lines.push("BEGIN:VEVENT");

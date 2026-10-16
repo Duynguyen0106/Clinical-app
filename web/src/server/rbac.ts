@@ -1,10 +1,30 @@
 import type { MembershipRole } from "@/generated/prisma/client";
 import type { AuthContext } from "@/server/auth";
 import { requireRole } from "@/server/auth";
+import { forbidden } from "@/server/errors";
 
 /** Clinical documentation — practitioners & owners */
 export function requireClinician(ctx: AuthContext) {
   requireRole(ctx, ["OWNER", "PRACTITIONER"]);
+}
+
+/**
+ * Practitioners may only access their own diary visits/notes.
+ * Owners may access any clinician record in the clinic.
+ */
+export function assertOwnsDiaryOrOwner(
+  ctx: AuthContext,
+  practitionerId: string | null | undefined,
+) {
+  requireClinician(ctx);
+  if (ctx.role === "OWNER") return;
+  if (
+    !ctx.practitionerProfileId ||
+    !practitionerId ||
+    ctx.practitionerProfileId !== practitionerId
+  ) {
+    throw forbidden("You can only access visits and notes on your own diary");
+  }
 }
 
 /** Alias used by visit / clinical note mutation routes */

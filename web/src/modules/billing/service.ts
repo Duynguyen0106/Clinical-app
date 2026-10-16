@@ -309,3 +309,51 @@ export async function buildReceiptDocument(
     printedAt: new Date().toISOString(),
   };
 }
+
+/** Email a paid receipt (or unpaid invoice summary) to the patient. */
+export async function emailInvoiceReceipt(ctx: AuthContext, invoiceId: string) {
+  const doc = await buildReceiptDocument(ctx, invoiceId);
+  if (!doc.patient.email) {
+    throw badRequest("Patient has no email on file");
+  }
+
+  const pounds = (doc.amountCents / 100).toFixed(2);
+  const when = doc.appointmentStartsAt
+    ? new Date(doc.appointmentStartsAt).toLocaleString("en-GB", {
+        timeZone: "Europe/London",
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : null;
+  const statusLabel = doc.status === "PAID" ? "Receipt" : "Invoice";
+
+  const { sendEmail } = await import("@/modules/notifications/email");
+  const result = await sendEmail({
+    to: doc.patient.email,
+    subject: `${statusLabel} ${doc.reference} — ${doc.clinic.name}`,
+    replyTo: doc.clinic.email,
+    text: [
+      `Hi ${doc.patient.fullName},`,
+      "",
+      `${statusLabel} from ${doc.clinic.name}.`,
+      `Reference: ${doc.reference}`,
+      doc.serviceName ? `Service: ${doc.serviceName}` : null,
+      when ? `Appointment: ${when}` : null,
+      `Amount: £${pounds} ${doc.currency}`,
+      `Status: ${doc.status}`,
+      "",
+      doc.clinic.phone ? `Clinic phone: ${doc.clinic.phone}` : null,
+      "",
+      "— Treow Clinic",
+    ]
+      .filter((line) => line !== null)
+      .join("\n"),
+  });
+
+  return {
+    delivered: result.delivered,
+    provider: result.provider,
+    to: doc.patient.email,
+    reference: doc.reference,
+  };
+}

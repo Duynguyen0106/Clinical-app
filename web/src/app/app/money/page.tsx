@@ -81,6 +81,7 @@ function MoneyPageInner() {
   const unpaidOnly = searchParams.get("status") === "unpaid";
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptDoc | null>(null);
 
   useEffect(() => {
@@ -132,6 +133,26 @@ function MoneyPageInner() {
     }
   }
 
+  async function emailReceipt(id: string) {
+    setError(null);
+    setMessage(null);
+    try {
+      const d = await api<{
+        delivered: boolean;
+        provider: string;
+        to: string;
+        reference: string;
+      }>(`/invoices/${id}/email`, { method: "POST" });
+      setMessage(
+        d.delivered
+          ? `Receipt emailed to ${d.to}`
+          : `Receipt logged via ${d.provider} (not delivered — configure Resend for live email)`,
+      );
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not email receipt");
+    }
+  }
+
   return (
     <AppShell
       title="Money"
@@ -157,6 +178,7 @@ function MoneyPageInner() {
           <span className="count">{visible.length}</span>
         </div>
         {error ? <p className="form-error">{error}</p> : null}
+        {message ? <p className="alert-line">{message}</p> : null}
         <ul className="apt-list">
           {visible.map((inv) => (
             <li key={inv.id} className="apt-row money-row">
@@ -187,6 +209,13 @@ function MoneyPageInner() {
                       onClick={() => void openReceipt(inv.id)}
                     >
                       <Printer size={14} aria-hidden /> Receipt
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      onClick={() => void emailReceipt(inv.id)}
+                    >
+                      Email
                     </button>
                     <button
                       type="button"

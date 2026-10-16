@@ -14,31 +14,40 @@ import {
 } from "@/modules/ai/map-to-template";
 import { saveAudioUpload, readAudioFile } from "@/server/storage";
 import { NoteStatus } from "@/generated/prisma/client";
+import { assertOwnsDiaryOrOwner } from "@/server/rbac";
+import { withClinicTransaction } from "@/server/clinic-rls";
 
 export async function startVisit(ctx: AuthContext, appointmentId: string) {
-  const appointment = await prisma.appointment.findFirst({
-    where: { id: appointmentId, clinicId: ctx.clinicId },
-    include: { visit: true, patient: true, appointmentType: true },
-  });
-  if (!appointment) throw notFound("Appointment not found");
-
-  if (appointment.visit) {
-    return prisma.visit.findUniqueOrThrow({
-      where: { id: appointment.visit.id },
-      include: {
-        appointment: {
-          include: { patient: true, appointmentType: true, practitioner: true },
-        },
-        recording: { include: { transcript: true } },
-        notes: {
-          orderBy: { createdAt: "desc" },
-          include: { template: { select: { id: true, name: true, schema: true } } },
-        },
-      },
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    const appointment = await tx.appointment.findFirst({
+      where: { id: appointmentId, clinicId: ctx.clinicId },
+      include: { visit: true, patient: true, appointmentType: true },
     });
-  }
+    if (!appointment) throw notFound("Appointment not found");
+    assertOwnsDiaryOrOwner(ctx, appointment.practitionerId);
 
-  return prisma.$transaction(async (tx) => {
+    if (appointment.visit) {
+      return tx.visit.findUniqueOrThrow({
+        where: { id: appointment.visit.id },
+        include: {
+          appointment: {
+            include: {
+              patient: true,
+              appointmentType: true,
+              practitioner: true,
+            },
+          },
+          recording: { include: { transcript: true } },
+          notes: {
+            orderBy: { createdAt: "desc" },
+            include: {
+              template: { select: { id: true, name: true, schema: true } },
+            },
+          },
+        },
+      });
+    }
+
     await tx.appointment.update({
       where: { id: appointment.id },
       data: { status: AppointmentStatus.IN_PROGRESS },
@@ -57,23 +66,28 @@ export async function startVisit(ctx: AuthContext, appointmentId: string) {
 }
 
 export async function getVisit(ctx: AuthContext, visitId: string) {
-  const visit = await prisma.visit.findFirst({
-    where: {
-      id: visitId,
-      appointment: { clinicId: ctx.clinicId },
-    },
-    include: {
-      appointment: {
-        include: { patient: true, appointmentType: true, practitioner: true },
+  const visit = await withClinicTransaction(ctx.clinicId, async (tx) => {
+    return tx.visit.findFirst({
+      where: {
+        id: visitId,
+        appointment: { clinicId: ctx.clinicId },
       },
-      recording: { include: { transcript: true } },
-      notes: {
-        orderBy: { createdAt: "desc" },
-        include: { template: { select: { id: true, name: true, schema: true } } },
+      include: {
+        appointment: {
+          include: { patient: true, appointmentType: true, practitioner: true },
+        },
+        recording: { include: { transcript: true } },
+        notes: {
+          orderBy: { createdAt: "desc" },
+          include: {
+            template: { select: { id: true, name: true, schema: true } },
+          },
+        },
       },
-    },
+    });
   });
   if (!visit) throw notFound("Visit not found");
+  assertOwnsDiaryOrOwner(ctx, visit.appointment.practitionerId);
   return visit;
 }
 
