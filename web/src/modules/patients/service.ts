@@ -15,6 +15,7 @@ import {
   clinicDateKey,
   clinicLocalDateTime,
 } from "@/modules/scheduling/clinic-time";
+import { withClinicTransaction } from "@/server/clinic-rls";
 
 export type { TimelineItem };
 export { buildPatientTimeline } from "@/modules/patients/timeline";
@@ -265,7 +266,7 @@ export async function getPatient(ctx: AuthContext, id: string) {
   if (!canViewNotes) {
     return { ...patient, notes: [] };
   }
-  // Practitioners see own-diary note metadata only (OWNER sees all)
+  // Practitioners: own-diary notes + appointments only (alerts kept for safety)
   if (ctx.role === "PRACTITIONER" && ctx.practitionerProfileId) {
     const diaryId = ctx.practitionerProfileId;
     const notes = patient.notes
@@ -273,7 +274,10 @@ export async function getPatient(ctx: AuthContext, id: string) {
         (n) => n.visit?.appointment?.practitioner?.id === diaryId,
       )
       .slice(0, 15);
-    return { ...patient, notes };
+    const appointments = patient.appointments.filter(
+      (a) => a.practitioner.id === diaryId,
+    );
+    return { ...patient, notes, appointments };
   }
   return { ...patient, notes: patient.notes.slice(0, 15) };
 }
@@ -310,22 +314,24 @@ export async function getPatientPrep(
       }))
     : [];
 
-  await prisma.patientAccessEvent.create({
-    data: {
-      clinicId: ctx.clinicId,
-      patientId: patient.id,
-      actorId: ctx.userId,
-      action: "prep_opened",
-      meta: {
-        source: opts.source ?? "unknown",
-        appointmentCount: patient.appointments.length,
-        noteCount: notes.length,
-        noteIds: notes.map((n) => n.id),
-        clinicalNotesIncluded: canViewNotes,
-        role: ctx.role,
-        invoiceCount: patient.invoices.length,
+  await withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.patientAccessEvent.create({
+      data: {
+        clinicId: ctx.clinicId,
+        patientId: patient.id,
+        actorId: ctx.userId,
+        action: "prep_opened",
+        meta: {
+          source: opts.source ?? "unknown",
+          appointmentCount: patient.appointments.length,
+          noteCount: notes.length,
+          noteIds: notes.map((n) => n.id),
+          clinicalNotesIncluded: canViewNotes,
+          role: ctx.role,
+          invoiceCount: patient.invoices.length,
+        },
       },
-    },
+    });
   });
 
   const timeline = buildPatientTimeline({
@@ -389,8 +395,8 @@ export async function recordNoteHistoryExpand(
   });
   if (!note) throw notFound("Note not found");
 
-  await prisma.$transaction([
-    prisma.patientAccessEvent.create({
+  await withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.patientAccessEvent.create({
       data: {
         clinicId: ctx.clinicId,
         patientId,
@@ -401,8 +407,8 @@ export async function recordNoteHistoryExpand(
           source: opts.source ?? "patient_prep",
         },
       },
-    }),
-    prisma.noteAuditEvent.create({
+    });
+    await tx.noteAuditEvent.create({
       data: {
         noteId,
         actorId: ctx.userId,
@@ -411,8 +417,8 @@ export async function recordNoteHistoryExpand(
           source: opts.source ?? "patient_prep_expand",
         },
       },
-    }),
-  ]);
+    });
+  });
 
   return {
     ok: true as const,
@@ -572,14 +578,16 @@ export async function addConsent(
   input: z.infer<typeof consentSchema>,
 ) {
   await assertPatientInClinic(ctx.clinicId, patientId);
-  return prisma.patientConsent.create({
-    data: {
-      patientId,
-      type: input.type,
-      granted: input.granted,
-      method: input.method,
-      meta: input.meta as object | undefined,
-    },
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    return tx.patientConsent.create({
+      data: {
+        patientId,
+        type: input.type,
+        granted: input.granted,
+        method: input.method,
+        meta: input.meta as object | undefined,
+      },
+    });
   });
 }
 

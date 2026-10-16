@@ -7,6 +7,7 @@ import { DepositStatus, AppointmentStatus } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { badRequest, notFound, unauthorized } from "@/server/errors";
 import { getAppBaseUrl } from "@/server/env";
+import { withClinicTransaction } from "@/server/clinic-rls";
 
 export function getPaymentProvider() {
   return (process.env.PAYMENT_PROVIDER ?? "console").toLowerCase();
@@ -119,13 +120,15 @@ export async function markDepositPaid(appointmentId: string) {
   });
   if (!apt) throw notFound("Appointment not found");
   if (apt.depositStatus === DepositStatus.PAID) return apt;
-  return prisma.appointment.update({
-    where: { id: appointmentId },
-    data: {
-      depositStatus: DepositStatus.PAID,
-      depositPaidAt: new Date(),
-      status: AppointmentStatus.CONFIRMED,
-    },
+  return withClinicTransaction(apt.clinicId, async (tx) => {
+    return tx.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        depositStatus: DepositStatus.PAID,
+        depositPaidAt: new Date(),
+        status: AppointmentStatus.CONFIRMED,
+      },
+    });
   });
 }
 

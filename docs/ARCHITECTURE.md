@@ -42,9 +42,10 @@
 - Every clinical row carries `clinicId`.
 - Auth session resolves membership → role → **app-layer** `clinicId` filters on every query (primary defence).
 - **Postgres RLS** (optional hardening): `web/prisma/sql/001_clinic_rls.sql` enables policies on Patient, Appointment, WaitlistEntry, Invoice, PatientAccessEvent, NoteTemplate, AiOrganiseJob, Visit, ClinicalNote, Recording, Transcript, AppointmentAuditEvent. Apply with `npm run db:rls`.
-- Use `withClinicTransaction(clinicId, fn)` / `SET LOCAL app.clinic_id` so pooled connections never leak tenant context (`src/server/clinic-rls.ts`). Clinical recording/transcript writes also set the clinic GUC.
-- Production hardening path: non-owner DB role + `FORCE ROW LEVEL SECURITY` (`web/prisma/sql/002_force_rls.sql`, `APPLY_FORCE_RLS=1 npm run db:rls`) + always set clinic GUC (or `app.rls_bypass=on` only for seed/cron). Until FORCE is on, the table-owner role bypasses RLS (Postgres default). CI runs ENABLE then FORCE denial smoke (`web/scripts/rls-smoke.ts`).
-- Patient booking pages scoped by clinic slug / public booking token.
+- Use `withClinicTransaction(clinicId, fn)` / `SET LOCAL app.clinic_id` so pooled connections never leak tenant context (`src/server/clinic-rls.ts`). Clinical recording/transcript writes, prep/consent audits, schedule create locks, and deposit mark-paid also set the clinic GUC.
+- **Need-to-know (practitioners):** API forces own diary on `listAppointments`; peer `getAppointment` strips patient contact/alerts/DOB/booking notes; `getPatient` / prep timelines omit peer-diary rows; ops unpaid tasks hidden for practitioners.
+- Production hardening path: non-owner DB role + `FORCE ROW LEVEL SECURITY` (`web/prisma/sql/002_force_rls.sql`, `APPLY_FORCE_RLS=1 npm run db:rls`) on staging with app role first, then pilot. Until FORCE is on, the table-owner role bypasses RLS (Postgres default). CI runs ENABLE then FORCE denial smoke as `treow_app` (`web/scripts/rls-smoke.ts`).
+- Patient booking pages scoped by clinic slug / opaque manage token (sealed; TTL = max(cancel notice + 24h, 7d)).
 - Rate limits: in-memory by default; set `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for shared multi-instance buckets (required for multi-instance Vercel public book).
 
 ---
