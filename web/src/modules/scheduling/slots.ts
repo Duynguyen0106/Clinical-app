@@ -1,8 +1,13 @@
-import { addDays, setHours, setMinutes, startOfDay } from "date-fns";
+import { addDays } from "date-fns";
 import { prisma } from "@/server/db";
 import { notFound } from "@/server/errors";
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { isWindowAvailable, loadExceptions } from "./availability";
+import {
+  clinicDateKey,
+  clinicDayOfWeek,
+  clinicLocalDateTime,
+} from "./clinic-time";
 import {
   getClinicBookingPolicy,
   isSlotAllowedByPolicy,
@@ -39,6 +44,12 @@ export async function listClinicSlots(args: {
     throw notFound("Invalid duration");
   }
 
+  const clinic = await prisma.clinic.findFirst({
+    where: { id: args.clinicId },
+    select: { timezone: true },
+  });
+  const timeZone = clinic?.timezone ?? "Europe/London";
+
   const practitioner = await prisma.practitionerProfile.findFirst({
     where: {
       id: args.practitionerId,
@@ -56,15 +67,16 @@ export async function listClinicSlots(args: {
   const days = args.days ?? 14;
   const limit = args.limit ?? 48;
   const now = new Date();
-  const from = startOfDay(args.from ?? now);
-  const to = addDays(from, days);
+  const fromKey = clinicDateKey(args.from ?? now, timeZone);
+  const fromUtc = clinicLocalDateTime(fromKey, 0, timeZone);
+  const toUtc = addDays(fromUtc, days);
 
   const [existing, exceptions] = await Promise.all([
     prisma.appointment.findMany({
       where: {
         clinicId: args.clinicId,
         practitionerId: practitioner.id,
-        startsAt: { gte: from, lte: to },
+        startsAt: { gte: fromUtc, lte: toUtc },
         status: {
           notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW],
         },
@@ -73,7 +85,7 @@ export async function listClinicSlots(args: {
           : {}),
       },
     }),
-    loadExceptions(practitioner.id, from, to),
+    loadExceptions(practitioner.id, fromUtc, toUtc),
   ]);
 
   // No weekly rules → fall back to 08:00–18:00 Mon–Fri so staff can still book
@@ -88,8 +100,9 @@ export async function listClinicSlots(args: {
 
   const slots: string[] = [];
   for (let d = 0; d < days; d++) {
-    const day = addDays(from, d);
-    const dow = day.getDay();
+    const dayUtc = addDays(fromUtc, d);
+    const dateKey = clinicDateKey(dayUtc, timeZone);
+    const dow = clinicDayOfWeek(dayUtc, timeZone);
     const dayRules = rules.filter((r) => r.dayOfWeek === dow);
     for (const rule of dayRules) {
       for (
@@ -99,20 +112,18 @@ export async function listClinicSlots(args: {
       ) {
         if (
           !isWindowAvailable({
-            day,
+            day: dayUtc,
             startMinute: minute,
             endMinute: minute + durationMinutes,
             rules,
             exceptions,
+            timeZone,
           })
         ) {
           continue;
         }
 
-        const startsAt = setMinutes(
-          setHours(day, Math.floor(minute / 60)),
-          minute % 60,
-        );
+        const startsAt = clinicLocalDateTime(dateKey, minute, timeZone);
         if (startsAt <= now) continue;
         if (policy && !isSlotAllowedByPolicy(policy, startsAt, now)) continue;
         const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
