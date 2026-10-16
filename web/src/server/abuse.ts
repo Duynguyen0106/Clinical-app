@@ -1,7 +1,7 @@
 import { clientIp } from "@/server/client-ip";
 import { tooManyRequests } from "@/server/errors";
 import {
-  consumeRateLimit,
+  consumeRateLimitAsync,
   type RateLimitOpts,
 } from "@/server/rate-limit";
 
@@ -24,27 +24,27 @@ export const AbuseLimits = {
   publicClinicGetIp: { limit: 120, windowMs: MIN } satisfies RateLimitOpts,
 } as const;
 
-function enforceKey(
+async function enforceKey(
   key: string,
   opts: RateLimitOpts,
   message: string,
 ) {
-  const result = consumeRateLimit(key, opts);
+  const result = await consumeRateLimitAsync(key, opts);
   if (!result.ok) {
     throw tooManyRequests(message, result.retryAfterSec);
   }
 }
 
-export function enforceLoginLimits(req: Request, email: string) {
+export async function enforceLoginLimits(req: Request, email: string) {
   const ip = clientIp(req);
   const normalised = email.toLowerCase().trim();
-  enforceKey(
+  await enforceKey(
     `auth:login:ip:${ip}`,
     AbuseLimits.loginIp,
     "Too many sign-in attempts from this network. Try again shortly.",
   );
   if (normalised) {
-    enforceKey(
+    await enforceKey(
       `auth:login:email:${normalised}`,
       AbuseLimits.loginEmail,
       "Too many sign-in attempts for this account. Try again shortly.",
@@ -52,16 +52,16 @@ export function enforceLoginLimits(req: Request, email: string) {
   }
 }
 
-export function enforceForgotPasswordLimits(req: Request, email: string) {
+export async function enforceForgotPasswordLimits(req: Request, email: string) {
   const ip = clientIp(req);
   const normalised = email.toLowerCase().trim();
-  enforceKey(
+  await enforceKey(
     `auth:forgot:ip:${ip}`,
     AbuseLimits.forgotIp,
     "Too many password reset requests. Try again later.",
   );
   if (normalised) {
-    enforceKey(
+    await enforceKey(
       `auth:forgot:email:${normalised}`,
       AbuseLimits.forgotEmail,
       "Too many password reset requests for this email. Try again later.",
@@ -69,24 +69,24 @@ export function enforceForgotPasswordLimits(req: Request, email: string) {
   }
 }
 
-export function enforceResetPasswordLimits(req: Request) {
-  enforceKey(
+export async function enforceResetPasswordLimits(req: Request) {
+  await enforceKey(
     `auth:reset:ip:${clientIp(req)}`,
     AbuseLimits.resetIp,
     "Too many password reset attempts. Try again later.",
   );
 }
 
-export function enforcePublicBookLimits(req: Request, email?: string) {
+export async function enforcePublicBookLimits(req: Request, email?: string) {
   const ip = clientIp(req);
-  enforceKey(
+  await enforceKey(
     `public:book:ip:${ip}`,
     AbuseLimits.publicBookIp,
     "Too many booking attempts. Try again shortly.",
   );
   const normalised = email?.toLowerCase().trim();
   if (normalised) {
-    enforceKey(
+    await enforceKey(
       `public:book:email:${normalised}`,
       AbuseLimits.publicBookEmail,
       "Too many booking attempts for this email. Try again shortly.",
@@ -94,40 +94,40 @@ export function enforcePublicBookLimits(req: Request, email?: string) {
   }
 }
 
-export function enforcePublicManageLimits(req: Request) {
-  enforceKey(
+export async function enforcePublicManageLimits(req: Request) {
+  await enforceKey(
     `public:manage:ip:${clientIp(req)}`,
     AbuseLimits.publicManageIp,
     "Too many manage requests. Try again shortly.",
   );
 }
 
-export function enforcePublicWaitlistLimits(req: Request) {
-  enforceKey(
+export async function enforcePublicWaitlistLimits(req: Request) {
+  await enforceKey(
     `public:waitlist:ip:${clientIp(req)}`,
     AbuseLimits.publicWaitlistIp,
     "Too many waitlist actions. Try again shortly.",
   );
 }
 
-export function enforcePublicDepositLimits(req: Request) {
-  enforceKey(
+export async function enforcePublicDepositLimits(req: Request) {
+  await enforceKey(
     `public:deposit:ip:${clientIp(req)}`,
     AbuseLimits.publicDepositIp,
     "Too many deposit requests. Try again shortly.",
   );
 }
 
-export function enforcePublicSlotsLimits(req: Request) {
-  enforceKey(
+export async function enforcePublicSlotsLimits(req: Request) {
+  await enforceKey(
     `public:slots:ip:${clientIp(req)}`,
     AbuseLimits.publicSlotsIp,
     "Too many slot lookups. Try again shortly.",
   );
 }
 
-export function enforcePublicClinicGetLimits(req: Request) {
-  enforceKey(
+export async function enforcePublicClinicGetLimits(req: Request) {
+  await enforceKey(
     `public:clinic:ip:${clientIp(req)}`,
     AbuseLimits.publicClinicGetIp,
     "Too many requests. Try again shortly.",

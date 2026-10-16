@@ -22,6 +22,7 @@ type Me = {
     brandColour?: string | null;
     hasLogo?: boolean;
     logoUrl?: string | null;
+    calendarPrivacyMode?: "FULL_NAME" | "INITIALS";
   };
   role: string;
   practitionerProfileId: string | null;

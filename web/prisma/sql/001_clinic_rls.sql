@@ -189,3 +189,16 @@ CREATE POLICY transcript_clinic_isolation ON "Transcript"
         AND a."clinicId" = nullif(current_setting('app.clinic_id', true), '')
     )
   );
+
+-- Schedule audit trail
+ALTER TABLE "AppointmentAuditEvent" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS appointment_audit_clinic_isolation ON "AppointmentAuditEvent";
+CREATE POLICY appointment_audit_clinic_isolation ON "AppointmentAuditEvent"
+  USING (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR "clinicId" = nullif(current_setting('app.clinic_id', true), '')
+  )
+  WITH CHECK (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR "clinicId" = nullif(current_setting('app.clinic_id', true), '')
+  );

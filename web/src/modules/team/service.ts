@@ -35,6 +35,11 @@ export const updatePractitionerSchema = z.object({
   professionalTitle: z.string().max(120).optional().nullable(),
   registrationBody: z.string().max(40).optional().nullable(),
   registrationNumber: z.string().max(40).optional().nullable(),
+  /**
+   * Service mapping: omit to leave unchanged; [] = all clinic services;
+   * otherwise only these appointment type ids.
+   */
+  appointmentTypeIds: z.array(z.string().min(1)).optional(),
 });
 
 const DEFAULT_WEEKDAY_HOURS = [1, 2, 3, 4, 5].map((dayOfWeek) => ({
@@ -75,10 +80,11 @@ export function assertCanEditPractitioner(
 }
 
 export async function listTeam(ctx: AuthContext) {
-  return prisma.practitionerProfile.findMany({
+  const rows = await prisma.practitionerProfile.findMany({
     where: { membership: { clinicId: ctx.clinicId } },
     include: {
       availability: { orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }] },
+      services: { select: { appointmentTypeId: true } },
       membership: {
         include: {
           user: { select: { id: true, email: true, name: true } },
@@ -87,6 +93,11 @@ export async function listTeam(ctx: AuthContext) {
     },
     orderBy: { displayName: "asc" },
   });
+  return rows.map(({ services, ...p }) => ({
+    ...p,
+    appointmentTypeIds:
+      services.length === 0 ? null : services.map((s) => s.appointmentTypeId),
+  }));
 }
 
 export async function createPractitioner(
@@ -187,7 +198,28 @@ export async function updatePractitioner(
     changingActive: input.active !== undefined,
   });
 
-  return prisma.practitionerProfile.update({
+  if (input.appointmentTypeIds !== undefined) {
+    if (ctx.role !== MembershipRole.OWNER && ctx.role !== MembershipRole.RECEPTION) {
+      throw forbidden("Only owners or reception can set practitioner services");
+    }
+    if (input.appointmentTypeIds.length > 0) {
+      const valid = await prisma.appointmentType.count({
+        where: {
+          clinicId: ctx.clinicId,
+          id: { in: input.appointmentTypeIds },
+        },
+      });
+      if (valid !== input.appointmentTypeIds.length) {
+        throw badRequest("Unknown appointment type in service list");
+      }
+    }
+    const { setPractitionerServices } = await import(
+      "@/modules/scheduling/practitioner-services"
+    );
+    await setPractitionerServices(profile.id, input.appointmentTypeIds);
+  }
+
+  const updated = await prisma.practitionerProfile.update({
     where: { id: profile.id },
     data: {
       ...(input.displayName !== undefined
@@ -207,6 +239,7 @@ export async function updatePractitioner(
     },
     include: {
       availability: { orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }] },
+      services: { select: { appointmentTypeId: true } },
       membership: {
         include: {
           user: { select: { id: true, email: true, name: true } },
@@ -214,6 +247,13 @@ export async function updatePractitioner(
       },
     },
   });
+
+  const { services, ...rest } = updated;
+  return {
+    ...rest,
+    appointmentTypeIds:
+      services.length === 0 ? null : services.map((s) => s.appointmentTypeId),
+  };
 }
 
 export const ownerSetPasswordSchema = z.object({

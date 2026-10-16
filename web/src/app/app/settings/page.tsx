@@ -21,6 +21,7 @@ type ClinicProfile = {
   audioRetentionDays: number;
   privacyNoticeVersion: string;
   dataRegion: string;
+  calendarPrivacyMode?: "FULL_NAME" | "INITIALS";
 };
 
 type SupportInfo = {
@@ -55,6 +56,12 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [auditCount, setAuditCount] = useState<number | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [calendarPrivacyMode, setCalendarPrivacyMode] = useState<
+    "FULL_NAME" | "INITIALS"
+  >("FULL_NAME");
+  const [smsProvider, setSmsProvider] = useState<"console" | "twilio" | null>(
+    null,
+  );
 
   const website = useMemo(() => {
     if (!clinic?.slug || !support?.appBaseUrl) return null;
@@ -84,6 +91,15 @@ export default function SettingsPage() {
   }, [authLoading, me, router]);
 
   useEffect(() => {
+    void fetch("/api/v1/health")
+      .then((r) => r.json())
+      .then((d: { smsProvider?: "console" | "twilio" }) => {
+        setSmsProvider(d.smsProvider ?? "console");
+      })
+      .catch(() => setSmsProvider("console"));
+  }, []);
+
+  useEffect(() => {
     void Promise.all([
       api<{ clinic: ClinicProfile }>("/clinic/profile"),
       api<{ support: SupportInfo }>("/ops/support"),
@@ -97,6 +113,11 @@ export default function SettingsPage() {
         setEmail(c.clinic.email ?? "");
         setAddress(c.clinic.address ?? "");
         setBrandColour(c.clinic.brandColour ?? "#1E3F37");
+        setCalendarPrivacyMode(
+          c.clinic.calendarPrivacyMode === "INITIALS"
+            ? "INITIALS"
+            : "FULL_NAME",
+        );
         setSupport(s.support);
         setBooking(b.booking);
         if (c.clinic.hasLogo) {
@@ -137,9 +158,15 @@ export default function SettingsPage() {
           email: email || null,
           address: address || null,
           brandColour: brandColour || null,
+          calendarPrivacyMode,
         }),
       });
       setClinic(d.clinic);
+      setCalendarPrivacyMode(
+        d.clinic.calendarPrivacyMode === "INITIALS"
+          ? "INITIALS"
+          : "FULL_NAME",
+      );
       setMessage("Saved clinic brand.");
       await refresh();
     } catch (e) {
@@ -334,6 +361,29 @@ export default function SettingsPage() {
               onChange={(e) => setBrandColour(e.target.value)}
             />
           </label>
+          <label className="field">
+            <span>Calendar privacy (open desk)</span>
+            <select
+              value={calendarPrivacyMode}
+              disabled={!isOwner}
+              onChange={(e) =>
+                setCalendarPrivacyMode(
+                  e.target.value === "INITIALS" ? "INITIALS" : "FULL_NAME",
+                )
+              }
+            >
+              <option value="FULL_NAME">Full patient names</option>
+              <option value="INITIALS">Initials only on diary</option>
+            </select>
+          </label>
+          {smsProvider === "console" ? (
+            <p className="alert-line" role="status">
+              SMS is in console mode — patient texts are logged on the server
+              only, not delivered. Set{" "}
+              <code>SMS_PROVIDER=twilio</code> with Twilio credentials for live
+              SMS.
+            </p>
+          ) : null}
           <label className="field">
             <span>Address</span>
             <input

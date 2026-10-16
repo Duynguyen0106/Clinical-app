@@ -36,10 +36,12 @@ export const createAppointmentSchema = z.object({
   /** Create a SENT invoice for this visit (pence). Extra fees can be added later. */
   feeCents: z.number().int().min(0).optional(),
   /**
-   * Weekly series: total occurrences including the first (2–26).
-   * Same patient/practitioner/type; +7 days each; skips slots that conflict.
+   * Series: total occurrences including the first (2–26).
+   * Same patient/practitioner/type; skips slots that conflict.
    */
   weeklyCount: z.number().int().min(2).max(26).optional(),
+  /** Weeks between occurrences (1 = weekly, 2 = fortnightly). Default 1. */
+  intervalWeeks: z.number().int().min(1).max(4).optional(),
 });
 
 export const updateAppointmentStatusSchema = z.object({
@@ -137,6 +139,13 @@ export async function getAppointment(ctx: AuthContext, id: string) {
     },
   });
   if (!appointment) throw notFound("Appointment not found");
+  // Reception: strip note status stubs (need-to-know)
+  if (ctx.role === "RECEPTION" && appointment.visit) {
+    return {
+      ...appointment,
+      visit: { ...appointment.visit, notes: [] },
+    };
+  }
   return appointment;
 }
 
@@ -174,8 +183,17 @@ export async function createAppointment(
     if (!room) throw notFound("Room not found");
   }
 
+  const { assertPractitionerOffersType } = await import(
+    "./practitioner-services"
+  );
+  await assertPractitionerOffersType({
+    practitionerId: input.practitionerId,
+    appointmentTypeId: input.appointmentTypeId,
+  });
+
   const durationMinutes = input.durationMinutes ?? type.durationMinutes;
   const weeklyCount = input.weeklyCount ?? 1;
+  const intervalWeeks = input.intervalWeeks ?? 1;
   const recurrenceGroupId =
     weeklyCount > 1
       ? `series_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -191,7 +209,8 @@ export async function createAppointment(
   const firstStarts = new Date(input.startsAt);
   for (let i = 0; i < weeklyCount; i++) {
     const startsAt = new Date(
-      firstStarts.getTime() + i * 7 * 24 * 60 * 60 * 1000,
+      firstStarts.getTime() +
+        i * intervalWeeks * 7 * 24 * 60 * 60 * 1000,
     );
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
 
@@ -223,6 +242,7 @@ export async function createAppointment(
           recurrenceGroupId,
           seriesIndex: i + 1,
           seriesCount: weeklyCount,
+          intervalWeeks,
         },
       });
     } catch (err) {
@@ -273,10 +293,78 @@ export async function createAppointment(
       recurrenceGroupId,
       createdCount: createdIds.length,
       requestedCount: weeklyCount,
+      intervalWeeks,
       appointmentIds: createdIds,
       skippedStartsAt: skipped,
     },
   });
+}
+
+/**
+ * Cancel this appointment and all later BOOKED/CONFIRMED siblings in the series.
+ */
+export async function cancelFutureSeries(ctx: AuthContext, id: string) {
+  const appointment = await prisma.appointment.findFirst({
+    where: { id, clinicId: ctx.clinicId },
+  });
+  if (!appointment) throw notFound("Appointment not found");
+  if (!appointment.recurrenceGroupId) {
+    throw badRequest("This appointment is not part of a series");
+  }
+
+  const siblings = await prisma.appointment.findMany({
+    where: {
+      clinicId: ctx.clinicId,
+      recurrenceGroupId: appointment.recurrenceGroupId,
+      startsAt: { gte: appointment.startsAt },
+      status: {
+        in: [AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED],
+      },
+    },
+    orderBy: { startsAt: "asc" },
+  });
+
+  if (siblings.length === 0) {
+    throw badRequest("No future series appointments to cancel");
+  }
+
+  const { recordScheduleAudit } = await import("./audit");
+  const cancelledIds: string[] = [];
+
+  for (const sibling of siblings) {
+    await prisma.appointment.update({
+      where: { id: sibling.id },
+      data: { status: AppointmentStatus.CANCELLED },
+    });
+    cancelledIds.push(sibling.id);
+    await recordScheduleAudit({
+      clinicId: ctx.clinicId,
+      appointmentId: sibling.id,
+      actorId: ctx.userId,
+      action: "series_cancelled",
+      meta: {
+        recurrenceGroupId: appointment.recurrenceGroupId,
+        fromAppointmentId: appointment.id,
+        startsAt: sibling.startsAt.toISOString(),
+      },
+    });
+  }
+
+  // Notify patient once for the anchor appointment
+  try {
+    const { sendAppointmentCancelled } = await import(
+      "@/modules/notifications/appointments"
+    );
+    await sendAppointmentCancelled(appointment.id);
+  } catch (err) {
+    console.error("Series cancel notification failed", err);
+  }
+
+  return {
+    recurrenceGroupId: appointment.recurrenceGroupId,
+    cancelledCount: cancelledIds.length,
+    cancelledIds,
+  };
 }
 
 async function createSingleStaffAppointment(
@@ -751,16 +839,23 @@ export async function listAppointmentTypes(ctx: AuthContext) {
 }
 
 export async function listPractitioners(ctx: AuthContext) {
-  return prisma.practitionerProfile.findMany({
+  const rows = await prisma.practitionerProfile.findMany({
     where: { active: true, membership: { clinicId: ctx.clinicId } },
     include: {
       availability: {
         orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }],
         select: { dayOfWeek: true, startMinute: true, endMinute: true },
       },
+      services: { select: { appointmentTypeId: true } },
     },
     orderBy: { displayName: "asc" },
   });
+  return rows.map(({ services, ...p }) => ({
+    ...p,
+    /** null = all clinic services */
+    appointmentTypeIds:
+      services.length === 0 ? null : services.map((s) => s.appointmentTypeId),
+  }));
 }
 
 export async function getPublicClinicBySlug(slug: string) {
@@ -770,7 +865,13 @@ export async function getPublicClinicBySlug(slug: string) {
       appointmentTypes: { where: { active: true, onlineBookable: true } },
       memberships: {
         where: { practitionerProfile: { active: true } },
-        include: { practitionerProfile: true },
+        include: {
+          practitionerProfile: {
+            include: {
+              services: { select: { appointmentTypeId: true } },
+            },
+          },
+        },
       },
       locations: { where: { active: true } },
     },
@@ -805,7 +906,14 @@ export async function getPublicClinicBySlug(slug: string) {
     })),
     practitioners: clinic.memberships
       .map((m) => m.practitionerProfile)
-      .filter((p): p is NonNullable<typeof p> => Boolean(p)),
+      .filter((p): p is NonNullable<typeof p> => Boolean(p))
+      .map(({ services, ...p }) => ({
+        ...p,
+        appointmentTypeIds:
+          services.length === 0
+            ? null
+            : services.map((s) => s.appointmentTypeId),
+      })),
     locations: clinic.locations,
   };
 }
@@ -852,6 +960,14 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     },
   });
   if (!practitioner) throw notFound("Practitioner not found");
+
+  const { assertPractitionerOffersType } = await import(
+    "./practitioner-services"
+  );
+  await assertPractitionerOffersType({
+    practitionerId: input.practitionerId,
+    appointmentTypeId: input.appointmentTypeId,
+  });
 
   let patient = await prisma.patient.findFirst({
     where: {
@@ -1010,6 +1126,15 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
       });
     },
   );
+
+  const { recordScheduleAudit } = await import("./audit");
+  await recordScheduleAudit({
+    clinicId: clinic.id,
+    appointmentId: appointment.id,
+    actorId: null,
+    action: "created",
+    meta: { source: "public_book", practitionerId: input.practitionerId },
+  });
 
   let confirmation: Awaited<
     ReturnType<

@@ -226,7 +226,7 @@ const noteMetaSelect = {
         select: {
           startsAt: true,
           appointmentType: { select: { name: true } },
-          practitioner: { select: { displayName: true } },
+          practitioner: { select: { id: true, displayName: true } },
         },
       },
     },
@@ -251,7 +251,7 @@ export async function getPatient(ctx: AuthContext, id: string) {
       // Metadata only — clinical bodies stay off the patient profile payload
       notes: {
         orderBy: { createdAt: "desc" },
-        take: 15,
+        take: 40,
         select: noteMetaSelect,
       },
       invoices: {
@@ -265,7 +265,17 @@ export async function getPatient(ctx: AuthContext, id: string) {
   if (!canViewNotes) {
     return { ...patient, notes: [] };
   }
-  return patient;
+  // Practitioners see own-diary note metadata only (OWNER sees all)
+  if (ctx.role === "PRACTITIONER" && ctx.practitionerProfileId) {
+    const diaryId = ctx.practitionerProfileId;
+    const notes = patient.notes
+      .filter(
+        (n) => n.visit?.appointment?.practitioner?.id === diaryId,
+      )
+      .slice(0, 15);
+    return { ...patient, notes };
+  }
+  return { ...patient, notes: patient.notes.slice(0, 15) };
 }
 
 /**

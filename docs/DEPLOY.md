@@ -82,6 +82,26 @@ npm run db:seed
 
 For a real clinic: create the clinic + owner via seed variant or admin SQL; never ship `treow-demo` to production patients.
 
+## 3b. Live ship checklist (Nguyen’s / design partner)
+
+After stacking clinical-safety + leak/live-day + re-audit improve PRs:
+
+1. Merge to `main` in order: clinical-safety → leak/live-day → re-audit-improve (or squash-equivalent tip).
+2. Deploy Vercel (`web` root). Apply schema:
+   ```bash
+   cd web && DATABASE_URL="…" npx prisma db push
+   # or migrate SQL under prisma/migrations/20261016_*
+   ```
+3. Set production env (minimum):
+   - `AUTH_SECRET`, `AUDIO_ENCRYPTION_KEY` (≥32, not demo values)
+   - `CRON_SECRET` (≥24)
+   - `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` + `EMAIL_FROM` + clinic email in Settings
+   - `NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY`
+   - Do **not** set `NEXT_PUBLIC_DEMO_LOGIN`
+   - `AI_PROVIDER=mock` until LLM DPA; deposits = Stripe or OFF
+4. Wire reminders + organise (see §4). Confirm `GET /api/v1/health` shows `cronConfigured: true` and intended `smsProvider` / `emailProvider`.
+5. Optional hardening: `npm run db:rls`; for FORCE + non-owner role see `prisma/sql/002_force_rls.sql` and ARCHITECTURE.
+
 ## 4. Jobs (cron)
 
 Set `CRON_SECRET` (≥24 chars). Vercel sends `Authorization: Bearer $CRON_SECRET`
@@ -89,7 +109,19 @@ for configured Cron Jobs.
 
 `web/vercel.json` ships a **daily** retention cron (Hobby-compatible). Hourly
 reminders and the organise drain need **Vercel Pro** (sub-daily schedules) **or**
-an external scheduler calling the same GET routes with the bearer secret:
+an external scheduler calling the same GET routes with the bearer secret.
+
+Example helper: [`web/scripts/cron-external.example.sh`](../web/scripts/cron-external.example.sh)
+
+```bash
+export APP_BASE_URL="https://…"
+export CRON_SECRET="…"
+# crontab: hourly reminders, every 5 min organise
+./web/scripts/cron-external.example.sh reminders
+./web/scripts/cron-external.example.sh organise
+```
+
+Or raw curl:
 
 ```bash
 curl -sS -H "Authorization: Bearer $CRON_SECRET" \
@@ -114,9 +146,13 @@ demo emails and the `treow-demo` password on marketing/login surfaces.
 **Deposits:** In production, `PAYMENT_PROVIDER=console` refuses to mark deposits paid
 (avoids fake money). Use Stripe, or turn deposit requirements off in clinic settings.
 
+**Rate limits:** In-memory by default. For multi-instance public book, set
+`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (shared fixed-window).
+
 Audio: set `S3_BUCKET` + `S3_REGION=eu-west-2` + keys for durable UK object storage; otherwise files stay under `web/storage/`.
 
-Optional: `cd web && npm run db:rls` applies clinic RLS policies (`prisma/sql/001_clinic_rls.sql`). App-layer `clinicId` filters remain primary; see ARCHITECTURE multi-tenancy for FORCE + non-owner role.
+Optional: `cd web && npm run db:rls` applies clinic RLS policies (`prisma/sql/001_clinic_rls.sql`).
+`APPLY_FORCE_RLS=1 npm run db:rls` also runs `002_force_rls.sql` (use only with a non-owner app role). App-layer `clinicId` filters remain primary.
 
 ## 5. Smoke after deploy
 

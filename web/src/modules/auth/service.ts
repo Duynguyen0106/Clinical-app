@@ -17,6 +17,7 @@ function clinicPayload(clinic: {
   timezone: string;
   brandColour: string | null;
   logoStorageKey: string | null;
+  calendarPrivacyMode?: "FULL_NAME" | "INITIALS";
 }) {
   return {
     id: clinic.id,
@@ -26,6 +27,7 @@ function clinicPayload(clinic: {
     brandColour: clinic.brandColour,
     hasLogo: Boolean(clinic.logoStorageKey),
     logoUrl: clinic.logoStorageKey ? "/api/v1/clinic/logo" : null,
+    calendarPrivacyMode: clinic.calendarPrivacyMode ?? "FULL_NAME",
   };
 }
 

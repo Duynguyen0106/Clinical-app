@@ -6,7 +6,8 @@ export async function exportNoteAudits(
   ctx: AuthContext,
   opts: { from?: Date; to?: Date; patientId?: string } = {},
 ) {
-  requireRole(ctx, ["OWNER", "PRACTITIONER", "RECEPTION"]);
+  // Clinical access telemetry — not for reception
+  requireRole(ctx, ["OWNER", "PRACTITIONER"]);
 
   const createdFilter =
     opts.from || opts.to

@@ -8,7 +8,7 @@ import {
 import { enforcePublicDepositLimits } from "@/server/abuse";
 
 export const POST = withPublic(async (req) => {
-  enforcePublicDepositLimits(req);
+  await enforcePublicDepositLimits(req);
   const body = (await req.json()) as {
     appointmentId?: string;
     action?: string;

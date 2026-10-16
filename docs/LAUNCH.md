@@ -10,11 +10,11 @@ Product loop: website booking → diary → visit notes → invoices · rooms ·
 
 ## Phase A — Freeze the MVP (engineering)
 
-- [ ] Merge open PRs that belong in launch (`product plan`, ops P3, brand UI)
+- [ ] Merge open PRs that belong in launch (clinical safety, leak/live-day, re-audit improve)
 - [ ] Replace generated logo with **final brand assets** in `web/public/brand/`
 - [ ] Tag a release candidate (e.g. `v0.1.0-rc1`)
 - [ ] Confirm `npm run build` + seed + smoke path on RC
-- [ ] `GET /api/v1/health` returns `ok` on production URL
+- [ ] `GET /api/v1/health` returns `ok` on production URL (`cronConfigured`, `emailProvider`, `smsProvider`)
 
 **Exit:** One deployable commit the pilot clinics will run.
 
@@ -34,6 +34,7 @@ From `docs/UK_COMPLIANCE.md`:
 - [ ] Sub-processor list written into clinic RoPA / processing record
 - [ ] Retention days set in **Settings** (default 14)
 - [ ] Strong secrets: `AUTH_SECRET`, dedicated `AUDIO_ENCRYPTION_KEY` (not the demo values)
+- [ ] Turnstile keys set for public book + forgot-password
 
 **Exit:** Written OK to process pilot patient data; AI stays mock until LLM DPA signed.
 
@@ -41,7 +42,7 @@ From `docs/UK_COMPLIANCE.md`:
 
 ## Phase C — Production environment
 
-See `docs/DEPLOY.md`. Minimum:
+See `docs/DEPLOY.md` (including §3b live ship checklist). Minimum:
 
 | Item | Target |
 |------|--------|
@@ -50,9 +51,10 @@ See `docs/DEPLOY.md`. Minimum:
 | DB | Managed Postgres + daily backups |
 | Email | `EMAIL_PROVIDER=resend` + verified domain |
 | AI | `AI_PROVIDER=mock` until DPA; then `openai` (or EU vendor) |
-| Cron | Hit `/api/v1/jobs/reminders` (email+SMS) and `/api/v1/jobs/retention` daily |
-| Env | `APP_BASE_URL`, `NODE_ENV=production` |
-| SMS | `SMS_PROVIDER=console` or `twilio` + Twilio creds |
+| Cron | External or Pro: hourly `/api/v1/jobs/reminders`, every 5m `/api/v1/jobs/organise`; daily retention in `vercel.json` |
+| Env | `APP_BASE_URL`, `NODE_ENV=production`, `CRON_SECRET` (≥24) |
+| SMS | `SMS_PROVIDER=console` (honest UI) or `twilio` + Twilio creds |
+| Abuse | Optional `UPSTASH_REDIS_REST_*` for shared rate limits |
 
 - [ ] Staging URL for internal QA
 - [ ] Production URL for pilot clinic only (no public marketing push)
@@ -68,7 +70,7 @@ See `docs/DEPLOY.md`. Minimum:
 2. Import or create ~10 patients; book a week of appointments
 3. Run **5 real visits** with recording → organised draft → sign
 4. Mark invoices paid; cancel one slot to prove waitlist offer
-5. Export note audits once from Settings
+5. Export note audits once from Settings (owner / practitioner)
 6. Capture metrics:
    - Median visit-end → signed note
    - % visits using AI draft path
@@ -85,8 +87,8 @@ Documented in Settings → **Launch support** and below:
 
 | Need | How |
 |------|-----|
-| Staff lockout | Owner resets via DB/support; add password-reset later |
-| Audit export | Settings → Export note audits |
+| Staff lockout | Owner sets temporary password on Team (revokes sessions); staff may also use forgot-password email |
+| Audit export | Settings → Export access audits (owner / practitioner) |
 | Purge audio | Settings → Run retention (owner) |
 | Incident | Email `SUPPORT_EMAIL` (env) + clinic owner |
 | Privacy request | Clinic (controller) handles; Treow assists as processor |
@@ -99,7 +101,7 @@ Documented in Settings → **Launch support** and below:
 ## Explicitly **not** required for this launch
 
 - Rooms/resources, webhooks  
-- Stripe / SMS / telehealth / Xero / body charts  
+- Stripe packs beyond deposits / SMS / telehealth / Xero / body charts  
 - Native apps, NHS DSPT, ISO 27001  
 - Public marketing site beyond the in-app home page  
 
@@ -109,9 +111,9 @@ Documented in Settings → **Launch support** and below:
 
 ```
 1. Merge RC + final logo
-2. Provision UK/EU staging (Phase C)
+2. Provision UK/EU staging (Phase C) + wire reminders/organise cron
 3. Complete Phase B checklist with clinic adviser
-4. Turn on Resend; keep AI mock
+4. Turn on Resend + Turnstile; keep AI mock
 5. Pilot 5 visits (Phase D)
 6. Only then enable real STT/LLM under signed DPA
 ```

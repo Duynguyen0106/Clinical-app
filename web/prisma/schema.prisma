@@ -112,6 +112,12 @@ enum DepositMode {
   NEW_PATIENTS
 }
 
+/// Open-desk diary: hide surnames when screens face the waiting room
+enum CalendarPrivacyMode {
+  FULL_NAME
+  INITIALS
+}
+
 enum EmploymentType {
   EMPLOYED
   SELF_EMPLOYED
@@ -172,6 +178,8 @@ model Clinic {
   depositDefaultCents Int @default(2000)
   /// Shown on public booking / manage pages
   bookingPolicyText String @default("Please give at least 24 hours’ notice to cancel or reschedule online. Late cancels and no-shows may forfeit the deposit.")
+  /// Diary display: FULL_NAME or INITIALS (open-desk privacy)
+  calendarPrivacyMode CalendarPrivacyMode @default(FULL_NAME)
   /// Treow SaaS billing (clinic → Treow monthly)
   saasPlan SaasPlan @default(PILOT)
   saasStatus SaasSubscriptionStatus @default(TRIALING)
@@ -234,6 +242,21 @@ model PractitionerProfile {
   appointments     Appointment[]
   waitlistEntries  WaitlistEntry[]
   payRates         PractitionerPayRate[]
+  /// Empty = offers all clinic services; otherwise only linked types
+  services         PractitionerService[]
+}
+
+/// Practitioner ↔ appointment type (service) mapping for booking filters
+model PractitionerService {
+  id                String @id @default(cuid())
+  practitionerId    String
+  appointmentTypeId String
+
+  practitioner    PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  appointmentType AppointmentType     @relation(fields: [appointmentTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([practitionerId, appointmentTypeId])
+  @@index([appointmentTypeId])
 }
 
 /// Rate card history — month summary uses the rate effective on each session date
@@ -373,6 +396,7 @@ model AppointmentType {
   clinic          Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   appointments    Appointment[]
   waitlistEntries WaitlistEntry[]
+  practitioners   PractitionerService[]
 
   @@index([clinicId])
 }

@@ -158,8 +158,8 @@ export async function sendBookingConfirmation(
     ]
       .filter(Boolean)
       .join(" · ");
-    await sendSms({ to: apt.patient.phone, body: smsBody });
-    smsSent = true;
+    const smsResult = await sendSms({ to: apt.patient.phone, body: smsBody });
+    smsSent = smsResult.delivered;
   }
 
   try {
@@ -263,11 +263,11 @@ export async function sendAppointmentRescheduled(opts: {
   }
 
   if (notifyPatient && apt.patient.phone) {
-    await sendSms({
+    const smsResult = await sendSms({
       to: apt.patient.phone,
       body: `${apt.clinic.name}: appointment moved to ${when} with ${apt.practitioner.displayName}. Manage: ${manageLink}`,
     });
-    patientSmsSent = true;
+    patientSmsSent = smsResult.delivered;
   }
 
   practitionerEmailSent = await notifyPractitioner(
@@ -329,11 +329,11 @@ export async function sendAppointmentCancelled(appointmentId: string) {
   }
 
   if (apt.patient.phone) {
-    await sendSms({
+    const smsResult = await sendSms({
       to: apt.patient.phone,
       body: `${apt.clinic.name}: your appointment on ${when} with ${apt.practitioner.displayName} was cancelled. Contact the clinic to rebook.`,
     });
-    patientSmsSent = true;
+    patientSmsSent = smsResult.delivered;
   }
 
   practitionerEmailSent = await notifyPractitioner(
@@ -494,13 +494,13 @@ export async function sendWaitlistOfferEmail(opts: {
   }
 
   if (opts.patientPhone) {
-    await sendSms({
+    const smsResult = await sendSms({
       to: opts.patientPhone,
       body: opts.offerUrl
         ? `${opts.clinicName}: ${opts.serviceName} free ${when}. Accept/decline: ${opts.offerUrl}`
         : `${opts.clinicName}: ${opts.serviceName} slot free ${when}. Reply to clinic soon (offer ends ~${expires}).`,
     });
-    smsSent = true;
+    smsSent = smsResult.delivered;
   }
 
   return { emailSent, smsSent, sent: emailSent || smsSent };

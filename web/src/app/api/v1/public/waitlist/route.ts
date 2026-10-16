@@ -32,7 +32,7 @@ async function loadOffer(token: string) {
 }
 
 export const GET = withPublic(async (req) => {
-  enforcePublicWaitlistLimits(req);
+  await enforcePublicWaitlistLimits(req);
   const token = new URL(req.url).searchParams.get("token");
   if (!token) throw badRequest("token required");
   const entry = await loadOffer(token);
@@ -53,7 +53,7 @@ export const GET = withPublic(async (req) => {
 });
 
 export const POST = withPublic(async (req) => {
-  enforcePublicWaitlistLimits(req);
+  await enforcePublicWaitlistLimits(req);
   const body = actionSchema.parse(await req.json());
   const entry = await loadOffer(body.token);
 

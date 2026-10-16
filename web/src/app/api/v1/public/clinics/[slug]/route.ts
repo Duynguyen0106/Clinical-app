@@ -14,14 +14,14 @@ import { clientIp } from "@/server/client-ip";
 import { assertTurnstileToken } from "@/server/turnstile";
 
 export const GET = withPublic(async (req, params) => {
-  enforcePublicClinicGetLimits(req);
+  await enforcePublicClinicGetLimits(req);
   const clinic = await getPublicClinicBySlug(params.slug);
   return jsonOk({ clinic });
 });
 
 export const POST = withPublic(async (req, params) => {
   const body = publicBookSchema.parse(await req.json());
-  enforcePublicBookLimits(req, body.patient.email);
+  await enforcePublicBookLimits(req, body.patient.email);
   await assertTurnstileToken(body.captchaToken, { ip: clientIp(req) });
   const result = await publicBook(params.slug, body);
   const appointment = result.appointment;
