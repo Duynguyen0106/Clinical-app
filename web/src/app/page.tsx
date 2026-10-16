@@ -496,7 +496,7 @@ export default function HomePage() {
             Email to start a pilot
           </a>
           <Link href="/login" className="btn-secondary">
-            Explore the demo first
+            {demoLogin ? "Explore the demo first" : "Clinic sign in"}
           </Link>
         </div>
       </section>
