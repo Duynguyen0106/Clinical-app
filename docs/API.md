@@ -28,12 +28,12 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 
 | GET | `/patients?q=&take=` | Search / list (name tokens, email, phone, NHS number) |
 | POST | `/patients` | Create `{ firstName, lastName, email?, phone?, dateOfBirth?, nhsNumber?, alerts?, gpName?, gpPractice?, gpEmail? }` |
-| GET | `/patients/:id` | Profile + booking timeline (note **metadata only**, no clinical bodies) |
+| GET | `/patients/:id` | Profile + booking timeline (note **metadata only**, no clinical bodies). **PRACTITIONER:** diary relationship required; invoices stripped; own-diary appointments/notes only |
 | GET | `/patients/:id?prep=1&source=` | Prep pack (logs `prep_opened`). Reception: bookings/alerts only. Clinicians: note stubs; bodies load on expand |
 | POST | `/patients/:id` | Clinician: `{ action: "note_expanded", noteId, source? }` — returns note sections + audits disclosure |
-| PATCH | `/patients/:id` | Update profile fields (blank email/DOB cleared to null) |
-| DELETE | `/patients/:id` | Delete patient (blocked if signed notes / upcoming appts; `?force=1` owner only) |
-| POST | `/patients/:id/consents` | `{ type, granted, method }` |
+| PATCH | `/patients/:id` | Update profile fields (blank email/DOB cleared to null). Practitioners: own-diary patients only |
+| DELETE | `/patients/:id` | **OWNER/RECEPTION** — blocked if signed notes / upcoming appts; `?force=1` owner only |
+| POST | `/patients/:id/consents` | `{ type, granted, method }` — practitioners: own-diary patients only |
 
 Staff booking: Calendar empty cell → book sheet with patient lookup (`/app/calendar`). New patients use the same first-time intake as online booking (name, email, phone, reason, privacy + recording consents). Directory create/edit: `/app/patients`.
 
@@ -111,12 +111,12 @@ Pay modes: `NONE` · `SESSION` · `DAY` · `FEE_SHARE`. Employment: `EMPLOYED` �
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/health` | Liveness (no auth); DB check |
-| GET | `/waitlist?status=` | Queue (excludes cancelled by default) |
-| POST | `/waitlist` | Add `{ patientId, appointmentTypeId, practitionerId? }` |
+| GET | `/waitlist?status=` | Queue (excludes cancelled by default) — **OWNER/RECEPTION** |
+| POST | `/waitlist` | Add `{ patientId, appointmentTypeId, practitionerId? }` — **OWNER/RECEPTION** |
 | POST | `/waitlist/:id` | `{ action: "accept" \| "decline" }` for offers |
 | DELETE | `/waitlist/:id` | Remove from waitlist |
 | GET | `/ops/tasks` | Unsigned notes, unpaid invoices, missing intake |
-| GET | `/ops/pulse` | Week utilisation, rebook %, unsigned, unpaid, new/return |
+| GET | `/ops/pulse` | Week utilisation, rebook %, unsigned, unpaid, new/return — **OWNER/RECEPTION** |
 | GET | `/ops/support` | Support email + launch pointers (staff) |
 
 Cancelling an appointment (`PATCH /appointments/:id` with `status: CANCELLED`) auto-offers the freed slot to the next matching waitlist entry (email + `OFFERED` status).
@@ -152,10 +152,10 @@ Roles (enforced on routes): **OWNER** / **PRACTITIONER** for clinical **read and
 
 ## Invoices (mark paid only)
 
-| GET | `/invoices?status=` | List |
-| POST | `/invoices` | Create (GBP) |
-| POST | `/invoices/:id/pay` | Mark paid `{ method }` |
-| DELETE | `/invoices/:id/pay` | Mark unpaid |
+| GET | `/invoices?status=` | List — **OWNER/RECEPTION** |
+| POST | `/invoices` | Create (GBP) — **OWNER/RECEPTION** |
+| POST | `/invoices/:id/pay` | Mark paid `{ method }` — **OWNER/RECEPTION** |
+| DELETE | `/invoices/:id/pay` | Mark unpaid — **OWNER/RECEPTION** |
 
 ## Setup
 

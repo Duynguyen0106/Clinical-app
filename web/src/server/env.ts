@@ -19,9 +19,9 @@ export function assertProductionSecrets() {
   }
 
   const audio = process.env.AUDIO_ENCRYPTION_KEY?.trim();
-  if (audio && (audio.length < 32 || DEMO_SECRETS.has(audio))) {
+  if (!audio || audio.length < 32 || DEMO_SECRETS.has(audio)) {
     throw new Error(
-      "AUDIO_ENCRYPTION_KEY must be ≥32 chars and not a demo placeholder.",
+      "Production requires dedicated AUDIO_ENCRYPTION_KEY (≥32 chars, not the demo value or AUTH_SECRET fallback).",
     );
   }
 

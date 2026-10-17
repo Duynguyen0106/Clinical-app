@@ -11,7 +11,7 @@ export function getCronSecret() {
 
 export function isCronAuthorized(req: Request): boolean {
   const secret = getCronSecret();
-  if (!secret || secret.length < 16) return false;
+  if (!secret || secret.length < 24) return false;
 
   const auth = req.headers.get("authorization") ?? "";
   if (!auth.startsWith("Bearer ")) return false;

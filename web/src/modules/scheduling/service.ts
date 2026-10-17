@@ -12,6 +12,8 @@ import { assertWithinAvailability } from "./availability";
 import { listClinicSlots } from "./slots";
 import { intervalsOverlap, withBuffers } from "./conflict";
 import { withScheduleLocks } from "./locks";
+import { addClinicCalendarDays } from "./clinic-time";
+import { withClinicTransaction } from "@/server/clinic-rls";
 
 const appointmentStatuses = [
   "BOOKED",
@@ -271,6 +273,12 @@ export async function createAppointment(
       ? `series_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
       : null;
 
+  const clinicTz = await prisma.clinic.findUnique({
+    where: { id: ctx.clinicId },
+    select: { timezone: true },
+  });
+  const timeZone = clinicTz?.timezone ?? "Europe/London";
+
   const { recordScheduleAudit } = await import("./audit");
   const createdIds: string[] = [];
   let firstAppointment: Awaited<
@@ -280,10 +288,10 @@ export async function createAppointment(
 
   const firstStarts = new Date(input.startsAt);
   for (let i = 0; i < weeklyCount; i++) {
-    const startsAt = new Date(
-      firstStarts.getTime() +
-        i * intervalWeeks * 7 * 24 * 60 * 60 * 1000,
-    );
+    const startsAt =
+      i === 0
+        ? firstStarts
+        : addClinicCalendarDays(firstStarts, i * intervalWeeks * 7, timeZone);
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
 
     try {
@@ -401,12 +409,15 @@ export async function cancelFutureSeries(ctx: AuthContext, id: string) {
   }
 
   const { recordScheduleAudit } = await import("./audit");
+  const { offerSlotToWaitlist } = await import("./waitlist");
   const cancelledIds: string[] = [];
 
   for (const sibling of siblings) {
-    await prisma.appointment.update({
-      where: { id: sibling.id },
-      data: { status: AppointmentStatus.CANCELLED },
+    await withClinicTransaction(ctx.clinicId, async (tx) => {
+      await tx.appointment.update({
+        where: { id: sibling.id },
+        data: { status: AppointmentStatus.CANCELLED },
+      });
     });
     cancelledIds.push(sibling.id);
     await recordScheduleAudit({
@@ -420,9 +431,21 @@ export async function cancelFutureSeries(ctx: AuthContext, id: string) {
         startsAt: sibling.startsAt.toISOString(),
       },
     });
+    try {
+      await offerSlotToWaitlist({
+        clinicId: ctx.clinicId,
+        appointmentTypeId: sibling.appointmentTypeId,
+        practitionerId: sibling.practitionerId,
+        startsAt: sibling.startsAt,
+        endsAt: sibling.endsAt,
+        sourceAppointmentId: sibling.id,
+      });
+    } catch (err) {
+      console.error("Waitlist offer after series cancel failed", err);
+    }
   }
 
-  // Notify patient once for the anchor appointment
+  // Notify patient once for the anchor; later slots are covered by waitlist offers
   try {
     const { sendAppointmentCancelled } = await import(
       "@/modules/notifications/appointments"
@@ -1198,49 +1221,51 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     .filter(Boolean)
     .join(" · ");
 
-  if (!patient) {
-    patient = await prisma.patient.create({
-      data: {
-        clinicId: clinic.id,
-        firstName: input.patient.firstName,
-        lastName: input.patient.lastName,
-        email: input.patient.email,
-        phone: input.patient.phone ?? null,
-        alerts: alerts || null,
-      },
-    });
-  } else {
-    // Match by email and attach the booking only — never overwrite
-    // demographics or clinical alerts from an unauthenticated form.
-    if (!patient.phone && input.patient.phone) {
-      patient = await prisma.patient.update({
-        where: { id: patient.id },
+  patient = await withClinicTransaction(clinic.id, async (tx) => {
+    let row = patient;
+    if (!row) {
+      row = await tx.patient.create({
+        data: {
+          clinicId: clinic.id,
+          firstName: input.patient.firstName,
+          lastName: input.patient.lastName,
+          email: input.patient.email,
+          phone: input.patient.phone ?? null,
+          alerts: alerts || null,
+        },
+      });
+    } else if (!row.phone && input.patient.phone) {
+      // Match by email and attach the booking only — never overwrite
+      // demographics or clinical alerts from an unauthenticated form.
+      row = await tx.patient.update({
+        where: { id: row.id },
         data: { phone: input.patient.phone },
       });
     }
-  }
 
-  if (input.intake?.privacyConsent) {
-    await prisma.patientConsent.create({
-      data: {
-        patientId: patient.id,
-        type: "PRIVACY_POLICY",
-        granted: true,
-        method: "online_form",
-      },
-    });
-  }
-  if (input.intake?.recordingConsentPreferred) {
-    await prisma.patientConsent.create({
-      data: {
-        patientId: patient.id,
-        type: "RECORDING",
-        granted: true,
-        method: "online_form",
-        meta: { preferred: true, confirmAtVisit: true } as object,
-      },
-    });
-  }
+    if (input.intake?.privacyConsent) {
+      await tx.patientConsent.create({
+        data: {
+          patientId: row.id,
+          type: "PRIVACY_POLICY",
+          granted: true,
+          method: "online_form",
+        },
+      });
+    }
+    if (input.intake?.recordingConsentPreferred) {
+      await tx.patientConsent.create({
+        data: {
+          patientId: row.id,
+          type: "RECORDING",
+          granted: true,
+          method: "online_form",
+          meta: { preferred: true, confirmAtVisit: true } as object,
+        },
+      });
+    }
+    return row;
+  });
 
   const startsAt = new Date(input.startsAt);
   const endsAt = new Date(
@@ -1372,7 +1397,9 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
       const { createDepositCheckout } = await import(
         "@/modules/billing/deposits"
       );
-      depositCheckout = await createDepositCheckout(appointment.id);
+      depositCheckout = await createDepositCheckout({
+        appointmentId: appointment.id,
+      });
     } catch (err) {
       console.error("Deposit checkout failed", err);
     }

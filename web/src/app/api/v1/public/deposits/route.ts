@@ -11,17 +11,19 @@ export const POST = withPublic(async (req) => {
   await enforcePublicDepositLimits(req);
   const body = (await req.json()) as {
     appointmentId?: string;
+    token?: string;
     action?: string;
     sessionId?: string;
   };
-  if (!body.appointmentId) throw badRequest("appointmentId required");
+
+  if (!body.token) throw badRequest("Manage token required");
 
   // Verify Stripe Checkout session — never trust a bare mark_paid from the client
   if (body.action === "verify_session") {
     if (!body.sessionId) throw badRequest("sessionId required");
     const result = await verifyStripeDepositSession({
       sessionId: body.sessionId,
-      appointmentId: body.appointmentId,
+      token: body.token,
     });
     return jsonOk(result);
   }
@@ -32,6 +34,9 @@ export const POST = withPublic(async (req) => {
     );
   }
 
-  const result = await createDepositCheckout(body.appointmentId);
+  const result = await createDepositCheckout({
+    token: body.token,
+    appointmentId: body.appointmentId,
+  });
   return jsonOk(result);
 });

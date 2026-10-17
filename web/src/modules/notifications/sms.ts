@@ -55,8 +55,10 @@ export async function sendSms(message: SmsMessage): Promise<SmsSendResult> {
     return { provider: "twilio", to, delivered: true };
   }
 
-  console.log(
-    `[sms:console] to=${to}\n${message.body}\n`,
-  );
+  if (process.env.NODE_ENV === "production") {
+    console.log(`[sms:console] to=${to} (body redacted)`);
+  } else {
+    console.log(`[sms:console] to=${to}\n${message.body}\n`);
+  }
   return { provider: "console", to, delivered: false };
 }

@@ -1,6 +1,6 @@
 import { withAuth } from "@/server/api";
 import { jsonOk } from "@/server/http";
-import { requireStaff } from "@/server/rbac";
+import { requireOwnerOrReception } from "@/server/rbac";
 import {
   acceptWaitlistOffer,
   cancelWaitlistEntry,
@@ -8,13 +8,13 @@ import {
 } from "@/modules/scheduling/waitlist";
 
 export const DELETE = withAuth(async (_req, ctx, params) => {
-  requireStaff(ctx);
+  requireOwnerOrReception(ctx);
   const entry = await cancelWaitlistEntry(ctx, params.id);
   return jsonOk({ entry });
 });
 
 export const POST = withAuth(async (req, ctx, params) => {
-  requireStaff(ctx);
+  requireOwnerOrReception(ctx);
   const body = (await req.json().catch(() => ({}))) as { action?: string };
   if (body.action === "accept") {
     const result = await acceptWaitlistOffer(ctx, params.id);

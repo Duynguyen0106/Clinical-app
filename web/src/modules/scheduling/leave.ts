@@ -7,6 +7,7 @@ import {
   createLeaveRequestSchema,
   reviewLeaveRequestSchema,
 } from "@/modules/scheduling/leave-schema";
+import { withClinicTransaction } from "@/server/clinic-rls";
 
 export {
   createLeaveRequestSchema,
@@ -110,30 +111,32 @@ export async function createLeaveRequest(
   // Owner/reception can grant leave immediately; practitioners need approval
   const autoApprove = ctx.role === "OWNER" || ctx.role === "RECEPTION";
 
-  const request = await prisma.leaveRequest.create({
-    data: {
-      clinicId: ctx.clinicId,
-      practitionerId: practitioner.id,
-      startDate,
-      endDate,
-      reason: input.reason.trim() || "Annual leave",
-      allDay,
-      startMinute: allDay ? null : (input.startMinute ?? null),
-      endMinute: allDay ? null : (input.endMinute ?? null),
-      status: autoApprove
-        ? LeaveRequestStatus.APPROVED
-        : LeaveRequestStatus.PENDING,
-      requestedByUserId: ctx.userId,
-      ...(autoApprove
-        ? {
-            reviewedByUserId: ctx.userId,
-            reviewedAt: new Date(),
-          }
-        : {}),
-    },
-    include: {
-      practitioner: { select: { id: true, displayName: true, colour: true } },
-    },
+  const request = await withClinicTransaction(ctx.clinicId, async (tx) => {
+    return tx.leaveRequest.create({
+      data: {
+        clinicId: ctx.clinicId,
+        practitionerId: practitioner.id,
+        startDate,
+        endDate,
+        reason: input.reason.trim() || "Annual leave",
+        allDay,
+        startMinute: allDay ? null : (input.startMinute ?? null),
+        endMinute: allDay ? null : (input.endMinute ?? null),
+        status: autoApprove
+          ? LeaveRequestStatus.APPROVED
+          : LeaveRequestStatus.PENDING,
+        requestedByUserId: ctx.userId,
+        ...(autoApprove
+          ? {
+              reviewedByUserId: ctx.userId,
+              reviewedAt: new Date(),
+            }
+          : {}),
+      },
+      include: {
+        practitioner: { select: { id: true, displayName: true, colour: true } },
+      },
+    });
   });
 
   if (autoApprove) {
@@ -220,14 +223,16 @@ export async function approveLeaveRequest(
     throw badRequest("Only pending leave can be approved");
   }
 
-  await prisma.leaveRequest.update({
-    where: { id: request.id },
-    data: {
-      status: LeaveRequestStatus.APPROVED,
-      reviewedByUserId: ctx.userId,
-      reviewedAt: new Date(),
-      reviewNote: note?.trim() || null,
-    },
+  await withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.leaveRequest.update({
+      where: { id: request.id },
+      data: {
+        status: LeaveRequestStatus.APPROVED,
+        reviewedByUserId: ctx.userId,
+        reviewedAt: new Date(),
+        reviewNote: note?.trim() || null,
+      },
+    });
   });
 
   await materialiseApprovedLeave(request.id);
@@ -257,17 +262,19 @@ export async function rejectLeaveRequest(
     throw badRequest("Only pending leave can be rejected");
   }
 
-  return prisma.leaveRequest.update({
-    where: { id: request.id },
-    data: {
-      status: LeaveRequestStatus.REJECTED,
-      reviewedByUserId: ctx.userId,
-      reviewedAt: new Date(),
-      reviewNote: note?.trim() || null,
-    },
-    include: {
-      practitioner: { select: { id: true, displayName: true, colour: true } },
-    },
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    return tx.leaveRequest.update({
+      where: { id: request.id },
+      data: {
+        status: LeaveRequestStatus.REJECTED,
+        reviewedByUserId: ctx.userId,
+        reviewedAt: new Date(),
+        reviewNote: note?.trim() || null,
+      },
+      include: {
+        practitioner: { select: { id: true, displayName: true, colour: true } },
+      },
+    });
   });
 }
 
@@ -299,24 +306,26 @@ export async function cancelLeaveRequest(ctx: AuthContext, id: string) {
     throw forbidden("Ask reception or an owner to cancel approved leave");
   }
 
-  await prisma.availabilityException.deleteMany({
-    where: { leaveRequestId: request.id },
-  });
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.availabilityException.deleteMany({
+      where: { leaveRequestId: request.id },
+    });
 
-  return prisma.leaveRequest.update({
-    where: { id: request.id },
-    data: {
-      status: LeaveRequestStatus.CANCELLED,
-      ...(isOwnerOrReception
-        ? {
-            reviewedByUserId: ctx.userId,
-            reviewedAt: new Date(),
-          }
-        : {}),
-    },
-    include: {
-      practitioner: { select: { id: true, displayName: true, colour: true } },
-    },
+    return tx.leaveRequest.update({
+      where: { id: request.id },
+      data: {
+        status: LeaveRequestStatus.CANCELLED,
+        ...(isOwnerOrReception
+          ? {
+              reviewedByUserId: ctx.userId,
+              reviewedAt: new Date(),
+            }
+          : {}),
+      },
+      include: {
+        practitioner: { select: { id: true, displayName: true, colour: true } },
+      },
+    });
   });
 }
 

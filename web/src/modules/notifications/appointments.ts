@@ -420,9 +420,12 @@ export async function sendUpcomingReminders(
       });
       // Only mark sent when a real provider accepted the message
       if (emailResult.delivered) {
-        await prisma.appointment.update({
-          where: { id: apt.id },
-          data: { reminderSentAt: new Date() },
+        const { withClinicTransaction } = await import("@/server/clinic-rls");
+        await withClinicTransaction(apt.clinicId, async (tx) => {
+          await tx.appointment.update({
+            where: { id: apt.id },
+            data: { reminderSentAt: new Date() },
+          });
         });
         emailIds.push(apt.id);
       }
@@ -434,9 +437,12 @@ export async function sendUpcomingReminders(
         body: `${apt.clinic.name} reminder: ${when} with ${apt.practitioner.displayName}.${roomBit} Manage: ${manageLink}`.trim(),
       });
       if (smsResult.delivered) {
-        await prisma.appointment.update({
-          where: { id: apt.id },
-          data: { smsReminderSentAt: new Date() },
+        const { withClinicTransaction } = await import("@/server/clinic-rls");
+        await withClinicTransaction(apt.clinicId, async (tx) => {
+          await tx.appointment.update({
+            where: { id: apt.id },
+            data: { smsReminderSentAt: new Date() },
+          });
         });
         smsIds.push(apt.id);
       }

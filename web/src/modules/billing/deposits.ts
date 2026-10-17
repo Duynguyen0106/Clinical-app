@@ -2,18 +2,60 @@
  * Deposit payments — PAYMENT_PROVIDER=console|stripe
  * Console marks deposits paid immediately (pilot / demo only — blocked in production).
  * Stripe returns a Checkout URL; PAID is set only via verified session or webhook.
+ * Public checkout/verify require a manage token (no bare appointment UUID fishing).
  */
 import { DepositStatus, AppointmentStatus } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { badRequest, notFound, unauthorized } from "@/server/errors";
 import { getAppBaseUrl } from "@/server/env";
 import { withClinicTransaction } from "@/server/clinic-rls";
+import {
+  createManageToken,
+  manageTokenTtlMs,
+  verifyManageToken,
+} from "@/modules/scheduling/manage";
 
 export function getPaymentProvider() {
   return (process.env.PAYMENT_PROVIDER ?? "console").toLowerCase();
 }
 
-export async function createDepositCheckout(appointmentId: string) {
+async function resolveManageToken(opts: {
+  token?: string;
+  appointmentId?: string;
+}): Promise<{ appointmentId: string; token: string }> {
+  if (opts.token) {
+    const { appointmentId } = verifyManageToken(opts.token);
+    if (opts.appointmentId && opts.appointmentId !== appointmentId) {
+      throw unauthorized("Manage token does not match this appointment");
+    }
+    return { appointmentId, token: opts.token };
+  }
+  if (!opts.appointmentId) {
+    throw badRequest("Manage token required");
+  }
+  // Trusted server paths (post-book) mint a short-lived manage token
+  const apt = await prisma.appointment.findUnique({
+    where: { id: opts.appointmentId },
+    select: {
+      id: true,
+      clinic: { select: { cancelMinNoticeHours: true } },
+    },
+  });
+  if (!apt) throw notFound("Appointment not found");
+  const hours = apt.clinic.cancelMinNoticeHours ?? 24;
+  const token = createManageToken(
+    apt.id,
+    Date.now() + manageTokenTtlMs(hours),
+  );
+  return { appointmentId: apt.id, token };
+}
+
+export async function createDepositCheckout(opts: {
+  token?: string;
+  /** Trusted server-only: mint token when omitted */
+  appointmentId?: string;
+}) {
+  const { appointmentId, token } = await resolveManageToken(opts);
   const apt = await prisma.appointment.findUnique({
     where: { id: appointmentId },
     include: {
@@ -36,7 +78,7 @@ export async function createDepositCheckout(appointmentId: string) {
 
   const provider = getPaymentProvider();
   const pounds = (apt.depositCents / 100).toFixed(2);
-  const successUrl = `${getAppBaseUrl()}/book/manage/deposit-success?appointmentId=${apt.id}`;
+  const successUrl = `${getAppBaseUrl()}/book/manage/deposit-success?token=${encodeURIComponent(token)}`;
   const cancelUrl = `${getAppBaseUrl()}/book/${apt.clinic.slug}`;
 
   if (provider === "stripe") {
@@ -94,16 +136,18 @@ export async function createDepositCheckout(appointmentId: string) {
     );
   }
 
-  await prisma.appointment.update({
-    where: { id: apt.id },
-    data: {
-      depositStatus: DepositStatus.PAID,
-      depositPaidAt: new Date(),
-      status: AppointmentStatus.CONFIRMED,
-    },
+  await withClinicTransaction(apt.clinicId, async (tx) => {
+    await tx.appointment.update({
+      where: { id: apt.id },
+      data: {
+        depositStatus: DepositStatus.PAID,
+        depositPaidAt: new Date(),
+        status: AppointmentStatus.CONFIRMED,
+      },
+    });
   });
   console.info(
-    `[payments:console] deposit £${pounds} marked PAID for apt=${apt.id} (${apt.patient.email})`,
+    `[payments:console] deposit £${pounds} marked PAID for apt=${apt.id}`,
   );
   return {
     status: "paid" as const,
@@ -134,12 +178,14 @@ export async function markDepositPaid(appointmentId: string) {
 
 /**
  * Verify a Stripe Checkout session and mark the deposit paid.
- * Public success page calls this with session_id from the redirect.
+ * Public success page calls this with session_id + manage token.
+ * Response is minimal — no raw appointment row.
  */
 export async function verifyStripeDepositSession(opts: {
   sessionId: string;
-  appointmentId: string;
+  token: string;
 }) {
+  const { appointmentId } = verifyManageToken(opts.token);
   const key = process.env.STRIPE_SECRET_KEY?.trim();
   if (!key) throw badRequest("STRIPE_SECRET_KEY is not configured");
 
@@ -163,23 +209,28 @@ export async function verifyStripeDepositSession(opts: {
   };
 
   const metaApt = session.metadata?.appointmentId;
-  if (!metaApt || metaApt !== opts.appointmentId) {
+  if (!metaApt || metaApt !== appointmentId) {
     throw unauthorized("Session does not match this appointment");
   }
   if (session.mode && session.mode !== "payment") {
     throw badRequest("Unexpected checkout mode");
   }
   if (session.payment_status !== "paid") {
+    const apt = await prisma.appointment.findUniqueOrThrow({
+      where: { id: appointmentId },
+      select: { depositCents: true, depositStatus: true },
+    });
     return {
       status: "unpaid" as const,
-      appointment: await prisma.appointment.findUniqueOrThrow({
-        where: { id: opts.appointmentId },
-      }),
+      depositCents: apt.depositCents,
     };
   }
 
-  const appointment = await markDepositPaid(opts.appointmentId);
-  return { status: "paid" as const, appointment };
+  const appointment = await markDepositPaid(appointmentId);
+  return {
+    status: "paid" as const,
+    depositCents: appointment.depositCents,
+  };
 }
 
 /** Apply deposit paid from Stripe webhook checkout.session.completed */
@@ -205,11 +256,13 @@ export async function waiveDeposit(
     where: { id: appointmentId, clinicId },
   });
   if (!apt) throw notFound("Appointment not found");
-  return prisma.appointment.update({
-    where: { id: apt.id },
-    data: {
-      depositStatus: DepositStatus.WAIVED,
-      depositPaidAt: null,
-    },
+  return withClinicTransaction(clinicId, async (tx) => {
+    return tx.appointment.update({
+      where: { id: apt.id },
+      data: {
+        depositStatus: DepositStatus.WAIVED,
+        depositPaidAt: null,
+      },
+    });
   });
 }

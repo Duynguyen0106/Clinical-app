@@ -67,9 +67,15 @@ export async function sendEmail(message: EmailMessage): Promise<EmailSendResult>
     return { provider: "resend", delivered: true };
   }
 
-  console.log(
-    `[email:console] to=${message.to} subject=${JSON.stringify(message.subject)}\n${message.text}\n`,
-  );
+  if (process.env.NODE_ENV === "production") {
+    console.log(
+      `[email:console] to=${message.to} subject=${JSON.stringify(message.subject)} (body redacted)`,
+    );
+  } else {
+    console.log(
+      `[email:console] to=${message.to} subject=${JSON.stringify(message.subject)}\n${message.text}\n`,
+    );
+  }
   return { provider: "console", delivered: false };
 }
 
