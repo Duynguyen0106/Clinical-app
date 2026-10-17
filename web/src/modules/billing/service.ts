@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
 import { requirePatient } from "@/modules/patients/service";
 import { clinicLogoDataUrl } from "@/modules/clinic/profile";
+import { withClinicTransaction } from "@/server/clinic-rls";
 
 export const createInvoiceSchema = z.object({
   patientId: z.string().min(1),
@@ -94,20 +95,22 @@ export async function ensureInvoiceForAppointment(
     );
   }
 
-  return prisma.invoice.create({
-    data: {
-      clinicId: ctx.clinicId,
-      patientId: appointment.patientId,
-      appointmentId: appointment.id,
-      amountCents,
-      currency: "GBP",
-      status: InvoiceStatus.SENT,
-      issuedAt: new Date(),
-    },
-    include: {
-      patient: { select: { id: true, firstName: true, lastName: true } },
-      payments: true,
-    },
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    return tx.invoice.create({
+      data: {
+        clinicId: ctx.clinicId,
+        patientId: appointment.patientId,
+        appointmentId: appointment.id,
+        amountCents,
+        currency: "GBP",
+        status: InvoiceStatus.SENT,
+        issuedAt: new Date(),
+      },
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true } },
+        payments: true,
+      },
+    });
   });
 }
 
@@ -140,20 +143,22 @@ export async function createInvoice(
     if (!apt) throw notFound("Appointment not found");
   }
 
-  return prisma.invoice.create({
-    data: {
-      clinicId: ctx.clinicId,
-      patientId: input.patientId,
-      appointmentId: input.appointmentId ?? null,
-      amountCents: input.amountCents,
-      currency: input.currency ?? "GBP",
-      status: InvoiceStatus.SENT,
-      issuedAt: new Date(),
-    },
-    include: {
-      patient: { select: { id: true, firstName: true, lastName: true } },
-      payments: true,
-    },
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    return tx.invoice.create({
+      data: {
+        clinicId: ctx.clinicId,
+        patientId: input.patientId,
+        appointmentId: input.appointmentId ?? null,
+        amountCents: input.amountCents,
+        currency: input.currency ?? "GBP",
+        status: InvoiceStatus.SENT,
+        issuedAt: new Date(),
+      },
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true } },
+        payments: true,
+      },
+    });
   });
 }
 
@@ -188,7 +193,7 @@ export async function markInvoicePaid(
 
   const amount = input.amountCents ?? invoice.amountCents;
 
-  return prisma.$transaction(async (tx) => {
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
     await tx.payment.create({
       data: {
         invoiceId: invoice.id,
@@ -220,7 +225,7 @@ export async function markInvoiceUnpaid(ctx: AuthContext, id: string) {
     throw badRequest("Cannot unpay a void invoice");
   }
 
-  return prisma.$transaction(async (tx) => {
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
     await tx.payment.deleteMany({ where: { invoiceId: invoice.id } });
     return tx.invoice.update({
       where: { id: invoice.id },

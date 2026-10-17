@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  addClinicCalendarDays,
   clinicDateKey,
   clinicDayOfWeek,
   clinicLocalDateTime,
@@ -30,6 +31,17 @@ describe("clinic-time helpers (Europe/London BST)", () => {
     assert.equal(clinicMinutesFromMidnight(londonNine, TZ), 9 * 60);
     assert.equal(clinicDateKey(londonNine, TZ), "2026-10-20");
     assert.equal(clinicDayOfWeek(londonNine, TZ), 2); // Tuesday
+  });
+
+  it("keeps wall-clock 10:00 across UK spring DST when adding 7 days", () => {
+    // 2026-03-22 10:00 GMT → +7 days lands after clocks spring forward (29 Mar)
+    const first = clinicLocalDateTime("2026-03-22", 10 * 60, TZ);
+    const next = addClinicCalendarDays(first, 7, TZ);
+    assert.equal(clinicDateKey(next, TZ), "2026-03-29");
+    assert.equal(clinicMinutesFromMidnight(next, TZ), 10 * 60);
+    // Raw ms +7d would still be 10:00 GMT = 11:00 BST
+    const naive = new Date(first.getTime() + 7 * 24 * 60 * 60_000);
+    assert.equal(clinicMinutesFromMidnight(naive, TZ), 11 * 60);
   });
 });
 

@@ -19,7 +19,7 @@ As of 2026-10-16. Assumes locked decisions (UK, mixed MSK, PWA) and shipped back
 | SMS | Done (`SMS_PROVIDER=console|twilio`); console is honest (no false “sent”) |
 | Deposits | Stripe Checkout + session verify; keep mode OFF until Stripe live |
 
-**Next product focus:** Design-partner **launch** — see `docs/LAUNCH.md` (merge tip stack #63–#66 + diary-scope, UK/EU host, DPAs, pilot 5 visits).
+**Next product focus:** Design-partner **launch** — see `docs/LAUNCH.md` (merge tip stack #63–#67 + money-desk-scope, UK/EU host, DPAs, pilot 5 visits).
 
 ### P1 status
 - Week calendar + drag reschedule — done

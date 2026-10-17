@@ -8,15 +8,15 @@ import { api, ApiError } from "@/lib/api";
 
 function DepositSuccessBody() {
   const params = useSearchParams();
-  const appointmentId = params.get("appointmentId");
+  const token = params.get("token");
   const sessionId = params.get("session_id");
   const [status, setStatus] = useState<"checking" | "paid" | "pending" | "error">(
-    sessionId && appointmentId ? "checking" : "pending",
+    sessionId && token ? "checking" : "pending",
   );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!sessionId || !appointmentId) return;
+    if (!sessionId || !token) return;
     let cancelled = false;
     void api<{ status: string }>(
       "/public/deposits",
@@ -26,7 +26,7 @@ function DepositSuccessBody() {
         body: JSON.stringify({
           action: "verify_session",
           sessionId,
-          appointmentId,
+          token,
         }),
       },
     )
@@ -42,7 +42,7 @@ function DepositSuccessBody() {
     return () => {
       cancelled = true;
     };
-  }, [sessionId, appointmentId]);
+  }, [sessionId, token]);
 
   return (
     <main className="book-shell">
@@ -65,11 +65,6 @@ function DepositSuccessBody() {
               ? "Please wait while we confirm your card payment with the bank."
               : "Thank you — your card payment was submitted. The clinic will confirm your appointment shortly."}
         </p>
-        {appointmentId ? (
-          <p className="muted" style={{ fontSize: "0.85rem" }}>
-            Reference: {appointmentId.slice(0, 8)}…
-          </p>
-        ) : null}
         <p className="muted">
           You should also receive a booking confirmation email if the clinic has
           email delivery enabled.

@@ -37,3 +37,21 @@ export function clinicLocalDateTime(
 export function utcDateKey(d: Date) {
   return d.toISOString().slice(0, 10);
 }
+
+/**
+ * Add whole calendar days in the clinic timezone, keeping the same local
+ * wall-clock time (safe across UK DST — unlike raw `7 * 24h` ms math).
+ */
+export function addClinicCalendarDays(
+  date: Date,
+  days: number,
+  timeZone: string,
+) {
+  const key = clinicDateKey(date, timeZone);
+  const minutes = clinicMinutesFromMidnight(date, timeZone);
+  const [y, m, d] = key.split("-").map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  utc.setUTCDate(utc.getUTCDate() + days);
+  const newKey = utc.toISOString().slice(0, 10);
+  return clinicLocalDateTime(newKey, minutes, timeZone);
+}

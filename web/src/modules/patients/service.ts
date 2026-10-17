@@ -264,11 +264,12 @@ export async function getPatient(ctx: AuthContext, id: string) {
   if (!patient) throw notFound("Patient not found");
   // Reception must not receive note rows (need-to-know)
   if (!canViewNotes) {
-    return { ...patient, notes: [] };
+    return { ...patient, notes: [], invoices: patient.invoices };
   }
-  // Practitioners: own-diary notes + appointments only (alerts kept for safety)
-  if (ctx.role === "PRACTITIONER" && ctx.practitionerProfileId) {
-    const diaryId = ctx.practitionerProfileId;
+  // Practitioners: own-diary relationship required; no clinic-wide invoices
+  if (ctx.role === "PRACTITIONER") {
+    await assertPractitionerDiaryPatient(ctx, id);
+    const diaryId = ctx.practitionerProfileId!;
     const notes = patient.notes
       .filter(
         (n) => n.visit?.appointment?.practitioner?.id === diaryId,
@@ -277,7 +278,7 @@ export async function getPatient(ctx: AuthContext, id: string) {
     const appointments = patient.appointments.filter(
       (a) => a.practitioner.id === diaryId,
     );
-    return { ...patient, notes, appointments };
+    return { ...patient, notes, appointments, invoices: [] };
   }
   return { ...patient, notes: patient.notes.slice(0, 15) };
 }
@@ -473,20 +474,22 @@ export async function createPatient(
   ctx: AuthContext,
   input: z.infer<typeof createPatientSchema>,
 ) {
-  return prisma.patient.create({
-    data: {
-      clinicId: ctx.clinicId,
-      firstName: input.firstName,
-      lastName: input.lastName,
-      email: input.email ?? null,
-      phone: input.phone ?? null,
-      dateOfBirth: parseDob(input.dateOfBirth),
-      alerts: input.alerts ?? null,
-      gpName: input.gpName ?? null,
-      gpPractice: input.gpPractice ?? null,
-      gpEmail: input.gpEmail ?? null,
-      nhsNumber: input.nhsNumber ?? null,
-    },
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    return tx.patient.create({
+      data: {
+        clinicId: ctx.clinicId,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email: input.email ?? null,
+        phone: input.phone ?? null,
+        dateOfBirth: parseDob(input.dateOfBirth),
+        alerts: input.alerts ?? null,
+        gpName: input.gpName ?? null,
+        gpPractice: input.gpPractice ?? null,
+        gpEmail: input.gpEmail ?? null,
+        nhsNumber: input.nhsNumber ?? null,
+      },
+    });
   });
 }
 
@@ -504,22 +507,27 @@ export async function updatePatient(
   input: z.infer<typeof updatePatientSchema>,
 ) {
   await assertPatientInClinic(ctx.clinicId, id);
-  return prisma.patient.update({
-    where: { id },
-    data: {
-      ...(input.firstName !== undefined ? { firstName: input.firstName } : {}),
-      ...(input.lastName !== undefined ? { lastName: input.lastName } : {}),
-      ...(input.email !== undefined ? { email: input.email } : {}),
-      ...(input.phone !== undefined ? { phone: input.phone } : {}),
-      ...(input.alerts !== undefined ? { alerts: input.alerts } : {}),
-      ...(input.gpName !== undefined ? { gpName: input.gpName } : {}),
-      ...(input.gpPractice !== undefined ? { gpPractice: input.gpPractice } : {}),
-      ...(input.gpEmail !== undefined ? { gpEmail: input.gpEmail } : {}),
-      ...(input.nhsNumber !== undefined ? { nhsNumber: input.nhsNumber } : {}),
-      ...(input.dateOfBirth !== undefined
-        ? { dateOfBirth: parseDob(input.dateOfBirth) }
-        : {}),
-    },
+  await assertPractitionerDiaryPatient(ctx, id);
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    return tx.patient.update({
+      where: { id },
+      data: {
+        ...(input.firstName !== undefined ? { firstName: input.firstName } : {}),
+        ...(input.lastName !== undefined ? { lastName: input.lastName } : {}),
+        ...(input.email !== undefined ? { email: input.email } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+        ...(input.alerts !== undefined ? { alerts: input.alerts } : {}),
+        ...(input.gpName !== undefined ? { gpName: input.gpName } : {}),
+        ...(input.gpPractice !== undefined
+          ? { gpPractice: input.gpPractice }
+          : {}),
+        ...(input.gpEmail !== undefined ? { gpEmail: input.gpEmail } : {}),
+        ...(input.nhsNumber !== undefined ? { nhsNumber: input.nhsNumber } : {}),
+        ...(input.dateOfBirth !== undefined
+          ? { dateOfBirth: parseDob(input.dateOfBirth) }
+          : {}),
+      },
+    });
   });
 }
 
@@ -555,13 +563,15 @@ export async function deletePatient(
   }
 
   // Soft-delete — keep clinical history; hide from directory and booking match.
-  return prisma.patient.update({
-    where: { id },
-    data: {
-      archivedAt: new Date(),
-      // Clear email so a future online book can create a fresh record safely
-      email: null,
-    },
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    return tx.patient.update({
+      where: { id },
+      data: {
+        archivedAt: new Date(),
+        // Clear email so a future online book can create a fresh record safely
+        email: null,
+      },
+    });
   });
 }
 
@@ -578,6 +588,7 @@ export async function addConsent(
   input: z.infer<typeof consentSchema>,
 ) {
   await assertPatientInClinic(ctx.clinicId, patientId);
+  await assertPractitionerDiaryPatient(ctx, patientId);
   return withClinicTransaction(ctx.clinicId, async (tx) => {
     return tx.patientConsent.create({
       data: {
@@ -597,6 +608,24 @@ async function assertPatientInClinic(clinicId: string, patientId: string) {
     select: { id: true },
   });
   if (!patient) throw notFound("Patient not found");
+}
+
+/** Practitioners may only touch patients who appear on their diary. */
+async function assertPractitionerDiaryPatient(
+  ctx: AuthContext,
+  patientId: string,
+) {
+  if (ctx.role !== "PRACTITIONER") return;
+  if (!ctx.practitionerProfileId) throw notFound("Patient not found");
+  const apt = await prisma.appointment.findFirst({
+    where: {
+      clinicId: ctx.clinicId,
+      patientId,
+      practitionerId: ctx.practitionerProfileId,
+    },
+    select: { id: true },
+  });
+  if (!apt) throw notFound("Patient not found");
 }
 
 export async function requirePatient(clinicId: string, patientId: string) {

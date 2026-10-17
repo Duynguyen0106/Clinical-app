@@ -6,10 +6,10 @@ import {
   createInvoiceSchema,
   listInvoices,
 } from "@/modules/billing/service";
-import { requireOwnerOrReception, requireStaff } from "@/server/rbac";
+import { requireOwnerOrReception } from "@/server/rbac";
 
 export const GET = withAuth(async (req, ctx) => {
-  requireStaff(ctx);
+  requireOwnerOrReception(ctx);
   const statusParam = new URL(req.url).searchParams.get("status");
   const status =
     statusParam &&

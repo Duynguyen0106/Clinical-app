@@ -84,16 +84,16 @@ For a real clinic: create the clinic + owner via seed variant or admin SQL; neve
 
 ## 3b. Live ship checklist (Nguyen’s / design partner)
 
-After stacking clinical-safety → leak/live-day → re-audit-improve → post-65-harden → diary-scope PRs:
+After stacking clinical-safety → leak/live-day → re-audit-improve → post-65-harden → diary-scope → money-desk-scope PRs:
 
-1. Undraft and merge to `main` in that order (or squash-equivalent tip): #63 → #64 → #65 → #66 → diary-scope.
+1. Undraft and merge to `main` in that order (or squash-equivalent tip): #63 → #64 → #65 → #66 → #67 → money-desk-scope.
 2. Deploy Vercel (`web` root). Apply schema:
    ```bash
    cd web && DATABASE_URL="…" npx prisma db push
    # or migrate SQL under prisma/migrations/20261016_*
    ```
 3. Set production env (minimum):
-   - `AUTH_SECRET`, `AUDIO_ENCRYPTION_KEY` (≥32, not demo values)
+   - `AUTH_SECRET`, dedicated `AUDIO_ENCRYPTION_KEY` (≥32, not demo values — required at boot)
    - `CRON_SECRET` (≥24)
    - `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` + `EMAIL_FROM` + clinic email in Settings
    - `NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY`
@@ -101,7 +101,9 @@ After stacking clinical-safety → leak/live-day → re-audit-improve → post-6
    - `AI_PROVIDER=mock` until LLM DPA
    - **Deposits = OFF** in clinic booking settings until Stripe confirm is live
      (`PAYMENT_PROVIDER=stripe` + `STRIPE_SECRET_KEY`; never rely on public `mark_paid`)
-4. Wire reminders + organise (see §4). Confirm `GET /api/v1/health` shows `cronConfigured: true` and intended `smsProvider` / `emailProvider`.
+   - UK/EU object storage for visit audio: `S3_BUCKET` + `S3_REGION=eu-west-2` (+ keys).
+     Local `web/storage/` is ephemeral on Vercel and will lose recordings.
+4. Wire reminders + organise (see §4). Confirm `GET /api/v1/health` shows `cronConfigured: true`, intended `smsProvider` / `emailProvider`, and `rateLimitBackend`.
 5. Optional hardening — FORCE RLS runbook (prove on **staging** first with a non-owner `treow_app` role):
    ```bash
    # As migration/owner role:
@@ -109,7 +111,7 @@ After stacking clinical-safety → leak/live-day → re-audit-improve → post-6
    # Create non-owner app role, grant DML, point DATABASE_URL at it, then:
    APPLY_FORCE_RLS=1 npm run db:rls
    ```
-   Schedule create + deposit mark-paid set `app.clinic_id` inside their transactions.
+   Schedule create, deposit mark-paid, patient/leave/invoice writes set `app.clinic_id`.
    Details: `prisma/sql/002_force_rls.sql` and ARCHITECTURE.
    Multi-instance public book / rate limits: set `UPSTASH_REDIS_REST_URL` +
    `UPSTASH_REDIS_REST_TOKEN`. Even on staging, set a dedicated Stripe webhook

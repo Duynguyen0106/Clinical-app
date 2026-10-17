@@ -3,6 +3,7 @@ import { jsonOk } from "@/server/http";
 import { requireRole } from "@/server/auth";
 import {
   assertCanAccessClinicalRecord,
+  requireOwnerOrReception,
   requireStaff,
 } from "@/server/rbac";
 import {
@@ -36,7 +37,7 @@ export const PATCH = withAuth(async (req, ctx, params) => {
 });
 
 export const DELETE = withAuth(async (req, ctx, params) => {
-  requireStaff(ctx);
+  requireOwnerOrReception(ctx);
   const url = new URL(req.url);
   const force = url.searchParams.get("force") === "1";
   if (force) requireRole(ctx, ["OWNER"]);
