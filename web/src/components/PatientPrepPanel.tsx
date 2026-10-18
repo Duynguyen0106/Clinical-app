@@ -9,6 +9,10 @@ import {
   PatientTimeline,
   type TimelineItem,
 } from "@/components/PatientTimeline";
+import {
+  patientDiaryLabel,
+  type CalendarPrivacyMode,
+} from "@/modules/scheduling/diary-privacy";
 
 export type PatientPrep = {
   id: string;
@@ -60,6 +64,8 @@ type Props = {
   source?: string;
   /** Open the most recent signed note as soon as prep loads */
   autoExpandLatest?: boolean;
+  /** Open-desk mode — initials + hide contact on calendar sheet */
+  privacyMode?: CalendarPrivacyMode;
 };
 
 function titleCase(key: string) {
@@ -77,6 +83,7 @@ export function PatientPrepPanel({
   className,
   source = "unknown",
   autoExpandLatest = false,
+  privacyMode = "FULL_NAME",
 }: Props) {
   const [prep, setPrep] = useState<PatientPrep | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -191,6 +198,8 @@ export function PatientPrepPanel({
   const otherNotes = prep.notes.filter(
     (n) => n.status !== "SIGNED" && n.status !== "VOIDED",
   );
+  const displayName = patientDiaryLabel(prep, privacyMode);
+  const hideContact = privacyMode === "INITIALS";
 
   return (
     <div className={`prep-panel ${compact ? "prep-compact" : ""} ${className ?? ""}`}>
@@ -199,20 +208,20 @@ export function PatientPrepPanel({
         <p className="muted">
           {canViewNotes
             ? autoExpandLatest
-              ? `Signed notes and booking history for ${prep.firstName} ${prep.lastName}`
-              : `Prior bookings and clinical notes for ${prep.firstName} ${prep.lastName}`
-            : `Booking history for ${prep.firstName} ${prep.lastName} (clinical notes are clinician-only)`}
+              ? `Signed notes and booking history for ${displayName}`
+              : `Prior bookings and clinical notes for ${displayName}`
+            : `Booking history for ${displayName} (clinical notes are clinician-only)`}
         </p>
       </div>
 
-      {(prep.alerts || prep.phone || prep.email) && (
+      {!hideContact && (prep.alerts || prep.phone || prep.email) ? (
         <div className="prep-meta">
           {prep.alerts ? <p className="alert-line">{prep.alerts}</p> : null}
           <p className="muted">
             {[prep.email, prep.phone].filter(Boolean).join(" · ") || "No contact on file"}
           </p>
         </div>
-      )}
+      ) : null}
 
       <PatientTimeline
         items={prep.timeline ?? []}

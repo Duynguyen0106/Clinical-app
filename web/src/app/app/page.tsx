@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { api, ApiError } from "@/lib/api";
 import { pulseHrefForRole } from "@/modules/ops/pulse-links";
+import { patientDiaryLabel } from "@/modules/scheduling/diary-privacy";
 
 type Appointment = {
   id: string;
@@ -76,6 +77,8 @@ export default function TodayPage() {
     me?.role === "OWNER" || me?.role === "RECEPTION";
   /** Practitioners stay on schedule + notes — no ops inbox */
   const showOpsInbox = !isPractitioner;
+  const privacyMode =
+    me?.clinic.calendarPrivacyMode === "INITIALS" ? "INITIALS" : "FULL_NAME";
 
   const loadDay = useCallback(() => {
     if (!me) return Promise.resolve();
@@ -231,7 +234,7 @@ export default function TodayPage() {
               </div>
               <p className="apt-name">
                 {format(new Date(nextUp.startsAt), "HH:mm")} ·{" "}
-                {nextUp.patient.firstName} {nextUp.patient.lastName}
+                {patientDiaryLabel(nextUp.patient, privacyMode)}
               </p>
               <p className="muted">{nextUp.appointmentType.name}</p>
               <div className="apt-actions next-up-actions">
@@ -298,7 +301,7 @@ export default function TodayPage() {
                   </div>
                   <div className="apt-body">
                     <p className="apt-name">
-                      {apt.patient.firstName} {apt.patient.lastName}
+                      {patientDiaryLabel(apt.patient, privacyMode)}
                     </p>
                     <p className="muted">
                       {apt.appointmentType.name}

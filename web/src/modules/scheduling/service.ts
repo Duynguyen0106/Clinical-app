@@ -14,6 +14,28 @@ import { intervalsOverlap, withBuffers } from "./conflict";
 import { withScheduleLocks } from "./locks";
 import { addClinicCalendarDays } from "./clinic-time";
 import { withClinicTransaction } from "@/server/clinic-rls";
+import {
+  applyDiaryPrivacyToAppointment,
+  type CalendarPrivacyMode,
+} from "./diary-privacy";
+
+async function clinicDiaryPrivacyMode(
+  clinicId: string,
+): Promise<CalendarPrivacyMode> {
+  const clinic = await prisma.clinic.findUnique({
+    where: { id: clinicId },
+    select: { calendarPrivacyMode: true },
+  });
+  return clinic?.calendarPrivacyMode === "INITIALS" ? "INITIALS" : "FULL_NAME";
+}
+
+async function withDiaryPrivacy<T extends { patient: { firstName: string; lastName: string } }>(
+  clinicId: string,
+  appointment: T,
+): Promise<T> {
+  const mode = await clinicDiaryPrivacyMode(clinicId);
+  return applyDiaryPrivacyToAppointment(appointment, mode);
+}
 
 const appointmentStatuses = [
   "BOOKED",
@@ -129,22 +151,14 @@ export async function listAppointments(
     }),
   ]);
 
-  if (clinic?.calendarPrivacyMode !== "INITIALS") {
-    return appointments;
-  }
+  const mode: CalendarPrivacyMode =
+    clinic?.calendarPrivacyMode === "INITIALS" ? "INITIALS" : "FULL_NAME";
+  if (mode !== "INITIALS") return appointments;
 
-  // Server-side open-desk privacy — redact surnames for staff diary lists
-  return appointments.map((apt) => ({
-    ...apt,
-    patient: {
-      ...apt.patient,
-      lastName: (apt.patient.lastName[0] ?? "?").toUpperCase() + ".",
-      firstName: apt.patient.firstName,
-      email: null,
-      phone: null,
-      alerts: null,
-    },
-  }));
+  // Server-side open-desk privacy — initials + no contact on diary lists
+  return appointments.map((apt) =>
+    applyDiaryPrivacyToAppointment(apt, mode),
+  );
 }
 
 function canSeeVisitClinicalMeta(
@@ -182,9 +196,10 @@ export async function getAppointment(ctx: AuthContext, id: string) {
   if (!appointment) throw notFound("Appointment not found");
 
   const ownDiary = canSeeVisitClinicalMeta(ctx, appointment.practitionerId);
+  let scoped = appointment;
   // Peer diary practitioner: strip clinical visit meta + patient contact / alerts
   if (ctx.role === "PRACTITIONER" && !ownDiary) {
-    return {
+    scoped = {
       ...appointment,
       notes: null,
       patient: {
@@ -207,10 +222,9 @@ export async function getAppointment(ctx: AuthContext, id: string) {
           }
         : null,
     };
-  }
-  // Reception: strip note stubs + recording status (need-to-know)
-  if (appointment.visit && !ownDiary) {
-    return {
+  } else if (appointment.visit && !ownDiary) {
+    // Reception: strip note stubs + recording status (need-to-know)
+    scoped = {
       ...appointment,
       visit: {
         ...appointment.visit,
@@ -220,7 +234,7 @@ export async function getAppointment(ctx: AuthContext, id: string) {
       },
     };
   }
-  return appointment;
+  return withDiaryPrivacy(ctx.clinicId, scoped);
 }
 
 export async function createAppointment(
@@ -367,17 +381,20 @@ export async function createAppointment(
     console.error("Staff booking confirmation failed", err);
   }
 
-  return Object.assign(firstAppointment, {
-    confirmation,
-    series: {
-      recurrenceGroupId,
-      createdCount: createdIds.length,
-      requestedCount: weeklyCount,
-      intervalWeeks,
-      appointmentIds: createdIds,
-      skippedStartsAt: skipped,
-    },
-  });
+  return withDiaryPrivacy(
+    ctx.clinicId,
+    Object.assign(firstAppointment, {
+      confirmation,
+      series: {
+        recurrenceGroupId,
+        createdCount: createdIds.length,
+        requestedCount: weeklyCount,
+        intervalWeeks,
+        appointmentIds: createdIds,
+        skippedStartsAt: skipped,
+      },
+    }),
+  );
 }
 
 /**
@@ -726,10 +743,13 @@ export async function updateAppointmentStatus(
       endsAt: appointment.endsAt,
       sourceAppointmentId: appointment.id,
     });
-    return { ...updated, waitlistOffer: offer };
+    return withDiaryPrivacy(ctx.clinicId, {
+      ...updated,
+      waitlistOffer: offer,
+    });
   }
 
-  return updated;
+  return withDiaryPrivacy(ctx.clinicId, updated);
 }
 
 export async function rescheduleAppointment(
@@ -833,7 +853,10 @@ export async function rescheduleAppointment(
     console.error("Reschedule notification failed", err);
   }
 
-  return Object.assign(updated, { notification });
+  return withDiaryPrivacy(
+    ctx.clinicId,
+    Object.assign(updated, { notification }),
+  );
 }
 
 export async function updateAppointment(
@@ -1061,7 +1084,10 @@ export async function updateAppointment(
     }
   }
 
-  return Object.assign(updated, { notification });
+  return withDiaryPrivacy(
+    ctx.clinicId,
+    Object.assign(updated, { notification }),
+  );
 }
 
 export async function listAppointmentTypes(ctx: AuthContext) {

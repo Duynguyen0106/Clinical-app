@@ -23,6 +23,7 @@ import {
   clinicLocalDateTime,
   clinicMinutesFromMidnight,
 } from "@/modules/scheduling/clinic-time";
+import { patientDiaryLabel } from "@/modules/scheduling/diary-privacy";
 
 type Appointment = {
   id: string;
@@ -42,18 +43,6 @@ type Appointment = {
   room: { name: string } | null;
   visit: { id: string } | null;
 };
-
-function patientDiaryLabel(
-  patient: { firstName: string; lastName: string },
-  mode: "FULL_NAME" | "INITIALS",
-) {
-  if (mode === "INITIALS") {
-    const a = (patient.firstName[0] ?? "?").toUpperCase();
-    const b = (patient.lastName[0] ?? "?").toUpperCase();
-    return `${a}.${b}.`;
-  }
-  return `${patient.firstName} ${patient.lastName}`;
-}
 
 type Block = {
   id: string;
@@ -231,6 +220,12 @@ export default function CalendarPage() {
         setAppointments(a.appointments);
         setBlocks(b.blocks);
         setCatalog(c);
+        // Keep sheet in sync when status changes elsewhere (Today Done, visit end)
+        setSelected((prev) => {
+          if (!prev) return null;
+          const fresh = a.appointments.find((x) => x.id === prev.id);
+          return fresh ?? prev;
+        });
       })
       .catch((e: Error) => setError(e.message));
   }, [weekStart, viewMode, dayFocus, filterPractitionerId, timeZone]);
@@ -238,6 +233,21 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!filterReady) return;
     load();
+  }, [load, filterReady]);
+
+  // Resync open sheet after completing a visit in another tab / Today
+  useEffect(() => {
+    if (!filterReady) return;
+    const onFocus = () => load();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") onFocus();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [load, filterReady]);
 
   useEffect(() => {
@@ -1445,6 +1455,7 @@ export default function CalendarPage() {
               excludeAppointmentId={selected.id}
               compact
               source="calendar"
+              privacyMode={privacyMode}
             />
 
             {blocks.some((b) => b.practitioner.id === selected.practitioner.id) ? (

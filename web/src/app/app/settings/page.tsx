@@ -430,8 +430,14 @@ export default function SettingsPage() {
               }
             >
               <option value="FULL_NAME">Full patient names</option>
-              <option value="INITIALS">Initials only on diary</option>
+              <option value="INITIALS">
+                Initials only on diary / Today (open desk)
+              </option>
             </select>
+            <p className="muted" style={{ marginTop: 6 }}>
+              Initials mode redacts names and contact on schedule lists and the
+              visit sheet. Patient directory and clinical notes stay full-name.
+            </p>
           </label>
           {smsProvider === "console" ? (
             <p className="alert-line" role="status">

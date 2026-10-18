@@ -65,7 +65,7 @@ Status: **Have** / **Partial** / **Gap** (for UK MSK roadmap).
 | Groups & classes | Gap | Pilates/yoga later |
 | Multiple locations | Partial | Locations model; UX polish |
 | Appointment confirmations (email + ICS) | Done | Confirm/reschedule/cancel attach `.ics` (stable UID) |
-| Privacy mode (hide names) | Gap | Useful for open desks |
+| Privacy mode (hide names) | Done | INITIALS on diary/Today/sheet; directory & notes stay full-name |
 | Repeat appointments | Gap | High ask for UK MSK |
 | Client search autocomplete | Have | Patient lookup |
 | Time zone support | Partial | Clinic TZ Europe/London |
@@ -123,7 +123,7 @@ Next (from section 3 Gaps / Partial):
 1. Recurring appointments  
 2. Practitioner ↔ service settings  
 3. Stronger email confirmations + ICS  
-4. Privacy mode on calendar  
+4. ~~Privacy mode on calendar~~ (done — INITIALS)  
 5. Body charts / richer templates  
 6. Stripe + Xero  
 7. Practice pulse metrics  
