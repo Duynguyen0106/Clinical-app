@@ -4,8 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { format, isValid, parseISO } from "date-fns";
 import { BrandLogo } from "@/components/BrandLogo";
+import {
+  BankTransferInstructionsPanel,
+  manageTokenFromHref,
+  type BankTransferDetails,
+} from "@/components/BankTransferInstructions";
 import { BRAND } from "@/modules/config/brand";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 
 type Clinic = {
   name: string;
@@ -48,12 +53,46 @@ function formatWhen(iso?: string) {
 
 export function BookingConfirmed({ slug, details = {}, embed = false }: Props) {
   const [clinic, setClinic] = useState<Clinic | null>(null);
+  const [bankTransfer, setBankTransfer] = useState<BankTransferDetails | null>(
+    null,
+  );
+  const [bankError, setBankError] = useState<string | null>(null);
 
   useEffect(() => {
     void api<{ clinic: Clinic }>(`/public/clinics/${slug}`, { auth: false })
       .then((d) => setClinic(d.clinic))
       .catch(() => setClinic(null));
   }, [slug]);
+
+  useEffect(() => {
+    if (details.depositStatus !== "bank_transfer") return;
+    const token = manageTokenFromHref(details.manageHref);
+    if (!token) return;
+    let cancelled = false;
+    void api<{
+      status: string;
+      bankTransfer?: BankTransferDetails;
+    }>("/public/deposits", {
+      method: "POST",
+      auth: false,
+      body: JSON.stringify({ action: "info", token }),
+    })
+      .then((d) => {
+        if (cancelled) return;
+        if (d.bankTransfer) setBankTransfer(d.bankTransfer);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setBankError(
+          e instanceof ApiError
+            ? e.message
+            : "Could not load bank transfer details",
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [details.depositStatus, details.manageHref]);
 
   const accent = clinic?.brandColour || undefined;
   const clinicLogo = clinic?.logoUrl ?? null;
@@ -143,11 +182,19 @@ export function BookingConfirmed({ slug, details = {}, embed = false }: Props) {
             <p className="alert-line">
               {details.depositStatus === "paid" && details.depositCents != null
                 ? `Deposit of £${(details.depositCents / 100).toFixed(2)} received — booking confirmed.`
-                : details.depositCents != null
-                  ? `A deposit of £${(details.depositCents / 100).toFixed(2)} is required to hold this slot.`
-                  : null}
+                : details.depositStatus === "bank_transfer" &&
+                    details.depositCents != null
+                  ? `Pay a £${(details.depositCents / 100).toFixed(2)} deposit by bank transfer to hold this slot.`
+                  : details.depositCents != null
+                    ? `A deposit of £${(details.depositCents / 100).toFixed(2)} is required to hold this slot.`
+                    : null}
             </p>
           ) : null}
+
+          {bankTransfer ? (
+            <BankTransferInstructionsPanel details={bankTransfer} />
+          ) : null}
+          {bankError ? <p className="form-error">{bankError}</p> : null}
 
           {policy ? <p className="muted book-fineprint">{policy}</p> : null}
 

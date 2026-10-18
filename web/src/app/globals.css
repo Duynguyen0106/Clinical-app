@@ -3293,6 +3293,45 @@ button.cal-block-btn:focus-visible {
   font-size: 0.85rem;
 }
 
+.bank-transfer-box {
+  margin: 1rem 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--border, #c5cfc9) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-2, #f3f6f4) 70%, transparent);
+}
+
+.bank-transfer-dl {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.75rem 0 0;
+}
+
+.bank-transfer-dl > div {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.bank-transfer-dl dt {
+  margin: 0;
+  color: var(--muted, #5c6b64);
+  font-size: 0.85rem;
+}
+
+.bank-transfer-dl dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+@media (max-width: 480px) {
+  .bank-transfer-dl > div {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}
+
 .book-fineprint {
   font-size: 0.85rem;
 }

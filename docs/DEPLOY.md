@@ -99,8 +99,10 @@ After stacking clinical-safety → leak/live-day → re-audit-improve → post-6
    - `NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY`
    - Do **not** set `NEXT_PUBLIC_DEMO_LOGIN`
    - `AI_PROVIDER=mock` until LLM DPA
-   - **Deposits = OFF** in clinic booking settings until Stripe confirm is live
-     (`PAYMENT_PROVIDER=stripe` + `STRIPE_SECRET_KEY`; never rely on public `mark_paid`)
+   - **Deposits = OFF** in clinic booking settings until payments are configured:
+     either `PAYMENT_PROVIDER=bank_transfer` + Settings → Booking bank details
+     (staff mark paid when the transfer arrives), or `PAYMENT_PROVIDER=stripe` +
+     `STRIPE_SECRET_KEY` + webhook (never rely on public `mark_paid`)
    - UK/EU object storage for visit audio: `S3_BUCKET` + `S3_REGION=eu-west-2` (+ keys).
      Local `web/storage/` is ephemeral on Vercel and will lose recordings.
 4. Wire reminders + organise (see §4). Confirm `GET /api/v1/health` shows `cronConfigured: true`, intended `smsProvider` / `emailProvider`, and `rateLimitBackend`.
@@ -171,7 +173,8 @@ Do not set `NEXT_PUBLIC_DEMO_LOGIN=true` on live clinic deployments — that adv
 demo emails and the `treow-demo` password on marketing/login surfaces.
 
 **Deposits:** In production, `PAYMENT_PROVIDER=console` refuses to mark deposits paid
-(avoids fake money). Use Stripe, or turn deposit requirements off in clinic settings.
+(avoids fake money). Use `bank_transfer` (clinic bank details in Settings → Booking;
+staff mark paid on the diary) or Stripe Checkout, or turn deposit requirements off.
 
 **Rate limits:** In-memory by default. For multi-instance public book, set
 `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (shared fixed-window).

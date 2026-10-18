@@ -36,6 +36,9 @@ type BookingPolicy = {
   cancelMinNoticeHours: number;
   depositMode: "OFF" | "ALL_ONLINE" | "NEW_PATIENTS";
   depositDefaultCents: number;
+  depositBankAccountName?: string | null;
+  depositBankSortCode?: string | null;
+  depositBankAccountNumber?: string | null;
   bookingPolicyText: string;
 };
 
@@ -629,6 +632,63 @@ export default function SettingsPage() {
                       depositDefaultCents: Math.round(
                         Number(e.target.value) * 100,
                       ),
+                    })
+                  }
+                />
+              </label>
+              <p className="muted">
+                Bank transfer deposits (when the server has{" "}
+                <code>PAYMENT_PROVIDER=bank_transfer</code>): patients see these
+                details plus a unique reference. Reception marks the deposit paid
+                on the diary when funds arrive. Leave blank if you use Stripe
+                card Checkout instead.
+              </p>
+              <label className="field">
+                <span>Deposit bank account name</span>
+                <input
+                  type="text"
+                  disabled={!isOwner}
+                  maxLength={120}
+                  placeholder="Account name"
+                  value={booking.depositBankAccountName ?? ""}
+                  onChange={(e) =>
+                    setBooking({
+                      ...booking,
+                      depositBankAccountName: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Sort code</span>
+                <input
+                  type="text"
+                  disabled={!isOwner}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="12-34-56"
+                  value={booking.depositBankSortCode ?? ""}
+                  onChange={(e) =>
+                    setBooking({
+                      ...booking,
+                      depositBankSortCode: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Account number</span>
+                <input
+                  type="text"
+                  disabled={!isOwner}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="12345678"
+                  value={booking.depositBankAccountNumber ?? ""}
+                  onChange={(e) =>
+                    setBooking({
+                      ...booking,
+                      depositBankAccountNumber: e.target.value,
                     })
                   }
                 />

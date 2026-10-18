@@ -194,6 +194,8 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
           status: string;
           depositCents: number;
           checkoutUrl: string | null;
+          provider?: string;
+          manageToken?: string;
         } | null;
         policyText?: string;
         confirmation?: {

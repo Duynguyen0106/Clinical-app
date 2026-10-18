@@ -3,6 +3,7 @@ import { jsonOk } from "@/server/http";
 import { badRequest } from "@/server/errors";
 import {
   createDepositCheckout,
+  getDepositPaymentInfo,
   verifyStripeDepositSession,
 } from "@/modules/billing/deposits";
 import { enforcePublicDepositLimits } from "@/server/abuse";
@@ -32,6 +33,12 @@ export const POST = withPublic(async (req) => {
     throw badRequest(
       "Direct mark_paid is disabled. Complete Stripe Checkout or use verify_session.",
     );
+  }
+
+  // Read-only: bank instructions / deposit status (no Stripe session, no console PAID)
+  if (body.action === "info" || body.action === "instructions") {
+    const result = await getDepositPaymentInfo({ token: body.token });
+    return jsonOk(result);
   }
 
   const result = await createDepositCheckout({

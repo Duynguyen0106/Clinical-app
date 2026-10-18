@@ -1417,6 +1417,15 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     depositCents: number;
     checkoutUrl: string | null;
     provider?: string;
+    bankTransfer?: {
+      accountName: string;
+      sortCode: string;
+      accountNumber: string;
+      amountPounds: string;
+      reference: string;
+      currency: "GBP";
+    };
+    manageToken?: string;
   } | null = null;
   if (deposit.required) {
     try {

@@ -1,7 +1,8 @@
 /**
- * Deposit payments — PAYMENT_PROVIDER=console|stripe
- * Console marks deposits paid immediately (pilot / demo only — blocked in production).
- * Stripe returns a Checkout URL; PAID is set only via verified session or webhook.
+ * Deposit payments — PAYMENT_PROVIDER=console|stripe|bank_transfer
+ * - console: marks paid immediately (pilot only — blocked in production)
+ * - stripe: Checkout URL; PAID via verify_session / webhook
+ * - bank_transfer: show clinic sort code / account + reference; staff mark paid
  * Public checkout/verify require a manage token (no bare appointment UUID fishing).
  */
 import { DepositStatus, AppointmentStatus } from "@/generated/prisma/client";
@@ -18,6 +19,26 @@ import {
 export function getPaymentProvider() {
   return (process.env.PAYMENT_PROVIDER ?? "console").toLowerCase();
 }
+
+/** Short reference patients put on their bank transfer. */
+export function depositPaymentReference(appointmentId: string) {
+  return `DEP-${appointmentId.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase()}`;
+}
+
+function formatSortCode(raw: string) {
+  const digits = raw.replace(/\D/g, "").slice(0, 6);
+  if (digits.length !== 6) return raw.trim();
+  return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4, 6)}`;
+}
+
+export type BankTransferInstructions = {
+  accountName: string;
+  sortCode: string;
+  accountNumber: string;
+  amountPounds: string;
+  reference: string;
+  currency: "GBP";
+};
 
 async function resolveManageToken(opts: {
   token?: string;
@@ -50,6 +71,76 @@ async function resolveManageToken(opts: {
   return { appointmentId: apt.id, token };
 }
 
+/**
+ * Read-only deposit payment details for manage / confirm pages.
+ * Never creates a Stripe session or marks console deposits paid.
+ */
+export async function getDepositPaymentInfo(opts: { token: string }) {
+  const { appointmentId, token } = await resolveManageToken(opts);
+  const apt = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: {
+      clinic: true,
+      appointmentType: true,
+    },
+  });
+  if (!apt) throw notFound("Appointment not found");
+
+  if (apt.depositStatus === DepositStatus.PAID) {
+    return {
+      status: "already_paid" as const,
+      depositCents: apt.depositCents,
+      provider: getPaymentProvider(),
+      manageToken: token,
+    };
+  }
+  if (apt.depositStatus !== DepositStatus.REQUIRED || apt.depositCents <= 0) {
+    return {
+      status: "none" as const,
+      depositCents: apt.depositCents,
+      provider: getPaymentProvider(),
+      manageToken: token,
+    };
+  }
+
+  const provider = getPaymentProvider();
+  const pounds = (apt.depositCents / 100).toFixed(2);
+
+  if (provider === "bank_transfer") {
+    const accountName = apt.clinic.depositBankAccountName?.trim() || "";
+    const sortRaw = apt.clinic.depositBankSortCode?.trim() || "";
+    const accountNumber = (apt.clinic.depositBankAccountNumber ?? "")
+      .replace(/\D/g, "")
+      .slice(0, 8);
+    if (!accountName || sortRaw.replace(/\D/g, "").length !== 6 || accountNumber.length < 6) {
+      throw badRequest(
+        "Bank transfer deposits are enabled but clinic bank details are incomplete. Please contact the clinic.",
+      );
+    }
+    return {
+      status: "bank_transfer" as const,
+      depositCents: apt.depositCents,
+      provider: "bank_transfer" as const,
+      bankTransfer: {
+        accountName,
+        sortCode: formatSortCode(sortRaw),
+        accountNumber,
+        amountPounds: pounds,
+        reference: depositPaymentReference(apt.id),
+        currency: "GBP" as const,
+      },
+      manageToken: token,
+    };
+  }
+
+  return {
+    status: "required" as const,
+    depositCents: apt.depositCents,
+    provider,
+    manageToken: token,
+  };
+}
+
 export async function createDepositCheckout(opts: {
   token?: string;
   /** Trusted server-only: mint token when omitted */
@@ -80,6 +171,38 @@ export async function createDepositCheckout(opts: {
   const pounds = (apt.depositCents / 100).toFixed(2);
   const successUrl = `${getAppBaseUrl()}/book/manage/deposit-success?token=${encodeURIComponent(token)}`;
   const cancelUrl = `${getAppBaseUrl()}/book/${apt.clinic.slug}`;
+
+  if (provider === "bank_transfer") {
+    const accountName = apt.clinic.depositBankAccountName?.trim() || "";
+    const sortRaw = apt.clinic.depositBankSortCode?.trim() || "";
+    const accountNumber = (apt.clinic.depositBankAccountNumber ?? "")
+      .replace(/\D/g, "")
+      .slice(0, 8);
+    if (!accountName || sortRaw.replace(/\D/g, "").length !== 6 || accountNumber.length < 6) {
+      throw badRequest(
+        "Bank transfer deposits are enabled but clinic bank details are incomplete. Owner: Settings → Booking → deposit bank details.",
+      );
+    }
+    const bankTransfer: BankTransferInstructions = {
+      accountName,
+      sortCode: formatSortCode(sortRaw),
+      accountNumber,
+      amountPounds: pounds,
+      reference: depositPaymentReference(apt.id),
+      currency: "GBP",
+    };
+    console.info(
+      `[payments:bank_transfer] deposit £${pounds} apt=${apt.id} ref=${bankTransfer.reference}`,
+    );
+    return {
+      status: "bank_transfer" as const,
+      depositCents: apt.depositCents,
+      checkoutUrl: null as string | null,
+      provider: "bank_transfer" as const,
+      bankTransfer,
+      manageToken: token,
+    };
+  }
 
   if (provider === "stripe") {
     const key = process.env.STRIPE_SECRET_KEY?.trim();
@@ -132,7 +255,7 @@ export async function createDepositCheckout(opts: {
   // Console marks paid immediately — never in production (fake money)
   if (process.env.NODE_ENV === "production") {
     throw badRequest(
-      "Card deposits require PAYMENT_PROVIDER=stripe and STRIPE_SECRET_KEY in production. Disable deposit requirements or configure Stripe.",
+      "Deposits require PAYMENT_PROVIDER=stripe or bank_transfer in production. Disable deposit requirements or configure payments.",
     );
   }
 
@@ -265,4 +388,33 @@ export async function waiveDeposit(
       },
     });
   });
+}
+
+/**
+ * Staff confirm bank transfer (or cash) deposit received.
+ * Reception / owner only — not a public endpoint.
+ */
+export async function staffConfirmDepositPaid(
+  clinicId: string,
+  appointmentId: string,
+) {
+  const apt = await prisma.appointment.findFirst({
+    where: { id: appointmentId, clinicId },
+    select: {
+      id: true,
+      depositStatus: true,
+      depositCents: true,
+    },
+  });
+  if (!apt) throw notFound("Appointment not found");
+  if (apt.depositStatus === DepositStatus.PAID) {
+    return markDepositPaid(appointmentId);
+  }
+  if (apt.depositStatus !== DepositStatus.REQUIRED || apt.depositCents <= 0) {
+    throw badRequest("No outstanding deposit on this appointment");
+  }
+  console.info(
+    `[payments:staff] deposit marked PAID apt=${appointmentId} clinic=${clinicId}`,
+  );
+  return markDepositPaid(appointmentId);
 }

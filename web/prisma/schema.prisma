@@ -176,6 +176,12 @@ model Clinic {
   depositMode DepositMode @default(OFF)
   /// Default deposit amount (pence) when mode is on and type has no override
   depositDefaultCents Int @default(2000)
+  /// Bank transfer deposit instructions (when PAYMENT_PROVIDER=bank_transfer)
+  depositBankAccountName String?
+  /// UK sort code digits only or XX-XX-XX
+  depositBankSortCode String?
+  /// UK account number (usually 8 digits)
+  depositBankAccountNumber String?
   /// Shown on public booking / manage pages
   bookingPolicyText String @default("Please give at least 24 hours’ notice to cancel or reschedule online. Late cancels and no-shows may forfeit the deposit.")
   /// Diary display: FULL_NAME or INITIALS (open-desk privacy)

@@ -140,9 +140,9 @@ See `prisma/schema.prisma` for the living schema. Conceptual entities:
 ## Billing (MVP+)
 
 - Invoices in **GBP**; staff **mark paid / unpaid** (cash, card terminal, bank transfer — method noted).
-- Optional **online deposits** via Stripe Checkout (`PAYMENT_PROVIDER=stripe`). Production refuses console auto-PAID.
-  Deposits mark PAID only after verified Checkout session (`verify_session`) or `checkout.session.completed` webhook — never a bare public `mark_paid`.
-- Keep clinic `depositMode=OFF` until Stripe keys + webhook are live.
+- Optional **online deposits** via `PAYMENT_PROVIDER=stripe` (Checkout) or `bank_transfer` (clinic sort code / account + payment reference; staff mark PAID when funds arrive). Production refuses console auto-PAID.
+  Card deposits mark PAID only after verified Checkout session (`verify_session`) or `checkout.session.completed` webhook — never a bare public `mark_paid`. Bank transfers use staff `POST /appointments/:id/deposit` (`mark_paid` / `waive`).
+- Keep clinic `depositMode=OFF` until bank details (Settings → Booking) or Stripe keys + webhook are live.
 - SaaS subscription billing (clinic → Treow) is separate Stripe mode.
 
 ## PWA recording

@@ -31,6 +31,9 @@ type Appointment = {
   endsAt: string;
   status: string;
   notes: string | null;
+  depositStatus?: string;
+  depositCents?: number;
+  depositPaidAt?: string | null;
   recurrenceGroupId?: string | null;
   patient: { id: string; firstName: string; lastName: string };
   practitioner: { id: string; displayName: string };
@@ -1196,6 +1199,142 @@ export default function CalendarPage() {
                 {humanStatusLabel(selected.status)}
               </span>
             </p>
+
+            {selected.depositStatus &&
+            selected.depositStatus !== "NONE" &&
+            (selected.depositCents ?? 0) > 0 ? (
+              <div className="sheet-deposit">
+                <p className="muted">
+                  Deposit:{" "}
+                  <strong>
+                    £{((selected.depositCents ?? 0) / 100).toFixed(2)}
+                  </strong>{" "}
+                  · {selected.depositStatus.toLowerCase().replaceAll("_", " ")}
+                  {selected.depositPaidAt
+                    ? ` · paid ${format(new Date(selected.depositPaidAt), "d MMM HH:mm")}`
+                    : null}
+                </p>
+                {canEditSchedule && selected.depositStatus === "REQUIRED" ? (
+                  <div className="sheet-actions">
+                    <button
+                      type="button"
+                      className="btn-primary btn-sm"
+                      disabled={busy}
+                      onClick={() =>
+                        void (async () => {
+                          setBusy(true);
+                          setError(null);
+                          try {
+                            const d = await api<{
+                              appointment: {
+                                depositStatus: string;
+                                depositCents: number;
+                                depositPaidAt: string | null;
+                                status: string;
+                              };
+                            }>(`/appointments/${selected.id}/deposit`, {
+                              method: "POST",
+                              body: JSON.stringify({ action: "mark_paid" }),
+                            });
+                            setSelected({
+                              ...selected,
+                              depositStatus: d.appointment.depositStatus,
+                              depositCents: d.appointment.depositCents,
+                              depositPaidAt: d.appointment.depositPaidAt,
+                              status: d.appointment.status,
+                            });
+                            setAppointments((prev) =>
+                              prev.map((a) =>
+                                a.id === selected.id
+                                  ? {
+                                      ...a,
+                                      depositStatus: d.appointment.depositStatus,
+                                      depositCents: d.appointment.depositCents,
+                                      depositPaidAt: d.appointment.depositPaidAt,
+                                      status: d.appointment.status,
+                                    }
+                                  : a,
+                              ),
+                            );
+                            setMessage("Deposit marked paid.");
+                          } catch (e) {
+                            setError(
+                              e instanceof ApiError
+                                ? e.message
+                                : "Could not mark deposit paid",
+                            );
+                          } finally {
+                            setBusy(false);
+                          }
+                        })()
+                      }
+                    >
+                      Mark deposit paid
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost btn-sm"
+                      disabled={busy}
+                      onClick={() =>
+                        void (async () => {
+                          if (
+                            !confirm(
+                              "Waive this deposit? The patient will not need to pay it.",
+                            )
+                          ) {
+                            return;
+                          }
+                          setBusy(true);
+                          setError(null);
+                          try {
+                            const d = await api<{
+                              appointment: {
+                                depositStatus: string;
+                                depositCents: number;
+                                depositPaidAt: string | null;
+                                status: string;
+                              };
+                            }>(`/appointments/${selected.id}/deposit`, {
+                              method: "POST",
+                              body: JSON.stringify({ action: "waive" }),
+                            });
+                            setSelected({
+                              ...selected,
+                              depositStatus: d.appointment.depositStatus,
+                              depositCents: d.appointment.depositCents,
+                              depositPaidAt: d.appointment.depositPaidAt,
+                            });
+                            setAppointments((prev) =>
+                              prev.map((a) =>
+                                a.id === selected.id
+                                  ? {
+                                      ...a,
+                                      depositStatus: d.appointment.depositStatus,
+                                      depositCents: d.appointment.depositCents,
+                                      depositPaidAt: d.appointment.depositPaidAt,
+                                    }
+                                  : a,
+                              ),
+                            );
+                            setMessage("Deposit waived.");
+                          } catch (e) {
+                            setError(
+                              e instanceof ApiError
+                                ? e.message
+                                : "Could not waive deposit",
+                            );
+                          } finally {
+                            setBusy(false);
+                          }
+                        })()
+                      }
+                    >
+                      Waive deposit
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {canEditSchedule ? (
               <label className="consent-label notify-patient-toggle">

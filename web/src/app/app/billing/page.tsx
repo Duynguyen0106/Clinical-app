@@ -197,7 +197,8 @@ export default function BillingPage() {
       </section>
 
       <p className="muted">
-        Patient deposits and invoices are separate — configure those under{" "}
+        Patient deposits (Stripe or bank transfer) and invoices are separate —
+        configure booking deposits under{" "}
         <Link href="/app/settings">Settings</Link> and{" "}
         <Link href="/app/money">Money</Link>.
       </p>

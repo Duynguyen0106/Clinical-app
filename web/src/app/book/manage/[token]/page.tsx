@@ -5,6 +5,10 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { BRAND } from "@/modules/config/brand";
 import { BrandLogo } from "@/components/BrandLogo";
+import {
+  BankTransferInstructionsPanel,
+  type BankTransferDetails,
+} from "@/components/BankTransferInstructions";
 import { AvailabilityPicker } from "@/components/AvailabilityPicker";
 import { api, ApiError } from "@/lib/api";
 
@@ -13,6 +17,8 @@ type Managed = {
   startsAt: string;
   endsAt: string;
   status: string;
+  depositStatus?: string;
+  depositCents?: number;
   patient: { firstName: string; lastName: string; email: string | null };
   practitioner: { displayName: string };
   appointmentType: { name: string; durationMinutes: number };
@@ -38,6 +44,10 @@ export default function ManageBookingPage({ params }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"view" | "reschedule">("view");
+  const [bankTransfer, setBankTransfer] = useState<BankTransferDetails | null>(
+    null,
+  );
+  const [bankBusy, setBankBusy] = useState(false);
 
   function load() {
     void api<{ appointment: Managed; slots?: string[] }>(
@@ -56,6 +66,42 @@ export default function ManageBookingPage({ params }: Props) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount
   }, [token]);
+
+  const depositOutstanding = appointment?.depositStatus === "REQUIRED";
+
+  useEffect(() => {
+    if (!depositOutstanding) {
+      setBankTransfer(null);
+      return;
+    }
+    let cancelled = false;
+    setBankBusy(true);
+    void api<{
+      status: string;
+      bankTransfer?: BankTransferDetails;
+    }>("/public/deposits", {
+      method: "POST",
+      auth: false,
+      body: JSON.stringify({ action: "info", token }),
+    })
+      .then((d) => {
+        if (cancelled) return;
+        if (d.status === "bank_transfer" && d.bankTransfer) {
+          setBankTransfer(d.bankTransfer);
+        } else {
+          setBankTransfer(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setBankTransfer(null);
+      })
+      .finally(() => {
+        if (!cancelled) setBankBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [depositOutstanding, token]);
 
   async function cancel() {
     if (!confirm("Cancel this appointment?")) return;
@@ -150,6 +196,27 @@ export default function ManageBookingPage({ params }: Props) {
                 {appointment.room ? ` · ${appointment.room.name}` : ""}
               </p>
               <p className="muted">Status: {appointment.status}</p>
+              {appointment.depositStatus === "REQUIRED" &&
+              appointment.depositCents != null &&
+              appointment.depositCents > 0 ? (
+                <p className="alert-line">
+                  Deposit of £{(appointment.depositCents / 100).toFixed(2)} still
+                  required.
+                </p>
+              ) : null}
+              {appointment.depositStatus === "PAID" &&
+              appointment.depositCents != null ? (
+                <p className="alert-line">
+                  Deposit of £{(appointment.depositCents / 100).toFixed(2)}{" "}
+                  received.
+                </p>
+              ) : null}
+              {bankBusy && depositOutstanding ? (
+                <p className="muted">Loading payment details…</p>
+              ) : null}
+              {bankTransfer ? (
+                <BankTransferInstructionsPanel details={bankTransfer} />
+              ) : null}
 
               {!closed && mode === "view" ? (
                 <div className="sheet-actions">
