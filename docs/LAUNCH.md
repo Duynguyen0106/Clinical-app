@@ -51,7 +51,7 @@ See `docs/DEPLOY.md` (including §3b live ship checklist). Minimum:
 | DB | Managed Postgres + daily backups |
 | Email | `EMAIL_PROVIDER=resend` + verified domain |
 | AI | `AI_PROVIDER=mock` until DPA; then `openai` (or EU vendor) |
-| Cron | External or Pro: hourly `/api/v1/jobs/reminders`, every 5m `/api/v1/jobs/organise`; daily retention in `vercel.json` |
+| Cron | External or Pro: hourly `/api/v1/jobs/reminders` + `/api/v1/jobs/patient-emails`, every 5m `/api/v1/jobs/organise`; daily retention in `vercel.json` |
 | Env | `APP_BASE_URL`, `NODE_ENV=production`, `CRON_SECRET` (≥24) |
 | SMS | `SMS_PROVIDER=console` (honest UI) or `twilio` + Twilio creds |
 | Abuse | Optional `UPSTASH_REDIS_REST_*` for shared rate limits |
