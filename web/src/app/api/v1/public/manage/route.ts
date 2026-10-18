@@ -52,6 +52,8 @@ function serialize(appointment: {
   startsAt: Date;
   endsAt: Date;
   status: string;
+  depositStatus?: string;
+  depositCents?: number;
   patient: { firstName: string; lastName: string; email: string | null };
   practitioner: { displayName: string };
   appointmentType: { name: string; durationMinutes: number };
@@ -69,6 +71,8 @@ function serialize(appointment: {
     startsAt: appointment.startsAt.toISOString(),
     endsAt: appointment.endsAt.toISOString(),
     status: appointment.status,
+    depositStatus: appointment.depositStatus ?? "NONE",
+    depositCents: appointment.depositCents ?? 0,
     patient: {
       firstName: appointment.patient.firstName,
       lastName: appointment.patient.lastName,
