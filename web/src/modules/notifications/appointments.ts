@@ -4,6 +4,7 @@ import { sendEmail } from "./email";
 import { sendSms } from "./sms";
 import { buildBookingConfirmationEmail } from "./booking-confirmation-email";
 import { buildClinicBookingNotificationEmail } from "./clinic-booking-notification-email";
+import { buildAppointmentIcs } from "./appointment-ics";
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { manageUrl } from "@/modules/scheduling/manage";
 import { getAppBaseUrl } from "@/server/env";
@@ -45,6 +46,34 @@ type NotifyAppointment = NonNullable<
 
 function practitionerEmail(apt: NotifyAppointment) {
   return apt.practitioner.membership.user.email || null;
+}
+
+function patientCalendarInvite(
+  apt: NotifyAppointment,
+  opts: {
+    manageLink?: string | null;
+    method?: "REQUEST" | "CANCEL";
+    sequence?: number;
+  } = {},
+) {
+  return buildAppointmentIcs({
+    appointmentId: apt.id,
+    clinicSlug: apt.clinic.slug,
+    clinicName: apt.clinic.name,
+    clinicEmail: apt.clinic.email,
+    clinicPhone: apt.clinic.phone,
+    clinicAddress: apt.clinic.address,
+    patientFirstName: apt.patient.firstName,
+    patientEmail: apt.patient.email,
+    practitionerName: apt.practitioner.displayName,
+    serviceName: apt.appointmentType.name,
+    roomName: apt.room?.name ?? null,
+    startsAt: apt.startsAt,
+    endsAt: apt.endsAt,
+    manageLink: opts.manageLink,
+    method: opts.method,
+    sequence: opts.sequence,
+  });
 }
 
 function practitionerName(apt: NotifyAppointment) {
@@ -136,12 +165,24 @@ export async function sendBookingConfirmation(
       cancelNoticeHours: apt.clinic.cancelMinNoticeHours ?? 24,
     });
 
+    const ics = patientCalendarInvite(apt, {
+      manageLink,
+      method: "REQUEST",
+      sequence: 0,
+    });
     const result = await sendEmail({
       to: apt.patient.email,
       subject: content.subject,
       text: content.text,
       html: content.html,
       replyTo: apt.clinic.email,
+      attachments: [
+        {
+          filename: ics.filename,
+          content: ics.content,
+          contentType: ics.contentType,
+        },
+      ],
     });
     emailSent = true;
     emailDelivered = result.delivered;
@@ -237,6 +278,14 @@ export async function sendAppointmentRescheduled(opts: {
   let practitionerEmailSent = false;
 
   if (notifyPatient && apt.patient.email) {
+    const ics = patientCalendarInvite(apt, {
+      manageLink,
+      method: "REQUEST",
+      sequence: Math.max(
+        1,
+        Math.floor(apt.startsAt.getTime() / 1000) % 2_147_483_647,
+      ),
+    });
     await sendEmail({
       to: apt.patient.email,
       subject: `Appointment updated — ${apt.clinic.name}`,
@@ -251,6 +300,8 @@ export async function sendAppointmentRescheduled(opts: {
         `Service: ${apt.appointmentType.name}`,
         roomLine,
         "",
+        "An updated calendar invite (.ics) is attached.",
+        "",
         "Manage your booking:",
         manageLink,
         "",
@@ -258,6 +309,13 @@ export async function sendAppointmentRescheduled(opts: {
       ]
         .filter((line) => line !== null)
         .join("\n"),
+      attachments: [
+        {
+          filename: ics.filename,
+          content: ics.content,
+          contentType: ics.contentType,
+        },
+      ],
     });
     patientEmailSent = true;
   }
@@ -305,6 +363,13 @@ export async function sendAppointmentCancelled(appointmentId: string) {
   let practitionerEmailSent = false;
 
   if (apt.patient.email) {
+    const ics = patientCalendarInvite(apt, {
+      method: "CANCEL",
+      sequence: Math.max(
+        2,
+        Math.floor(apt.startsAt.getTime() / 1000) % 2_147_483_647,
+      ),
+    });
     await sendEmail({
       to: apt.patient.email,
       subject: `Appointment cancelled — ${apt.clinic.name}`,
@@ -318,12 +383,21 @@ export async function sendAppointmentCancelled(appointmentId: string) {
         `Service: ${apt.appointmentType.name}`,
         roomLine,
         "",
+        "A calendar cancellation (.ics) is attached so you can remove the event.",
+        "",
         "Please contact the clinic if you need to rebook.",
         "",
         "— Treow Clinic",
       ]
         .filter((line) => line !== null)
         .join("\n"),
+      attachments: [
+        {
+          filename: ics.filename,
+          content: ics.content,
+          contentType: ics.contentType,
+        },
+      ],
     });
     patientEmailSent = true;
   }

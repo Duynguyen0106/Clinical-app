@@ -8,6 +8,13 @@ import {
   loadEmailRuntimeConfig,
 } from "./email-config";
 
+export type EmailAttachment = {
+  filename: string;
+  /** Base64-encoded file bytes */
+  content: string;
+  contentType?: string;
+};
+
 export type EmailMessage = {
   to: string;
   subject: string;
@@ -15,6 +22,7 @@ export type EmailMessage = {
   html?: string;
   /** Optional Reply-To (e.g. clinic inbox) */
   replyTo?: string | null;
+  attachments?: EmailAttachment[];
 };
 
 export type EmailSendResult = {
@@ -58,6 +66,17 @@ export async function sendEmail(message: EmailMessage): Promise<EmailSendResult>
         text: message.text,
         html: message.html ?? `<pre>${escapeHtml(message.text)}</pre>`,
         ...(message.replyTo ? { reply_to: message.replyTo } : {}),
+        ...(message.attachments?.length
+          ? {
+              attachments: message.attachments.map((a) => ({
+                filename: a.filename,
+                content: a.content,
+                ...(a.contentType
+                  ? { content_type: a.contentType }
+                  : {}),
+              })),
+            }
+          : {}),
       }),
     });
     if (!res.ok) {
@@ -67,13 +86,16 @@ export async function sendEmail(message: EmailMessage): Promise<EmailSendResult>
     return { provider: "resend", delivered: true };
   }
 
+  const attachNote = message.attachments?.length
+    ? ` attachments=${message.attachments.map((a) => a.filename).join(",")}`
+    : "";
   if (process.env.NODE_ENV === "production") {
     console.log(
-      `[email:console] to=${message.to} subject=${JSON.stringify(message.subject)} (body redacted)`,
+      `[email:console] to=${message.to} subject=${JSON.stringify(message.subject)}${attachNote} (body redacted)`,
     );
   } else {
     console.log(
-      `[email:console] to=${message.to} subject=${JSON.stringify(message.subject)}\n${message.text}\n`,
+      `[email:console] to=${message.to} subject=${JSON.stringify(message.subject)}${attachNote}\n${message.text}\n`,
     );
   }
   return { provider: "console", delivered: false };

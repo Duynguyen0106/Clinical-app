@@ -23,10 +23,12 @@ describe("buildBookingConfirmationEmail", () => {
     assert.match(msg.text, /Follow-up Osteopathic Treatment/);
     assert.match(msg.text, /https:\/\/treow-clinic\.vercel\.app\/book\/manage\/token/);
     assert.match(msg.text, /at least 24 hours/);
+    assert.match(msg.text, /calendar invite \(\.ics\)/i);
     assert.match(msg.html, /You're booked/);
     assert.match(msg.html, /Manage this booking/);
     assert.match(msg.html, /Austin Nguyen/);
     assert.match(msg.html, /at least 24 hours/);
+    assert.match(msg.html, /calendar invite \(\.ics\)/i);
     assert.doesNotMatch(msg.html, /<script/i);
   });
 

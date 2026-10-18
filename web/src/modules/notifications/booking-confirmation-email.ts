@@ -32,6 +32,8 @@ export function buildBookingConfirmationEmail(
     input.clinicAddress ? `Where: ${input.clinicAddress}` : null,
     input.clinicPhone ? `Phone: ${input.clinicPhone}` : null,
     "",
+    "A calendar invite (.ics) is attached — add it to Apple, Google, or Outlook.",
+    "",
     "Manage your booking (cancel or reschedule):",
     input.manageLink,
     "",
@@ -95,7 +97,12 @@ export function buildBookingConfirmationEmail(
             </td>
           </tr>
           <tr>
-            <td style="padding-top:18px;font-size:13px;line-height:1.45;color:#6a7a74;font-family:system-ui,-apple-system,sans-serif;">
+            <td style="padding-top:14px;font-size:13px;line-height:1.45;color:#6a7a74;font-family:system-ui,-apple-system,sans-serif;">
+              A calendar invite (.ics) is attached — add it to Apple, Google, or Outlook.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-top:10px;font-size:13px;line-height:1.45;color:#6a7a74;font-family:system-ui,-apple-system,sans-serif;">
               Online cancel/reschedule needs at least ${notice} hours’ notice.
               After that, please contact the clinic
               ${input.clinicPhone ? ` on ${escapeHtml(input.clinicPhone)}` : ""}.

@@ -6,12 +6,13 @@ import { isAdminProvisionAuthorized } from "@/server/admin-auth";
 import { sendEmail } from "@/modules/notifications/email";
 import { loadEmailRuntimeConfig } from "@/modules/notifications/email-config";
 import { buildBookingConfirmationEmail } from "@/modules/notifications/booking-confirmation-email";
+import { buildAppointmentIcs } from "@/modules/notifications/appointment-ics";
 
 const bodySchema = z.object({
   to: z.string().email(),
 });
 
-/** Send a sample booking confirmation to verify Resend delivery. */
+/** Send a sample booking confirmation (+ ICS) to verify Resend delivery. */
 export const POST = withPublic(async (req) => {
   if (!isAdminProvisionAuthorized(req)) {
     throw unauthorized("Invalid provision secret");
@@ -39,6 +40,26 @@ export const POST = withPublic(async (req) => {
     manageLink: "https://treow-clinic.vercel.app/book/manage/demo",
     cancelNoticeHours: 24,
   });
+  const startsAt = new Date("2026-11-09T09:00:00.000Z");
+  const endsAt = new Date("2026-11-09T09:30:00.000Z");
+  const ics = buildAppointmentIcs({
+    appointmentId: "sample-booking-confirm",
+    clinicSlug: "nguyens-osteopathy",
+    clinicName: "Nguyen's Osteopathic Clinic",
+    clinicEmail: "nguyensosteopathy@gmail.com",
+    clinicPhone: "+447882843513",
+    clinicAddress: "52 Powis Street, Woolwich, London, SE18 6LQ",
+    patientFirstName: "Test",
+    patientEmail: parsed.data.to,
+    practitionerName: "Austin Nguyen",
+    serviceName: "Follow-up Osteopathic Treatment",
+    roomName: "Couch 1",
+    startsAt,
+    endsAt,
+    manageLink: "https://treow-clinic.vercel.app/book/manage/demo",
+    method: "REQUEST",
+    sequence: 0,
+  });
 
   try {
     const result = await sendEmail({
@@ -47,10 +68,18 @@ export const POST = withPublic(async (req) => {
       text: content.text,
       html: content.html,
       replyTo: "nguyensosteopathy@gmail.com",
+      attachments: [
+        {
+          filename: ics.filename,
+          content: ics.content,
+          contentType: ics.contentType,
+        },
+      ],
     });
     return jsonOk({
       ok: true,
       result,
+      icsAttached: true,
       config: {
         provider: cfg.provider,
         hasApiKey: Boolean(cfg.apiKey),

@@ -64,7 +64,7 @@ Status: **Have** / **Partial** / **Gap** (for UK MSK roadmap).
 | Familiar calendar UX | Have | Week/today views |
 | Groups & classes | Gap | Pilates/yoga later |
 | Multiple locations | Partial | Locations model; UX polish |
-| Appointment confirmations (email + ICS) | Partial | Email path; strengthen ICS |
+| Appointment confirmations (email + ICS) | Done | Confirm/reschedule/cancel attach `.ics` (stable UID) |
 | Privacy mode (hide names) | Gap | Useful for open desks |
 | Repeat appointments | Gap | High ask for UK MSK |
 | Client search autocomplete | Have | Patient lookup |
