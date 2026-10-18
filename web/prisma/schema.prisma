@@ -181,6 +181,8 @@ model Clinic {
   /// Diary display: FULL_NAME or INITIALS (open-desk privacy)
   calendarPrivacyMode CalendarPrivacyMode @default(FULL_NAME)
   /// Patient email automation (Settings → Patient emails)
+  /// Opt-in advance reminders (cron `/jobs/reminders`) — default off for safe first cron
+  appointmentRemindersEnabled Boolean @default(false)
   reminderHoursBefore Int @default(48)
   sameDayReminderEnabled Boolean @default(false)
   sameDayReminderHours Int @default(2)

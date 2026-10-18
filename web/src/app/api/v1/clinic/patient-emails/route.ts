@@ -6,6 +6,7 @@ import { prisma } from "@/server/db";
 import { z } from "zod";
 
 const patientEmailSelect = {
+  appointmentRemindersEnabled: true,
   reminderHoursBefore: true,
   sameDayReminderEnabled: true,
   sameDayReminderHours: true,
@@ -28,6 +29,7 @@ export const GET = withAuth(async (_req, ctx) => {
 });
 
 const patchSchema = z.object({
+  appointmentRemindersEnabled: z.boolean().optional(),
   reminderHoursBefore: z.number().int().min(1).max(168).optional(),
   sameDayReminderEnabled: z.boolean().optional(),
   sameDayReminderHours: z.number().int().min(1).max(12).optional(),

@@ -10,11 +10,29 @@ Product loop: website booking → diary → visit notes → invoices · rooms ·
 
 ## Phase A — Freeze the MVP (engineering)
 
-- [ ] Merge open PRs that belong in launch: #63 clinical-safety → #64 leak/live-day → #65 re-audit-improve → #66 post-65-harden → #67 diary-scope → money-desk-scope
-- [ ] Replace generated logo with **final brand assets** in `web/public/brand/`
+Merge the draft tip stack **in order** (each PR stacks on the previous):
+
+1. #63 clinical-safety-ci → `main`
+2. #64 leak-live-day
+3. #65 re-audit-improve
+4. #66 post-65-harden
+5. #67 leak-diary-scope
+6. #68 money-desk-scope
+7. #69 patient-email-automation
+8. #70 patient-email-harden
+9. #71 booking-ics-confirm
+10. #72 desk-privacy-sync
+11. #73 reminders-opt-in (advance reminders default off — merge with tip)
+
+Then:
+
+- [ ] Apply migrations through `20261018_appointment_reminders_opt_in`
+- [ ] Wire external/Pro cron: hourly `/jobs/reminders` + `/jobs/patient-emails`; 5m `/jobs/organise` (Hobby `vercel.json` only runs daily retention)
+- [ ] Replace generated logo with **final brand assets** in `web/public/brand/` (optional for pilot)
 - [ ] Tag a release candidate (e.g. `v0.1.0-rc1`)
 - [ ] Confirm `npm run build` + seed + smoke path on RC
-- [ ] `GET /api/v1/health` returns `ok` on production URL (`cronConfigured`, `emailProvider`, `smsProvider`)
+- [ ] `GET /api/v1/health` returns `ok` with `cronConfigured`, `emailProvider`, `smsProvider`
+- [ ] Clinic Settings: keep deposits OFF; enable reminders / thank-you / review only when ready; INITIALS if open desk
 
 **Exit:** One deployable commit the pilot clinics will run.
 

@@ -441,6 +441,7 @@ export async function sendUpcomingReminders(
     where: opts.clinicId ? { id: opts.clinicId } : undefined,
     select: {
       id: true,
+      appointmentRemindersEnabled: true,
       reminderHoursBefore: true,
     },
   });
@@ -450,6 +451,7 @@ export async function sendUpcomingReminders(
   const now = new Date();
 
   for (const clinic of clinics) {
+    if (!clinic.appointmentRemindersEnabled) continue;
     const hours = withinHours ?? clinic.reminderHoursBefore ?? 48;
     const until = new Date(now.getTime() + hours * 60 * 60_000);
 

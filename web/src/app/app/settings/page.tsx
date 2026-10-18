@@ -40,6 +40,7 @@ type BookingPolicy = {
 };
 
 type PatientEmailSettings = {
+  appointmentRemindersEnabled: boolean;
   reminderHoursBefore: number;
   sameDayReminderEnabled: boolean;
   sameDayReminderHours: number;
@@ -668,20 +669,38 @@ export default function SettingsPage() {
           <p className="muted">
             Opt-in automation via Resend. Requires{" "}
             <code>EMAIL_PROVIDER=resend</code> and hourly cron for reminders +
-            patient-emails. Thank-you / review only send for appointments marked{" "}
+            patient-emails. Advance reminders, thank-you, review, and no-show
+            follow-ups default <strong>off</strong> until you enable them.
+            Thank-you / review only send for appointments marked{" "}
             <strong>Completed</strong> (diary “Mark completed” or after visit
             organise). Lookback: ~14 days thank-you, ~30 days review, ~7 days
             no-show. Review also needs a patient marketing consent on file.
           </p>
           {patientEmails ? (
             <>
+              <label className="field checkbox-row">
+                <input
+                  type="checkbox"
+                  disabled={!isOwner}
+                  checked={patientEmails.appointmentRemindersEnabled}
+                  onChange={(e) =>
+                    setPatientEmails({
+                      ...patientEmails,
+                      appointmentRemindersEnabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>Advance appointment reminders (email/SMS via cron)</span>
+              </label>
               <label className="field">
                 <span>Reminder hours before visit</span>
                 <input
                   type="number"
                   min={1}
                   max={168}
-                  disabled={!isOwner}
+                  disabled={
+                    !isOwner || !patientEmails.appointmentRemindersEnabled
+                  }
                   value={patientEmails.reminderHoursBefore}
                   onChange={(e) =>
                     setPatientEmails({

@@ -153,6 +153,8 @@ Staff sessions may still trigger **their own clinic only** from Settings
 (reminders / patient-emails / organise / retention). Cron bearer sweeps all clinics.
 
 Configure toggles under **Settings → Patient emails** (opt-in; defaults off).
+Advance reminders (`appointmentRemindersEnabled`), thank-you, review, and
+no-show follow-ups all default **off** — enable per clinic after cron is live.
 Thank-you/review need appointments **Marked completed**. Review also needs
 `reviewUrl` + patient marketing consent. Jobs use lookback windows so the first
 cron does not email historic visits.
