@@ -1,0 +1,68 @@
+# Hourly patient jobs for Vercel Hobby (sub-daily Vercel cron needs Pro).
+# Requires repo secrets:
+#   CRON_SECRET  — same as Vercel production CRON_SECRET
+#   APP_BASE_URL — optional, defaults to https://treow-clinic.vercel.app
+name: Cron jobs
+
+on:
+  schedule:
+    # Reminders + patient-emails hourly
+    - cron: "5 * * * *"
+    # Organise drain every 15 minutes (Hobby-friendly vs */5)
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Job to run"
+        type: choice
+        options:
+          - all-hourly
+          - reminders
+          - patient-emails
+          - organise
+        default: all-hourly
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invoke job(s)
+        env:
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_JOB: ${{ github.event.inputs.job }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CRON_SECRET:-}" ]]; then
+            echo "Missing repo secret CRON_SECRET — add it under Settings → Secrets → Actions" >&2
+            exit 1
+          fi
+          BASE="${APP_BASE_URL:-https://treow-clinic.vercel.app}"
+          BASE="${BASE%/}"
+          hit() {
+            local path="$1"
+            echo "GET $path"
+            curl -sS -f -H "Authorization: Bearer ${CRON_SECRET}" "${BASE}${path}"
+            echo
+          }
+          # schedule cron strings from `on.schedule`
+          if [[ -n "${EVENT_SCHEDULE:-}" ]]; then
+            if [[ "$EVENT_SCHEDULE" == "*/15 * * * *" ]]; then
+              hit /api/v1/jobs/organise
+            else
+              hit /api/v1/jobs/reminders
+              hit /api/v1/jobs/patient-emails
+            fi
+            exit 0
+          fi
+          case "${INPUT_JOB:-all-hourly}" in
+            reminders) hit /api/v1/jobs/reminders ;;
+            patient-emails) hit /api/v1/jobs/patient-emails ;;
+            organise) hit /api/v1/jobs/organise ;;
+            *)
+              hit /api/v1/jobs/reminders
+              hit /api/v1/jobs/patient-emails
+              hit /api/v1/jobs/organise
+              ;;
+          esac
