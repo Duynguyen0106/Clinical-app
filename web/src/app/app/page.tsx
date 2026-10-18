@@ -163,7 +163,7 @@ export default function TodayPage() {
 
   async function setAppointmentStatus(
     id: string,
-    status: "CONFIRMED" | "CHECKED_IN" | "CANCELLED",
+    status: "CONFIRMED" | "CHECKED_IN" | "CANCELLED" | "COMPLETED",
   ) {
     setError(null);
     setMessage(null);
@@ -193,6 +193,8 @@ export default function TodayPage() {
         }
       } else if (status === "CHECKED_IN") {
         setMessage("Patient checked in.");
+      } else if (status === "COMPLETED") {
+        setMessage("Marked completed — thank-you email may follow if enabled.");
       } else {
         setMessage("Appointment confirmed.");
       }
@@ -244,6 +246,20 @@ export default function TodayPage() {
                     }
                   >
                     Check in
+                  </button>
+                ) : null}
+                {isClinician &&
+                !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
+                  nextUp.status,
+                ) ? (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() =>
+                      void setAppointmentStatus(nextUp.id, "COMPLETED")
+                    }
+                  >
+                    Mark completed
                   </button>
                 ) : null}
                 <button
@@ -307,6 +323,20 @@ export default function TodayPage() {
                         }
                       >
                         Check in
+                      </button>
+                    ) : null}
+                    {isClinician &&
+                    !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
+                      apt.status,
+                    ) ? (
+                      <button
+                        type="button"
+                        className="btn-secondary btn-sm"
+                        onClick={() =>
+                          void setAppointmentStatus(apt.id, "COMPLETED")
+                        }
+                      >
+                        Done
                       </button>
                     ) : null}
                     {isClinician ? (

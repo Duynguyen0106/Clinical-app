@@ -184,15 +184,18 @@ model Clinic {
   reminderHoursBefore Int @default(48)
   sameDayReminderEnabled Boolean @default(false)
   sameDayReminderHours Int @default(2)
-  thankYouEnabled Boolean @default(true)
+  /// Opt-in — keep off until Owner enables (avoids historical flood)
+  thankYouEnabled Boolean @default(false)
   /// Hours after appointment end before thank-you is due
   thankYouDelayHours Int @default(18)
-  reviewRequestEnabled Boolean @default(true)
+  /// Opt-in; also requires reviewUrl + patient MARKETING consent
+  reviewRequestEnabled Boolean @default(false)
   /// Days after appointment end before review request is due
   reviewRequestDelayDays Int @default(2)
   /// Google Business / Trustpilot URL for review requests
   reviewUrl String?
-  noShowFollowUpEnabled Boolean @default(true)
+  /// Opt-in no-show follow-up
+  noShowFollowUpEnabled Boolean @default(false)
   /// Hours after appointment start when status is NO_SHOW before follow-up
   noShowFollowUpDelayHours Int @default(24)
   /// Treow SaaS billing (clinic → Treow monthly)

@@ -41,6 +41,13 @@ export const PATCH = withAuth(async (req, ctx, params) => {
     parsed.status === "NO_SHOW"
   ) {
     assertCanManageSchedule(ctx);
+  } else if (parsed.status === "COMPLETED") {
+    // Reception/owner any diary; practitioners own diary only
+    if (ctx.role === "PRACTITIONER") {
+      assertOwnsDiaryOrOwner(ctx, existing.practitionerId);
+    } else {
+      requireOwnerOrReception(ctx);
+    }
   } else if (parsed.additionalFeeCents !== undefined) {
     requireOwnerOrReception(ctx);
   } else if (ctx.role === "PRACTITIONER") {

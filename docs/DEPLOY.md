@@ -152,8 +152,10 @@ curl -sS -H "Authorization: Bearer $CRON_SECRET" \
 Staff sessions may still trigger **their own clinic only** from Settings
 (reminders / patient-emails / organise / retention). Cron bearer sweeps all clinics.
 
-Configure toggles under **Settings → Patient emails** (reminder horizon, thank-you,
-review URL, no-show follow-up). Review requests need a clinic `reviewUrl`.
+Configure toggles under **Settings → Patient emails** (opt-in; defaults off).
+Thank-you/review need appointments **Marked completed**. Review also needs
+`reviewUrl` + patient marketing consent. Jobs use lookback windows so the first
+cron does not email historic visits.
 
 | Schedule | Endpoint |
 |----------|----------|

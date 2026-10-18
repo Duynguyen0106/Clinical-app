@@ -1314,6 +1314,24 @@ export default function CalendarPage() {
                   ) : null}
                   <button
                     type="button"
+                    className="btn-secondary"
+                    disabled={
+                      busy ||
+                      selected.status === "COMPLETED" ||
+                      selected.status === "CANCELLED" ||
+                      selected.status === "NO_SHOW"
+                    }
+                    onClick={() =>
+                      void patchSelected(
+                        { status: "COMPLETED" },
+                        "Marked completed — thank-you email may follow",
+                      )
+                    }
+                  >
+                    Mark completed
+                  </button>
+                  <button
+                    type="button"
                     className="btn-ghost"
                     disabled={busy || selected.status === "NO_SHOW"}
                     onClick={() =>
@@ -1324,10 +1342,30 @@ export default function CalendarPage() {
                   </button>
                 </>
               ) : (
-                <p className="muted">
-                  Open the visit to record and take the clinical note. Schedule
-                  changes are managed by reception.
-                </p>
+                <>
+                  <p className="muted">
+                    Open the visit to record and take the clinical note. Schedule
+                    changes are managed by reception.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={
+                      busy ||
+                      selected.status === "COMPLETED" ||
+                      selected.status === "CANCELLED" ||
+                      selected.status === "NO_SHOW"
+                    }
+                    onClick={() =>
+                      void patchSelected(
+                        { status: "COMPLETED" },
+                        "Marked completed — thank-you email may follow",
+                      )
+                    }
+                  >
+                    Mark completed
+                  </button>
+                </>
               )}
             </div>
 

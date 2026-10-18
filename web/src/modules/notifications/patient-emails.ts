@@ -1,12 +1,16 @@
 /**
  * Patient lifecycle emails — thank-you, review request, no-show follow-up,
  * optional same-day reminder. Driven by Clinic settings + cron.
+ *
+ * Hardenings: lookback windows, claim-before-send, per-send try/catch,
+ * review time-gated (not thank-you delivery), MARKETING consent for reviews.
  */
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { formatInTimeZone } from "date-fns-tz";
 import { prisma } from "@/server/db";
 import { withClinicTransaction } from "@/server/clinic-rls";
 import { getAppBaseUrl } from "@/server/env";
+import { clinicDateKey } from "@/modules/scheduling/clinic-time";
 import { sendEmail } from "./email";
 import { sendSms } from "./sms";
 import {
@@ -14,6 +18,13 @@ import {
   buildReviewRequestEmail,
   buildThankYouEmail,
 } from "./patient-lifecycle-email";
+import {
+  NO_SHOW_LOOKBACK_MS,
+  REVIEW_LOOKBACK_MS,
+  SAME_DAY_REMINDER_COOLDOWN_MS,
+  THANK_YOU_LOOKBACK_MS,
+  shouldSendSameDayReminder,
+} from "./patient-email-eligibility";
 
 function formatWhen(date: Date, timezone: string) {
   try {
@@ -28,7 +39,15 @@ function bookUrl(slug: string) {
 }
 
 const aptInclude = {
-  patient: true,
+  patient: {
+    include: {
+      consents: {
+        where: { type: "MARKETING", granted: true },
+        take: 1,
+        orderBy: { capturedAt: "desc" as const },
+      },
+    },
+  },
   practitioner: true,
   appointmentType: true,
   clinic: true,
@@ -41,7 +60,43 @@ export type PatientEmailJobResult = {
   noShowFollowUp: number;
   sameDayReminder: number;
   sent: number;
+  errors: number;
 };
+
+async function claimMarker(
+  clinicId: string,
+  appointmentId: string,
+  field:
+    | "thankYouSentAt"
+    | "reviewRequestSentAt"
+    | "noShowFollowUpSentAt"
+    | "sameDayReminderSentAt",
+) {
+  return withClinicTransaction(clinicId, async (tx) => {
+    const result = await tx.appointment.updateMany({
+      where: { id: appointmentId, [field]: null },
+      data: { [field]: new Date() },
+    });
+    return result.count === 1;
+  });
+}
+
+async function unclaimMarker(
+  clinicId: string,
+  appointmentId: string,
+  field:
+    | "thankYouSentAt"
+    | "reviewRequestSentAt"
+    | "noShowFollowUpSentAt"
+    | "sameDayReminderSentAt",
+) {
+  await withClinicTransaction(clinicId, async (tx) => {
+    await tx.appointment.update({
+      where: { id: appointmentId },
+      data: { [field]: null },
+    });
+  });
+}
 
 export async function sendDuePatientEmails(opts: {
   clinicId?: string;
@@ -73,6 +128,7 @@ export async function sendDuePatientEmails(opts: {
     noShowFollowUp: 0,
     sameDayReminder: 0,
     sent: 0,
+    errors: 0,
   };
 
   for (const clinic of clinics) {
@@ -82,12 +138,13 @@ export async function sendDuePatientEmails(opts: {
       const cutoff = new Date(
         now.getTime() - clinic.thankYouDelayHours * 60 * 60_000,
       );
+      const oldest = new Date(now.getTime() - THANK_YOU_LOOKBACK_MS);
       const due = await prisma.appointment.findMany({
         where: {
           clinicId: clinic.id,
           status: AppointmentStatus.COMPLETED,
           thankYouSentAt: null,
-          endsAt: { lte: cutoff },
+          endsAt: { lte: cutoff, gte: oldest },
           patient: { email: { not: null } },
         },
         include: aptInclude,
@@ -96,50 +153,53 @@ export async function sendDuePatientEmails(opts: {
       });
       for (const apt of due) {
         if (!apt.patient.email) continue;
-        const content = buildThankYouEmail({
-          clinicName: clinic.name,
-          clinicPhone: clinic.phone,
-          patientFirstName: apt.patient.firstName,
-          practitionerName: apt.practitioner.displayName,
-          serviceName: apt.appointmentType.name,
-          whenLabel: formatWhen(apt.startsAt, clinic.timezone),
-          bookAgainUrl: bookUrl(clinic.slug),
-        });
-        const send = await sendEmail({
-          to: apt.patient.email,
-          subject: content.subject,
-          text: content.text,
-          html: content.html,
-          replyTo: clinic.email,
-        });
-        if (send.delivered) {
-          await withClinicTransaction(clinic.id, async (tx) => {
-            await tx.appointment.update({
-              where: { id: apt.id },
-              data: { thankYouSentAt: new Date() },
-            });
+        const claimed = await claimMarker(clinic.id, apt.id, "thankYouSentAt");
+        if (!claimed) continue;
+        try {
+          const content = buildThankYouEmail({
+            clinicName: clinic.name,
+            clinicPhone: clinic.phone,
+            patientFirstName: apt.patient.firstName,
+            practitionerName: apt.practitioner.displayName,
+            serviceName: apt.appointmentType.name,
+            whenLabel: formatWhen(apt.startsAt, clinic.timezone),
+            bookAgainUrl: bookUrl(clinic.slug),
           });
-          result.thankYou += 1;
+          const send = await sendEmail({
+            to: apt.patient.email,
+            subject: content.subject,
+            text: content.text,
+            html: content.html,
+            replyTo: clinic.email,
+          });
+          if (send.delivered) {
+            result.thankYou += 1;
+          } else {
+            await unclaimMarker(clinic.id, apt.id, "thankYouSentAt");
+          }
+        } catch (err) {
+          result.errors += 1;
+          console.error("Thank-you email failed", apt.id, err);
+          await unclaimMarker(clinic.id, apt.id, "thankYouSentAt");
         }
       }
     }
 
     if (clinic.reviewRequestEnabled && clinic.reviewUrl?.trim()) {
       const cutoff = new Date(
-        now.getTime() -
-          clinic.reviewRequestDelayDays * 24 * 60 * 60_000,
+        now.getTime() - clinic.reviewRequestDelayDays * 24 * 60 * 60_000,
       );
+      const oldest = new Date(now.getTime() - REVIEW_LOOKBACK_MS);
       const due = await prisma.appointment.findMany({
         where: {
           clinicId: clinic.id,
           status: AppointmentStatus.COMPLETED,
           reviewRequestSentAt: null,
-          endsAt: { lte: cutoff },
-          // Prefer after thank-you when thank-you is on
-          ...(clinic.thankYouEnabled
-            ? { thankYouSentAt: { not: null } }
-            : {}),
-          patient: { email: { not: null } },
+          endsAt: { lte: cutoff, gte: oldest },
+          patient: {
+            email: { not: null },
+            consents: { some: { type: "MARKETING", granted: true } },
+          },
         },
         include: aptInclude,
         take: 50,
@@ -147,27 +207,36 @@ export async function sendDuePatientEmails(opts: {
       });
       for (const apt of due) {
         if (!apt.patient.email) continue;
-        const content = buildReviewRequestEmail({
-          clinicName: clinic.name,
-          patientFirstName: apt.patient.firstName,
-          practitionerName: apt.practitioner.displayName,
-          reviewUrl: clinic.reviewUrl.trim(),
-        });
-        const send = await sendEmail({
-          to: apt.patient.email,
-          subject: content.subject,
-          text: content.text,
-          html: content.html,
-          replyTo: clinic.email,
-        });
-        if (send.delivered) {
-          await withClinicTransaction(clinic.id, async (tx) => {
-            await tx.appointment.update({
-              where: { id: apt.id },
-              data: { reviewRequestSentAt: new Date() },
-            });
+        if (apt.patient.consents.length === 0) continue;
+        const claimed = await claimMarker(
+          clinic.id,
+          apt.id,
+          "reviewRequestSentAt",
+        );
+        if (!claimed) continue;
+        try {
+          const content = buildReviewRequestEmail({
+            clinicName: clinic.name,
+            patientFirstName: apt.patient.firstName,
+            practitionerName: apt.practitioner.displayName,
+            reviewUrl: clinic.reviewUrl.trim(),
           });
-          result.reviewRequest += 1;
+          const send = await sendEmail({
+            to: apt.patient.email,
+            subject: content.subject,
+            text: content.text,
+            html: content.html,
+            replyTo: clinic.email,
+          });
+          if (send.delivered) {
+            result.reviewRequest += 1;
+          } else {
+            await unclaimMarker(clinic.id, apt.id, "reviewRequestSentAt");
+          }
+        } catch (err) {
+          result.errors += 1;
+          console.error("Review request email failed", apt.id, err);
+          await unclaimMarker(clinic.id, apt.id, "reviewRequestSentAt");
         }
       }
     }
@@ -176,12 +245,13 @@ export async function sendDuePatientEmails(opts: {
       const cutoff = new Date(
         now.getTime() - clinic.noShowFollowUpDelayHours * 60 * 60_000,
       );
+      const oldest = new Date(now.getTime() - NO_SHOW_LOOKBACK_MS);
       const due = await prisma.appointment.findMany({
         where: {
           clinicId: clinic.id,
           status: AppointmentStatus.NO_SHOW,
           noShowFollowUpSentAt: null,
-          startsAt: { lte: cutoff },
+          startsAt: { lte: cutoff, gte: oldest },
           patient: { email: { not: null } },
         },
         include: aptInclude,
@@ -190,29 +260,37 @@ export async function sendDuePatientEmails(opts: {
       });
       for (const apt of due) {
         if (!apt.patient.email) continue;
-        const content = buildNoShowFollowUpEmail({
-          clinicName: clinic.name,
-          clinicPhone: clinic.phone,
-          patientFirstName: apt.patient.firstName,
-          whenLabel: formatWhen(apt.startsAt, clinic.timezone),
-          practitionerName: apt.practitioner.displayName,
-          bookAgainUrl: bookUrl(clinic.slug),
-        });
-        const send = await sendEmail({
-          to: apt.patient.email,
-          subject: content.subject,
-          text: content.text,
-          html: content.html,
-          replyTo: clinic.email,
-        });
-        if (send.delivered) {
-          await withClinicTransaction(clinic.id, async (tx) => {
-            await tx.appointment.update({
-              where: { id: apt.id },
-              data: { noShowFollowUpSentAt: new Date() },
-            });
+        const claimed = await claimMarker(
+          clinic.id,
+          apt.id,
+          "noShowFollowUpSentAt",
+        );
+        if (!claimed) continue;
+        try {
+          const content = buildNoShowFollowUpEmail({
+            clinicName: clinic.name,
+            clinicPhone: clinic.phone,
+            patientFirstName: apt.patient.firstName,
+            whenLabel: formatWhen(apt.startsAt, clinic.timezone),
+            practitionerName: apt.practitioner.displayName,
+            bookAgainUrl: bookUrl(clinic.slug),
           });
-          result.noShowFollowUp += 1;
+          const send = await sendEmail({
+            to: apt.patient.email,
+            subject: content.subject,
+            text: content.text,
+            html: content.html,
+            replyTo: clinic.email,
+          });
+          if (send.delivered) {
+            result.noShowFollowUp += 1;
+          } else {
+            await unclaimMarker(clinic.id, apt.id, "noShowFollowUpSentAt");
+          }
+        } catch (err) {
+          result.errors += 1;
+          console.error("No-show follow-up email failed", apt.id, err);
+          await unclaimMarker(clinic.id, apt.id, "noShowFollowUpSentAt");
         }
       }
     }
@@ -221,6 +299,10 @@ export async function sendDuePatientEmails(opts: {
       const until = new Date(
         now.getTime() + clinic.sameDayReminderHours * 60 * 60_000,
       );
+      const cooldownSince = new Date(
+        now.getTime() - SAME_DAY_REMINDER_COOLDOWN_MS,
+      );
+      const todayKey = clinicDateKey(now, clinic.timezone);
       const due = await prisma.appointment.findMany({
         where: {
           clinicId: clinic.id,
@@ -233,47 +315,77 @@ export async function sendDuePatientEmails(opts: {
               AppointmentStatus.CHECKED_IN,
             ],
           },
+          OR: [
+            { reminderSentAt: null },
+            { reminderSentAt: { lte: cooldownSince } },
+          ],
+          patient: {
+            OR: [{ email: { not: null } }, { phone: { not: null } }],
+          },
         },
         include: aptInclude,
         take: 50,
         orderBy: { startsAt: "asc" },
       });
       for (const apt of due) {
-        const when = formatWhen(apt.startsAt, clinic.timezone);
-        let delivered = false;
-        if (apt.patient.email) {
-          const send = await sendEmail({
-            to: apt.patient.email,
-            subject: `Today — ${clinic.name}`,
-            text: [
-              `Hi ${apt.patient.firstName},`,
-              "",
-              `Friendly reminder: your appointment is today.`,
-              `When: ${when}`,
-              `With: ${apt.practitioner.displayName}`,
-              `Service: ${apt.appointmentType.name}`,
-              "",
-              `— ${clinic.name}`,
-            ].join("\n"),
-            replyTo: clinic.email,
-          });
-          delivered = send.delivered;
+        const aptDay = clinicDateKey(apt.startsAt, clinic.timezone);
+        const hasContact = Boolean(apt.patient.email || apt.patient.phone);
+        if (
+          !shouldSendSameDayReminder({
+            now,
+            startsAt: apt.startsAt,
+            sameDayHours: clinic.sameDayReminderHours,
+            clinicDateKeyToday: todayKey,
+            appointmentDateKey: aptDay,
+            reminderSentAt: apt.reminderSentAt,
+            hasContact,
+          })
+        ) {
+          continue;
         }
-        if (apt.patient.phone) {
-          const sms = await sendSms({
-            to: apt.patient.phone,
-            body: `${clinic.name}: reminder today ${when} with ${apt.practitioner.displayName}.`,
-          });
-          delivered = delivered || sms.delivered;
-        }
-        if (delivered) {
-          await withClinicTransaction(clinic.id, async (tx) => {
-            await tx.appointment.update({
-              where: { id: apt.id },
-              data: { sameDayReminderSentAt: new Date() },
+        const claimed = await claimMarker(
+          clinic.id,
+          apt.id,
+          "sameDayReminderSentAt",
+        );
+        if (!claimed) continue;
+        try {
+          const when = formatWhen(apt.startsAt, clinic.timezone);
+          let delivered = false;
+          if (apt.patient.email) {
+            const send = await sendEmail({
+              to: apt.patient.email,
+              subject: `Today — ${clinic.name}`,
+              text: [
+                `Hi ${apt.patient.firstName},`,
+                "",
+                `Friendly reminder: your appointment is today.`,
+                `When: ${when}`,
+                `With: ${apt.practitioner.displayName}`,
+                `Service: ${apt.appointmentType.name}`,
+                "",
+                `— ${clinic.name}`,
+              ].join("\n"),
+              replyTo: clinic.email,
             });
-          });
-          result.sameDayReminder += 1;
+            delivered = send.delivered;
+          }
+          if (apt.patient.phone) {
+            const sms = await sendSms({
+              to: apt.patient.phone,
+              body: `${clinic.name}: reminder today ${when} with ${apt.practitioner.displayName}.`,
+            });
+            delivered = delivered || sms.delivered;
+          }
+          if (delivered) {
+            result.sameDayReminder += 1;
+          } else {
+            await unclaimMarker(clinic.id, apt.id, "sameDayReminderSentAt");
+          }
+        } catch (err) {
+          result.errors += 1;
+          console.error("Same-day reminder failed", apt.id, err);
+          await unclaimMarker(clinic.id, apt.id, "sameDayReminderSentAt");
         }
       }
     }

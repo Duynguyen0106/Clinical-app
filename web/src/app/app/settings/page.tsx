@@ -315,9 +315,10 @@ export default function SettingsPage() {
         reviewRequest: number;
         noShowFollowUp: number;
         sameDayReminder: number;
+        errors?: number;
       }>("/jobs/patient-emails", { method: "POST" });
       setMessage(
-        `Patient emails sent: ${d.sent} (thank-you ${d.thankYou}, review ${d.reviewRequest}, no-show ${d.noShowFollowUp}, same-day ${d.sameDayReminder}).`,
+        `Patient emails sent: ${d.sent} (thank-you ${d.thankYou}, review ${d.reviewRequest}, no-show ${d.noShowFollowUp}, same-day ${d.sameDayReminder}${d.errors ? `, errors ${d.errors}` : ""}).`,
       );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Patient emails job failed");
@@ -659,9 +660,12 @@ export default function SettingsPage() {
         <section className="panel">
           <h2>Patient emails</h2>
           <p className="muted">
-            Automated transactional emails via Resend. Requires{" "}
-            <code>EMAIL_PROVIDER=resend</code> and the hourly cron jobs for
-            reminders + patient-emails (see deploy guide).
+            Opt-in automation via Resend. Requires{" "}
+            <code>EMAIL_PROVIDER=resend</code> and hourly cron for reminders +
+            patient-emails. Thank-you / review only send for appointments marked{" "}
+            <strong>Completed</strong> (diary “Mark completed” or after visit
+            organise). Lookback: ~14 days thank-you, ~30 days review, ~7 days
+            no-show. Review also needs a patient marketing consent on file.
           </p>
           {patientEmails ? (
             <>
@@ -788,6 +792,12 @@ export default function SettingsPage() {
                     })
                   }
                 />
+                {patientEmails.reviewRequestEnabled &&
+                !patientEmails.reviewUrl?.trim() ? (
+                  <span className="muted">
+                    Review requests stay off until you paste a review URL.
+                  </span>
+                ) : null}
               </label>
               <label className="field checkbox-row">
                 <input
