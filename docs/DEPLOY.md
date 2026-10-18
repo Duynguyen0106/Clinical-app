@@ -123,16 +123,18 @@ Set `CRON_SECRET` (≥24 chars). Vercel sends `Authorization: Bearer $CRON_SECRE
 for configured Cron Jobs.
 
 `web/vercel.json` ships a **daily** retention cron (Hobby-compatible). Hourly
-reminders and the organise drain need **Vercel Pro** (sub-daily schedules) **or**
-an external scheduler calling the same GET routes with the bearer secret.
+reminders, patient-emails (thank-you / review / no-show), and the organise drain
+need **Vercel Pro** (sub-daily schedules) **or** an external scheduler calling
+the same GET routes with the bearer secret.
 
 Example helper: [`web/scripts/cron-external.example.sh`](../web/scripts/cron-external.example.sh)
 
 ```bash
 export APP_BASE_URL="https://…"
 export CRON_SECRET="…"
-# crontab: hourly reminders, every 5 min organise
+# crontab: hourly reminders + patient-emails, every 5 min organise
 ./web/scripts/cron-external.example.sh reminders
+./web/scripts/cron-external.example.sh patient-emails
 ./web/scripts/cron-external.example.sh organise
 ```
 
@@ -142,15 +144,21 @@ Or raw curl:
 curl -sS -H "Authorization: Bearer $CRON_SECRET" \
   "$APP_BASE_URL/api/v1/jobs/reminders"
 curl -sS -H "Authorization: Bearer $CRON_SECRET" \
+  "$APP_BASE_URL/api/v1/jobs/patient-emails"
+curl -sS -H "Authorization: Bearer $CRON_SECRET" \
   "$APP_BASE_URL/api/v1/jobs/organise"
 ```
 
 Staff sessions may still trigger **their own clinic only** from Settings
-(reminders / organise / retention). Cron bearer sweeps all clinics.
+(reminders / patient-emails / organise / retention). Cron bearer sweeps all clinics.
+
+Configure toggles under **Settings → Patient emails** (reminder horizon, thank-you,
+review URL, no-show follow-up). Review requests need a clinic `reviewUrl`.
 
 | Schedule | Endpoint |
 |----------|----------|
 | Every hour (Pro or external) | `GET /api/v1/jobs/reminders` (staff may `POST`) |
+| Every hour (Pro or external) | `GET /api/v1/jobs/patient-emails` (thank-you / review / no-show / same-day) |
 | Every 5 min (Pro or external) | `GET /api/v1/jobs/organise` (drain AI note jobs) |
 | Daily 03:15 UTC (in `vercel.json`) | `GET /api/v1/jobs/retention` |
 

@@ -17,6 +17,7 @@ As of 2026-10-16. Assumes locked decisions (UK, mixed MSK, PWA) and shipped back
 | Native installers | Scaffolded — Electron desktop + Capacitor Android (`native/`, `docs/NATIVE_APP.md`); iOS add on Mac |
 | Cron | Hobby: daily retention in `vercel.json`; reminders + organise via external/Pro cron (`docs/DEPLOY.md`) |
 | SMS | Done (`SMS_PROVIDER=console|twilio`); console is honest (no false “sent”) |
+| Patient emails | Confirmation + reminders + thank-you / review / no-show automation (Settings); keep Resend + hourly cron |
 | Deposits | Stripe Checkout + session verify; keep mode OFF until Stripe live |
 
 **Next product focus:** Design-partner **launch** — see `docs/LAUNCH.md` (merge tip stack #63–#67 + money-desk-scope, UK/EU host, DPAs, pilot 5 visits).

@@ -17,6 +17,7 @@ export const GET = withAuth(async (_req, ctx) => {
       },
       jobs: {
         reminders: "POST /api/v1/jobs/reminders",
+        patientEmails: "POST /api/v1/jobs/patient-emails",
         retention: "POST /api/v1/jobs/retention",
       },
     },

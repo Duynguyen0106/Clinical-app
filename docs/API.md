@@ -22,7 +22,9 @@ Optional clinic switch: `X-Clinic-Id: <clinicId>`
 | GET | `/public/clinics/:slug/logo` | Public clinic logo bytes |
 | GET | `/clinic/booking` | Online booking policy (notice, deposits) |
 | PATCH | `/clinic/booking` | Owner: update booking policy |
-| POST | `/public/deposits` | `{ appointmentId }` start deposit checkout (console pays immediately; stripe returns URL) |
+| GET | `/clinic/patient-emails` | Patient email automation settings (reminder / thank-you / review / no-show) |
+| PATCH | `/clinic/patient-emails` | Owner: update patient email automation |
+| POST | `/public/deposits` | `{ token }` start deposit checkout (manage token required; stripe returns URL) |
 
 ## Patients
 
@@ -103,7 +105,8 @@ Pay modes: `NONE` · `SESSION` · `DAY` · `FEE_SHARE`. Employment: `EMPLOYED` �
 | POST | `/visits/:id/recording/upload` | multipart `audio` file |
 | GET | `/visits/:id/rebook` | Suggest follow-up slots from Plan (clinician) |
 | POST | `/visits/:id/rebook` | Book follow-up `{ startsAt }` (clinician) |
-| POST | `/jobs/reminders` | Email + SMS reminders (staff) |
+| POST | `/jobs/reminders` | Email + SMS reminders (staff; horizon from clinic settings) |
+| POST | `/jobs/patient-emails` | Thank-you / review / no-show / same-day (staff; cron bearer for all clinics) |
 | POST | `/jobs/retention` | Purge expired encrypted audio (owner) |
 
 ## Waitlist & ops

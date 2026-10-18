@@ -11,7 +11,8 @@ async function handle(
   ctx: { mode: "cron" } | { mode: "staff"; auth: { clinicId: string } },
 ) {
   const clinicId = ctx.mode === "staff" ? ctx.auth.clinicId : undefined;
-  const result = await sendUpcomingReminders(48, { clinicId });
+  // Horizon comes from each clinic.reminderHoursBefore (default 48h)
+  const result = await sendUpcomingReminders(undefined, { clinicId });
   return jsonOk(result);
 }
 

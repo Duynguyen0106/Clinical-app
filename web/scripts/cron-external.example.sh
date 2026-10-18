@@ -6,6 +6,7 @@
 #
 # Suggested crontab (UTC):
 #   5 * * * *  /path/to/cron-external.example.sh reminders
+#   10 * * * * /path/to/cron-external.example.sh patient-emails
 #   */5 * * * * /path/to/cron-external.example.sh organise
 # Retention stays in web/vercel.json (daily 03:15 UTC).
 
@@ -21,6 +22,9 @@ case "$JOB" in
   reminders)
     PATH_SUFFIX="/api/v1/jobs/reminders"
     ;;
+  patient-emails)
+    PATH_SUFFIX="/api/v1/jobs/patient-emails"
+    ;;
   organise)
     PATH_SUFFIX="/api/v1/jobs/organise"
     ;;
@@ -28,7 +32,7 @@ case "$JOB" in
     PATH_SUFFIX="/api/v1/jobs/retention"
     ;;
   *)
-    echo "Usage: $0 reminders|organise|retention" >&2
+    echo "Usage: $0 reminders|patient-emails|organise|retention" >&2
     exit 1
     ;;
 esac

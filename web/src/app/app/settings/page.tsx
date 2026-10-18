@@ -39,12 +39,27 @@ type BookingPolicy = {
   bookingPolicyText: string;
 };
 
+type PatientEmailSettings = {
+  reminderHoursBefore: number;
+  sameDayReminderEnabled: boolean;
+  sameDayReminderHours: number;
+  thankYouEnabled: boolean;
+  thankYouDelayHours: number;
+  reviewRequestEnabled: boolean;
+  reviewRequestDelayDays: number;
+  reviewUrl: string | null;
+  noShowFollowUpEnabled: boolean;
+  noShowFollowUpDelayHours: number;
+};
+
 export default function SettingsPage() {
   const router = useRouter();
   const { me, refresh, loading: authLoading } = useAuth();
   const [clinic, setClinic] = useState<ClinicProfile | null>(null);
   const [support, setSupport] = useState<SupportInfo | null>(null);
   const [booking, setBooking] = useState<BookingPolicy | null>(null);
+  const [patientEmails, setPatientEmails] =
+    useState<PatientEmailSettings | null>(null);
   const [name, setName] = useState("");
   const [days, setDays] = useState(14);
   const [phone, setPhone] = useState("");
@@ -104,8 +119,9 @@ export default function SettingsPage() {
       api<{ clinic: ClinicProfile }>("/clinic/profile"),
       api<{ support: SupportInfo }>("/ops/support"),
       api<{ booking: BookingPolicy }>("/clinic/booking"),
+      api<{ patientEmails: PatientEmailSettings }>("/clinic/patient-emails"),
     ])
-      .then(([c, s, b]) => {
+      .then(([c, s, b, pe]) => {
         setClinic(c.clinic);
         setName(c.clinic.name);
         setDays(c.clinic.audioRetentionDays);
@@ -120,6 +136,7 @@ export default function SettingsPage() {
         );
         setSupport(s.support);
         setBooking(b.booking);
+        setPatientEmails(pe.patientEmails);
         if (c.clinic.hasLogo) {
           void loadLogoPreview();
         } else {
@@ -256,6 +273,27 @@ export default function SettingsPage() {
     }
   }
 
+  async function savePatientEmails() {
+    if (!patientEmails) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const d = await api<{ patientEmails: PatientEmailSettings }>(
+        "/clinic/patient-emails",
+        {
+          method: "PATCH",
+          body: JSON.stringify(patientEmails),
+        },
+      );
+      setPatientEmails(d.patientEmails);
+      setMessage("Saved patient email automation.");
+    } catch (e) {
+      setError(
+        e instanceof ApiError ? e.message : "Patient email settings save failed",
+      );
+    }
+  }
+
   async function runReminders() {
     setError(null);
     try {
@@ -265,6 +303,24 @@ export default function SettingsPage() {
       setMessage(`Sent ${d.sent} reminder email(s).`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Reminders failed");
+    }
+  }
+
+  async function runPatientEmails() {
+    setError(null);
+    try {
+      const d = await api<{
+        sent: number;
+        thankYou: number;
+        reviewRequest: number;
+        noShowFollowUp: number;
+        sameDayReminder: number;
+      }>("/jobs/patient-emails", { method: "POST" });
+      setMessage(
+        `Patient emails sent: ${d.sent} (thank-you ${d.thankYou}, review ${d.reviewRequest}, no-show ${d.noShowFollowUp}, same-day ${d.sameDayReminder}).`,
+      );
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Patient emails job failed");
     }
   }
 
@@ -593,6 +649,196 @@ export default function SettingsPage() {
                 </button>
               ) : (
                 <p className="muted">Only owners can change booking policy.</p>
+              )}
+            </>
+          ) : (
+            <p className="muted">Loading…</p>
+          )}
+        </section>
+
+        <section className="panel">
+          <h2>Patient emails</h2>
+          <p className="muted">
+            Automated transactional emails via Resend. Requires{" "}
+            <code>EMAIL_PROVIDER=resend</code> and the hourly cron jobs for
+            reminders + patient-emails (see deploy guide).
+          </p>
+          {patientEmails ? (
+            <>
+              <label className="field">
+                <span>Reminder hours before visit</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={168}
+                  disabled={!isOwner}
+                  value={patientEmails.reminderHoursBefore}
+                  onChange={(e) =>
+                    setPatientEmails({
+                      ...patientEmails,
+                      reminderHoursBefore: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label className="field checkbox-row">
+                <input
+                  type="checkbox"
+                  disabled={!isOwner}
+                  checked={patientEmails.sameDayReminderEnabled}
+                  onChange={(e) =>
+                    setPatientEmails({
+                      ...patientEmails,
+                      sameDayReminderEnabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>
+                  Same-day reminder (
+                  <input
+                    type="number"
+                    min={1}
+                    max={12}
+                    disabled={!isOwner || !patientEmails.sameDayReminderEnabled}
+                    style={{ width: "4rem" }}
+                    value={patientEmails.sameDayReminderHours}
+                    onChange={(e) =>
+                      setPatientEmails({
+                        ...patientEmails,
+                        sameDayReminderHours: Number(e.target.value),
+                      })
+                    }
+                  />{" "}
+                  hours before)
+                </span>
+              </label>
+              <label className="field checkbox-row">
+                <input
+                  type="checkbox"
+                  disabled={!isOwner}
+                  checked={patientEmails.thankYouEnabled}
+                  onChange={(e) =>
+                    setPatientEmails({
+                      ...patientEmails,
+                      thankYouEnabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>
+                  Thank-you after completed visit (delay{" "}
+                  <input
+                    type="number"
+                    min={1}
+                    max={168}
+                    disabled={!isOwner || !patientEmails.thankYouEnabled}
+                    style={{ width: "4rem" }}
+                    value={patientEmails.thankYouDelayHours}
+                    onChange={(e) =>
+                      setPatientEmails({
+                        ...patientEmails,
+                        thankYouDelayHours: Number(e.target.value),
+                      })
+                    }
+                  />{" "}
+                  hours)
+                </span>
+              </label>
+              <label className="field checkbox-row">
+                <input
+                  type="checkbox"
+                  disabled={!isOwner}
+                  checked={patientEmails.reviewRequestEnabled}
+                  onChange={(e) =>
+                    setPatientEmails({
+                      ...patientEmails,
+                      reviewRequestEnabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>
+                  Review request (
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    disabled={!isOwner || !patientEmails.reviewRequestEnabled}
+                    style={{ width: "3rem" }}
+                    value={patientEmails.reviewRequestDelayDays}
+                    onChange={(e) =>
+                      setPatientEmails({
+                        ...patientEmails,
+                        reviewRequestDelayDays: Number(e.target.value),
+                      })
+                    }
+                  />{" "}
+                  days after visit)
+                </span>
+              </label>
+              <label className="field">
+                <span>Review URL (Google / Trustpilot)</span>
+                <input
+                  type="url"
+                  disabled={!isOwner}
+                  placeholder="https://g.page/r/…"
+                  value={patientEmails.reviewUrl ?? ""}
+                  onChange={(e) =>
+                    setPatientEmails({
+                      ...patientEmails,
+                      reviewUrl: e.target.value || null,
+                    })
+                  }
+                />
+              </label>
+              <label className="field checkbox-row">
+                <input
+                  type="checkbox"
+                  disabled={!isOwner}
+                  checked={patientEmails.noShowFollowUpEnabled}
+                  onChange={(e) =>
+                    setPatientEmails({
+                      ...patientEmails,
+                      noShowFollowUpEnabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>
+                  No-show follow-up (after{" "}
+                  <input
+                    type="number"
+                    min={1}
+                    max={168}
+                    disabled={!isOwner || !patientEmails.noShowFollowUpEnabled}
+                    style={{ width: "4rem" }}
+                    value={patientEmails.noShowFollowUpDelayHours}
+                    onChange={(e) =>
+                      setPatientEmails({
+                        ...patientEmails,
+                        noShowFollowUpDelayHours: Number(e.target.value),
+                      })
+                    }
+                  />{" "}
+                  hours)
+                </span>
+              </label>
+              {isOwner ? (
+                <div className="home-cta">
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => void savePatientEmails()}
+                  >
+                    Save patient emails
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => void runPatientEmails()}
+                  >
+                    Send due patient emails
+                  </button>
+                </div>
+              ) : (
+                <p className="muted">Only owners can change email automation.</p>
               )}
             </>
           ) : (

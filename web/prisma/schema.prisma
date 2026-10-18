@@ -180,6 +180,21 @@ model Clinic {
   bookingPolicyText String @default("Please give at least 24 hours’ notice to cancel or reschedule online. Late cancels and no-shows may forfeit the deposit.")
   /// Diary display: FULL_NAME or INITIALS (open-desk privacy)
   calendarPrivacyMode CalendarPrivacyMode @default(FULL_NAME)
+  /// Patient email automation (Settings → Patient emails)
+  reminderHoursBefore Int @default(48)
+  sameDayReminderEnabled Boolean @default(false)
+  sameDayReminderHours Int @default(2)
+  thankYouEnabled Boolean @default(true)
+  /// Hours after appointment end before thank-you is due
+  thankYouDelayHours Int @default(18)
+  reviewRequestEnabled Boolean @default(true)
+  /// Days after appointment end before review request is due
+  reviewRequestDelayDays Int @default(2)
+  /// Google Business / Trustpilot URL for review requests
+  reviewUrl String?
+  noShowFollowUpEnabled Boolean @default(true)
+  /// Hours after appointment start when status is NO_SHOW before follow-up
+  noShowFollowUpDelayHours Int @default(24)
   /// Treow SaaS billing (clinic → Treow monthly)
   saasPlan SaasPlan @default(PILOT)
   saasStatus SaasSubscriptionStatus @default(TRIALING)
@@ -480,6 +495,10 @@ model Appointment {
   confirmationSentAt DateTime?
   reminderSentAt    DateTime?
   smsReminderSentAt DateTime?
+  sameDayReminderSentAt DateTime?
+  thankYouSentAt    DateTime?
+  reviewRequestSentAt DateTime?
+  noShowFollowUpSentAt DateTime?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -498,6 +517,8 @@ model Appointment {
   @@index([practitionerId, startsAt])
   @@index([patientId])
   @@index([reminderSentAt, startsAt])
+  @@index([clinicId, thankYouSentAt, endsAt])
+  @@index([clinicId, reviewRequestSentAt, endsAt])
   @@index([recurrenceGroupId])
 }
 
