@@ -3,6 +3,7 @@ import { withPublic } from "@/server/api";
 import { jsonOk } from "@/server/http";
 import { unauthorized, badRequest } from "@/server/errors";
 import { isAdminProvisionAuthorized } from "@/server/admin-auth";
+import { enforceAdminProvisionLimits } from "@/server/abuse";
 import {
   getEffectiveEmailProvider,
   loadEmailRuntimeConfig,
@@ -16,6 +17,7 @@ const bodySchema = z.object({
 });
 
 export const GET = withPublic(async (req) => {
+  await enforceAdminProvisionLimits(req);
   if (!isAdminProvisionAuthorized(req)) {
     throw unauthorized("Invalid provision secret");
   }
@@ -29,6 +31,7 @@ export const GET = withPublic(async (req) => {
 });
 
 export const PUT = withPublic(async (req) => {
+  await enforceAdminProvisionLimits(req);
   if (!isAdminProvisionAuthorized(req)) {
     throw unauthorized("Invalid provision secret");
   }

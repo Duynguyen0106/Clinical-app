@@ -116,9 +116,14 @@ export async function createPractitioner(
       },
     });
     if (already) throw conflict("This email is already on the clinic team");
+    // Never overwrite a global User password — that would take over every
+    // clinic membership tied to this email. Owner can reset later via
+    // team password once they are on this clinic, or the user keeps theirs.
   }
 
-  const passwordHash = await hashPassword(input.password);
+  const passwordHash = existingUser
+    ? null
+    : await hashPassword(input.password);
 
   const result = await prisma.$transaction(async (tx) => {
     const user =
@@ -127,19 +132,9 @@ export async function createPractitioner(
         data: {
           email,
           name: input.name.trim(),
-          passwordHash,
+          passwordHash: passwordHash!,
         },
       }));
-
-    if (existingUser) {
-      await tx.user.update({
-        where: { id: user.id },
-        data: {
-          name: input.name.trim(),
-          passwordHash,
-        },
-      });
-    }
 
     const membership = await tx.membership.create({
       data: {
@@ -278,6 +273,19 @@ export async function ownerSetPractitionerPassword(
     include: { membership: { select: { userId: true } } },
   });
   if (!profile) throw notFound("Practitioner not found");
+
+  // Password is global on User — refuse when this account serves other clinics
+  const otherClinics = await prisma.membership.count({
+    where: {
+      userId: profile.membership.userId,
+      clinicId: { not: ctx.clinicId },
+    },
+  });
+  if (otherClinics > 0) {
+    throw badRequest(
+      "This person also belongs to another clinic. They must reset their own password — changing it here would affect those clinics too.",
+    );
+  }
 
   const passwordHash = await hashPassword(input.password);
   await prisma.$transaction([

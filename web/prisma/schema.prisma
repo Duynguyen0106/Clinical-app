@@ -157,9 +157,11 @@ model Clinic {
   phone     String?
   email     String?
   address   String?
-  /// Clinic logo storage key (e.g. clinics/{id}/brand/logo.png)
+  /// Clinic logo storage key: "inline" (bytes in logoBytes), or legacy file/S3 path
   logoStorageKey String?
   logoMimeType   String?
+  /// Durable logo bytes (Vercel-safe; prefer over local disk)
+  logoBytes      Bytes?
   /// Primary brand colour for booking / print accents (#RRGGBB)
   brandColour String?
   /// Days to retain encrypted visit audio (0 = delete after note signed / organise)

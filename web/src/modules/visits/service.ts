@@ -177,6 +177,13 @@ export async function uploadRecordingAudio(
   if (!visit.recordingConsentAt) {
     throw badRequest("Recording consent required");
   }
+  if (visit.notes.some((n) => n.status === "SIGNED")) {
+    throw badRequest("Cannot replace audio after a note is signed");
+  }
+  // Soft size cap (~25 MB) — browser uploads should stay well under this
+  if (bytes.length > 25 * 1024 * 1024) {
+    throw badRequest("Recording is too large (max 25 MB)");
+  }
 
   const storageKey = await saveAudioUpload(ctx.clinicId, visit.id, bytes, {
     extension: opts.extension,
@@ -293,6 +300,29 @@ export async function stopRecordingAndOrganise(
     visit.id,
     visit.appointment.practitionerId,
   );
+
+  // UK access accountability — log before PHI leaves the clinic boundary
+  try {
+    await prisma.patientAccessEvent.create({
+      data: {
+        clinicId: ctx.clinicId,
+        patientId: visit.appointment.patientId,
+        actorId: ctx.userId,
+        action: "ai_organise",
+        meta: {
+          visitId: visit.id,
+          appointmentType: visit.appointment.appointmentType.name,
+          templateId: template?.id ?? null,
+          templateName: template?.name ?? null,
+          provider: process.env.AI_PROVIDER ?? "mock",
+          includedPriorContext: Boolean(priorContext),
+          transcriptChars: transcriptText?.length ?? 0,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("AI organise access audit failed", err);
+  }
 
   let organised;
   try {

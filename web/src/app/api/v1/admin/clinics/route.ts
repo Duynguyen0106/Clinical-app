@@ -8,8 +8,10 @@ import {
 import { getAppBaseUrl } from "@/server/env";
 import { getWebsiteSnippets } from "@/modules/clinic/website";
 import { isAdminProvisionAuthorized } from "@/server/admin-auth";
+import { enforceAdminProvisionLimits } from "@/server/abuse";
 
 export const POST = withPublic(async (req) => {
+  await enforceAdminProvisionLimits(req);
   if (!isAdminProvisionAuthorized(req)) {
     throw unauthorized("Invalid provision secret");
   }

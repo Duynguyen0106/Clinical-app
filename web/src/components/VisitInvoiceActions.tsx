@@ -69,8 +69,8 @@ export function VisitInvoiceActions({ visitId }: Props) {
   const [receipt, setReceipt] = useState<ReceiptDoc | null>(null);
 
   const load = useCallback(() => {
-    void api<{ invoice: InvoiceRow }>(`/visits/${visitId}/invoice`)
-      .then((d) => setInvoice(d.invoice))
+    void api<{ invoice: InvoiceRow | null }>(`/visits/${visitId}/invoice`)
+      .then((d) => setInvoice(d.invoice ?? null))
       .catch((e: Error) =>
         setError(e instanceof ApiError ? e.message : e.message),
       );
@@ -146,7 +146,19 @@ export function VisitInvoiceActions({ visitId }: Props) {
           </div>
         </>
       ) : !error ? (
-        <p className="muted">Preparing invoice…</p>
+        <>
+          <p className="muted">No invoice yet — reception can create and mark paid.</p>
+          <div className="apt-actions" style={{ marginTop: "0.5rem" }}>
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              disabled={busy}
+              onClick={() => void markPaid()}
+            >
+              <Banknote size={14} aria-hidden /> Create &amp; mark paid
+            </button>
+          </div>
+        </>
       ) : null}
 
       {receiptOpen ? (

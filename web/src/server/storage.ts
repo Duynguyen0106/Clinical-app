@@ -174,20 +174,36 @@ export function clinicLogoPath(clinicId: string, filename: string) {
   return path.join(BRAND_ROOT, clinicId, filename);
 }
 
+function logoExt(mimeType: string) {
+  return mimeType === "image/png"
+    ? "png"
+    : mimeType === "image/webp"
+      ? "webp"
+      : mimeType === "image/svg+xml"
+        ? "svg"
+        : "jpg";
+}
+
 export async function saveClinicLogo(
   clinicId: string,
   bytes: Buffer,
   mimeType: string,
 ) {
-  const ext =
-    mimeType === "image/png"
-      ? "png"
-      : mimeType === "image/webp"
-        ? "webp"
-        : mimeType === "image/svg+xml"
-          ? "svg"
-          : "jpg";
-  const filename = `logo.${ext}`;
+  const filename = `logo.${logoExt(mimeType)}`;
+  const storageKey = `clinics/${clinicId}/brand/${filename}`;
+
+  if (s3Configured()) {
+    for (const stale of ["logo.png", "logo.jpg", "logo.jpeg", "logo.webp", "logo.svg"]) {
+      try {
+        await s3DeleteObject(`clinics/${clinicId}/brand/${stale}`);
+      } catch {
+        /* ignore */
+      }
+    }
+    await s3PutObject(storageKey, bytes, mimeType);
+    return { storageKey, mimeType };
+  }
+
   const dir = path.join(BRAND_ROOT, clinicId);
   await mkdir(dir, { recursive: true });
   // Remove previous extensions so only one logo remains
@@ -199,10 +215,7 @@ export async function saveClinicLogo(
     }
   }
   await writeFile(path.join(dir, filename), bytes);
-  return {
-    storageKey: `clinics/${clinicId}/brand/${filename}`,
-    mimeType,
-  };
+  return { storageKey, mimeType };
 }
 
 export async function readClinicLogo(storageKey: string) {
@@ -212,6 +225,15 @@ export async function readClinicLogo(storageKey: string) {
   }
   const clinicId = parts[1];
   const filename = parts.slice(3).join("/");
+
+  if (s3Configured()) {
+    try {
+      return await s3GetObject(storageKey);
+    } catch {
+      // Fall through to local (migration / hybrid)
+    }
+  }
+
   const full = clinicLogoPath(clinicId, filename);
   await access(full);
   return readFile(full);
@@ -222,6 +244,13 @@ export async function deleteClinicLogoFile(storageKey: string) {
     const parts = storageKey.split("/");
     if (parts.length < 4 || parts[0] !== "clinics" || parts[2] !== "brand") {
       return false;
+    }
+    if (s3Configured()) {
+      try {
+        await s3DeleteObject(storageKey);
+      } catch {
+        /* ignore */
+      }
     }
     const clinicId = parts[1];
     const filename = parts.slice(3).join("/");

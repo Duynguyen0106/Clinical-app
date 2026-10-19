@@ -192,6 +192,11 @@ export async function markInvoicePaid(
   }
 
   const amount = input.amountCents ?? invoice.amountCents;
+  if (amount < invoice.amountCents) {
+    throw badRequest(
+      `Payment of £${(amount / 100).toFixed(2)} is less than the invoice total of £${(invoice.amountCents / 100).toFixed(2)}`,
+    );
+  }
 
   return withClinicTransaction(ctx.clinicId, async (tx) => {
     await tx.payment.create({

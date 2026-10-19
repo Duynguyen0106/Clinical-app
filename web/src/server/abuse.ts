@@ -22,6 +22,9 @@ export const AbuseLimits = {
   publicDepositIp: { limit: 20, windowMs: 15 * MIN } satisfies RateLimitOpts,
   publicSlotsIp: { limit: 90, windowMs: MIN } satisfies RateLimitOpts,
   publicClinicGetIp: { limit: 120, windowMs: MIN } satisfies RateLimitOpts,
+  /** Shared ADMIN_PROVISION_SECRET surfaces — keep tight */
+  adminProvisionIp: { limit: 20, windowMs: HOUR } satisfies RateLimitOpts,
+  adminEmailTestIp: { limit: 10, windowMs: HOUR } satisfies RateLimitOpts,
 } as const;
 
 async function enforceKey(
@@ -131,5 +134,21 @@ export async function enforcePublicClinicGetLimits(req: Request) {
     `public:clinic:ip:${clientIp(req)}`,
     AbuseLimits.publicClinicGetIp,
     "Too many requests. Try again shortly.",
+  );
+}
+
+export async function enforceAdminProvisionLimits(req: Request) {
+  await enforceKey(
+    `admin:provision:ip:${clientIp(req)}`,
+    AbuseLimits.adminProvisionIp,
+    "Too many admin provision requests. Try again later.",
+  );
+}
+
+export async function enforceAdminEmailTestLimits(req: Request) {
+  await enforceKey(
+    `admin:email-test:ip:${clientIp(req)}`,
+    AbuseLimits.adminEmailTestIp,
+    "Too many admin email tests. Try again later.",
   );
 }

@@ -23,10 +23,12 @@ export async function listNotes(
   ctx: AuthContext,
   opts: { status?: NoteStatus; take?: number; practitionerId?: string } = {},
 ) {
-  // Practitioners default to own diary; cannot list a peer's diary metadata
+  // Practitioners default to own diary; cannot list a peer's diary metadata.
+  // Fail closed without a profile — never return clinic-wide note metadata.
   let practitionerId = opts.practitionerId;
   if (ctx.role === "PRACTITIONER") {
-    practitionerId = ctx.practitionerProfileId ?? undefined;
+    if (!ctx.practitionerProfileId) return [];
+    practitionerId = ctx.practitionerProfileId;
   }
 
   // Metadata only — never ship clinical content on list endpoints

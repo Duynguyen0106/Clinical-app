@@ -28,6 +28,7 @@ type SupportInfo = {
   email: string;
   appBaseUrl: string;
   privacyPath: string;
+  smsProvider?: "console" | "twilio";
 };
 
 type BookingPolicy = {
@@ -110,15 +111,6 @@ export default function SettingsPage() {
   }, [authLoading, me, router]);
 
   useEffect(() => {
-    void fetch("/api/v1/health")
-      .then((r) => r.json())
-      .then((d: { smsProvider?: "console" | "twilio" }) => {
-        setSmsProvider(d.smsProvider ?? "console");
-      })
-      .catch(() => setSmsProvider("console"));
-  }, []);
-
-  useEffect(() => {
     void Promise.all([
       api<{ clinic: ClinicProfile }>("/clinic/profile"),
       api<{ support: SupportInfo }>("/ops/support"),
@@ -139,6 +131,7 @@ export default function SettingsPage() {
             : "FULL_NAME",
         );
         setSupport(s.support);
+        setSmsProvider(s.support.smsProvider ?? "console");
         setBooking(b.booking);
         setPatientEmails(pe.patientEmails);
         if (c.clinic.hasLogo) {
@@ -152,12 +145,8 @@ export default function SettingsPage() {
 
   async function loadLogoPreview() {
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("treow_token")
-          : null;
       const res = await fetch("/api/v1/clinic/logo", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "same-origin",
       });
       if (!res.ok) return;
       const blob = await res.blob();

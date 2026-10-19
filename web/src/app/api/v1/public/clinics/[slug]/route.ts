@@ -5,7 +5,6 @@ import {
   publicBook,
   publicBookSchema,
 } from "@/modules/scheduling/service";
-import { manageUrl } from "@/modules/scheduling/manage";
 import {
   enforcePublicBookLimits,
   enforcePublicClinicGetLimits,
@@ -25,7 +24,17 @@ export const POST = withPublic(async (req, params) => {
   await assertTurnstileToken(body.captchaToken, { ip: clientIp(req) });
   const result = await publicBook(params.slug, body);
   const appointment = result.appointment;
-  // Avoid returning full nested patient / clinic records on an unauthenticated response
+  // Manage capability lives in the confirmation email only — never return
+  // manageUrl/manageToken to the booker response (stolen-email abuse).
+  const deposit = result.deposit
+    ? {
+        status: result.deposit.status,
+        depositCents: result.deposit.depositCents,
+        checkoutUrl: result.deposit.checkoutUrl,
+        provider: result.deposit.provider,
+        bankTransfer: result.deposit.bankTransfer,
+      }
+    : null;
   return jsonCreated({
     appointment: {
       id: appointment.id,
@@ -51,8 +60,7 @@ export const POST = withPublic(async (req, params) => {
         timezone: appointment.clinic.timezone,
       },
     },
-    manageUrl: await manageUrl(appointment.id),
-    deposit: result.deposit,
+    deposit,
     policyText: result.policyText,
     confirmation: result.confirmation
       ? {

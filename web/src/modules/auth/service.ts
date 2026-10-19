@@ -60,6 +60,14 @@ export async function login(input: z.infer<typeof loginSchema>) {
 
   if (!membership) throw unauthorized("No clinic membership");
 
+  // Deactivated diary profiles must not sign in as that clinic's practitioner
+  if (
+    membership.practitionerProfile &&
+    membership.practitionerProfile.active === false
+  ) {
+    throw unauthorized("This account has been deactivated");
+  }
+
   const session = await createSession(user.id);
 
   return {

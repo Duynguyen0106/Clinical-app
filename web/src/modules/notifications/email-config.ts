@@ -1,3 +1,9 @@
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "node:crypto";
 import { prisma } from "@/server/db";
 
 type EmailRuntimeConfig = {
@@ -12,6 +18,42 @@ const cache: { at: number; value: EmailRuntimeConfig } = {
 };
 
 const CACHE_MS = 30_000;
+const ENC_PREFIX = "enc:v1:";
+
+function settingsKey() {
+  const secret =
+    process.env.AUTH_SECRET?.trim() || "treow-dev-secret-change-me";
+  return createHash("sha256").update(`email-settings:${secret}`).digest();
+}
+
+/** Encrypt a secret for SystemSetting storage (AES-256-GCM). */
+export function sealSettingSecret(plain: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", settingsKey(), iv);
+  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return (
+    ENC_PREFIX +
+    Buffer.concat([iv, tag, enc]).toString("base64url")
+  );
+}
+
+export function openSettingSecret(stored: string): string {
+  if (!stored.startsWith(ENC_PREFIX)) {
+    // Legacy plaintext — still readable; next save will re-seal
+    return stored;
+  }
+  const raw = Buffer.from(stored.slice(ENC_PREFIX.length), "base64url");
+  if (raw.length < 12 + 16) throw new Error("Invalid sealed secret");
+  const iv = raw.subarray(0, 12);
+  const tag = raw.subarray(12, 28);
+  const enc = raw.subarray(28);
+  const decipher = createDecipheriv("aes-256-gcm", settingsKey(), iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(enc), decipher.final()]).toString(
+    "utf8",
+  );
+}
 
 async function ensureSettingsTable() {
   await prisma.$executeRawUnsafe(`
@@ -58,9 +100,22 @@ export async function loadEmailRuntimeConfig(
   let dbProvider: string | null = null;
   try {
     await ensureSettingsTable();
-    dbKey = (await readSetting("RESEND_API_KEY"))?.trim() || null;
+    const sealed = (await readSetting("RESEND_API_KEY"))?.trim() || null;
+    if (sealed) {
+      try {
+        dbKey = openSettingSecret(sealed).trim() || null;
+        // Upgrade legacy plaintext rows to sealed form
+        if (dbKey && !sealed.startsWith(ENC_PREFIX)) {
+          await writeSetting("RESEND_API_KEY", sealSettingSecret(dbKey));
+        }
+      } catch (err) {
+        console.error("Failed to decrypt RESEND_API_KEY from DB", err);
+        dbKey = null;
+      }
+    }
     dbFrom = (await readSetting("EMAIL_FROM"))?.trim() || null;
-    dbProvider = (await readSetting("EMAIL_PROVIDER"))?.toLowerCase().trim() || null;
+    dbProvider =
+      (await readSetting("EMAIL_PROVIDER"))?.toLowerCase().trim() || null;
   } catch (err) {
     console.error("Failed to load email settings from DB", err);
   }
@@ -72,10 +127,9 @@ export async function loadEmailRuntimeConfig(
   // DB overrides win so we can enable sending without a Vercel redeploy.
   const apiKey = dbKey || envKey;
   const from = dbFrom || envFrom;
-  const requested = (dbProvider || envProvider || (apiKey ? "resend" : "console")) as
-    | "resend"
-    | "console"
-    | string;
+  const requested = (dbProvider ||
+    envProvider ||
+    (apiKey ? "resend" : "console")) as "resend" | "console" | string;
 
   const provider: "resend" | "console" =
     apiKey && requested !== "console" ? "resend" : "console";
@@ -97,7 +151,7 @@ export async function saveEmailRuntimeConfig(input: {
 }) {
   await ensureSettingsTable();
   if (input.apiKey?.trim()) {
-    await writeSetting("RESEND_API_KEY", input.apiKey.trim());
+    await writeSetting("RESEND_API_KEY", sealSettingSecret(input.apiKey.trim()));
   }
   if (input.from?.trim()) {
     await writeSetting("EMAIL_FROM", input.from.trim());

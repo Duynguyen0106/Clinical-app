@@ -114,6 +114,9 @@ const ALLOWED_LOGO = new Set([
   "image/svg+xml",
 ]);
 
+/** Marker in logoStorageKey when bytes live in Clinic.logoBytes (serverless-safe). */
+export const INLINE_LOGO_KEY = "inline";
+
 export async function uploadClinicLogo(
   ctx: AuthContext,
   bytes: Buffer,
@@ -132,16 +135,32 @@ export async function uploadClinicLogo(
     where: { id: ctx.clinicId },
     select: { logoStorageKey: true },
   });
-  if (existing.logoStorageKey) {
-    await deleteClinicLogoFile(existing.logoStorageKey);
+  // Best-effort clear legacy file/S3 object (ignore failures on ephemeral disk).
+  if (
+    existing.logoStorageKey &&
+    existing.logoStorageKey !== INLINE_LOGO_KEY
+  ) {
+    try {
+      await deleteClinicLogoFile(existing.logoStorageKey);
+    } catch {
+      /* ignore */
+    }
   }
 
-  const saved = await saveClinicLogo(ctx.clinicId, bytes, mimeType);
+  // Persist in Postgres so Vercel (no writable disk / no S3) can serve logos.
+  // Also best-effort mirror to local/S3 for hosts that have them.
+  try {
+    await saveClinicLogo(ctx.clinicId, bytes, mimeType);
+  } catch {
+    /* disk/S3 optional — DB is source of truth */
+  }
+
   const clinic = await prisma.clinic.update({
     where: { id: ctx.clinicId },
     data: {
-      logoStorageKey: saved.storageKey,
-      logoMimeType: saved.mimeType,
+      logoStorageKey: INLINE_LOGO_KEY,
+      logoMimeType: mimeType,
+      logoBytes: new Uint8Array(bytes),
     },
     select: profileSelect,
   });
@@ -154,12 +173,19 @@ export async function clearClinicLogo(ctx: AuthContext) {
     where: { id: ctx.clinicId },
     select: { logoStorageKey: true },
   });
-  if (existing.logoStorageKey) {
-    await deleteClinicLogoFile(existing.logoStorageKey);
+  if (
+    existing.logoStorageKey &&
+    existing.logoStorageKey !== INLINE_LOGO_KEY
+  ) {
+    try {
+      await deleteClinicLogoFile(existing.logoStorageKey);
+    } catch {
+      /* ignore */
+    }
   }
   const clinic = await prisma.clinic.update({
     where: { id: ctx.clinicId },
-    data: { logoStorageKey: null, logoMimeType: null },
+    data: { logoStorageKey: null, logoMimeType: null, logoBytes: null },
     select: profileSelect,
   });
   return toPublicProfile(clinic);
@@ -168,9 +194,20 @@ export async function clearClinicLogo(ctx: AuthContext) {
 export async function getClinicLogoBytes(clinicId: string) {
   const clinic = await prisma.clinic.findUnique({
     where: { id: clinicId },
-    select: { logoStorageKey: true, logoMimeType: true },
+    select: { logoStorageKey: true, logoMimeType: true, logoBytes: true },
   });
-  if (!clinic?.logoStorageKey) throw notFound("No clinic logo");
+  if (!clinic?.logoStorageKey && !clinic?.logoBytes) {
+    throw notFound("No clinic logo");
+  }
+  if (clinic.logoBytes && clinic.logoBytes.length > 0) {
+    return {
+      bytes: Buffer.from(clinic.logoBytes),
+      mimeType: clinic.logoMimeType ?? "image/png",
+    };
+  }
+  if (!clinic.logoStorageKey || clinic.logoStorageKey === INLINE_LOGO_KEY) {
+    throw notFound("No clinic logo");
+  }
   const bytes = await readClinicLogo(clinic.logoStorageKey);
   return {
     bytes,
@@ -181,9 +218,25 @@ export async function getClinicLogoBytes(clinicId: string) {
 export async function getPublicClinicLogoBySlug(slug: string) {
   const clinic = await prisma.clinic.findUnique({
     where: { slug },
-    select: { id: true, logoStorageKey: true, logoMimeType: true },
+    select: {
+      id: true,
+      logoStorageKey: true,
+      logoMimeType: true,
+      logoBytes: true,
+    },
   });
-  if (!clinic?.logoStorageKey) throw notFound("No clinic logo");
+  if (!clinic?.logoStorageKey && !clinic?.logoBytes) {
+    throw notFound("No clinic logo");
+  }
+  if (clinic.logoBytes && clinic.logoBytes.length > 0) {
+    return {
+      bytes: Buffer.from(clinic.logoBytes),
+      mimeType: clinic.logoMimeType ?? "image/png",
+    };
+  }
+  if (!clinic.logoStorageKey || clinic.logoStorageKey === INLINE_LOGO_KEY) {
+    throw notFound("No clinic logo");
+  }
   const bytes = await readClinicLogo(clinic.logoStorageKey);
   return {
     bytes,

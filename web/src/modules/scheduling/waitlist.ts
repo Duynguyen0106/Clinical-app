@@ -173,90 +173,121 @@ export async function acceptWaitlistOfferForClinic(
   clinicId: string,
   id: string,
 ) {
-  const { withClinicTransaction } = await import("@/server/clinic-rls");
-  return withClinicTransaction(clinicId, async (tx) => {
-    const entry = await tx.waitlistEntry.findFirst({
-      where: { id, clinicId },
-      include: { appointmentType: true },
-    });
-    if (!entry) throw notFound("Waitlist entry not found");
-    if (entry.status !== WaitlistStatus.OFFERED) {
-      throw badRequest("Entry is not in OFFERED status");
-    }
-    if (!entry.offeredStartsAt || !entry.offeredEndsAt) {
-      throw badRequest("Offer has no slot times");
-    }
-    if (entry.offerExpiresAt && entry.offerExpiresAt < new Date()) {
-      await tx.waitlistEntry.update({
-        where: { id: entry.id },
-        data: {
-          status: WaitlistStatus.WAITING,
-          offeredStartsAt: null,
-          offeredEndsAt: null,
-          offeredAt: null,
-          offerExpiresAt: null,
-        },
-      });
-      throw badRequest("Offer expired — patient returned to waitlist");
-    }
-
-    const practitionerId = entry.practitionerId;
-    if (!practitionerId) throw badRequest("Offer missing practitioner");
-
-    const conflictApt = await tx.appointment.findFirst({
-      where: {
-        clinicId,
-        practitionerId,
-        status: {
-          notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW],
-        },
-        startsAt: { lt: entry.offeredEndsAt },
-        endsAt: { gt: entry.offeredStartsAt },
-      },
-    });
-    if (conflictApt) {
-      throw conflict("Slot is no longer free");
-    }
-
-    const { findAvailableRoom } = await import("./rooms");
-    // Room finder uses global prisma; slot lock still held via waitlist checks above
-    const freeRoom = await findAvailableRoom({
-      clinicId,
-      startsAt: entry.offeredStartsAt,
-      endsAt: entry.offeredEndsAt,
-    });
-
-    const appointment = await tx.appointment.create({
-      data: {
-        clinicId,
-        patientId: entry.patientId,
-        practitionerId,
-        appointmentTypeId: entry.appointmentTypeId,
-        roomId: freeRoom?.id ?? null,
-        startsAt: entry.offeredStartsAt,
-        endsAt: entry.offeredEndsAt,
-        status: AppointmentStatus.BOOKED,
-        notes: "Booked from waitlist offer",
-      },
-      include: {
-        patient: true,
-        practitioner: true,
-        appointmentType: true,
-        room: true,
-      },
-    });
-
-    const updated = await tx.waitlistEntry.update({
+  const entry = await prisma.waitlistEntry.findFirst({
+    where: { id, clinicId },
+    include: { appointmentType: true },
+  });
+  if (!entry) throw notFound("Waitlist entry not found");
+  if (entry.status !== WaitlistStatus.OFFERED) {
+    throw badRequest("Entry is not in OFFERED status");
+  }
+  if (!entry.offeredStartsAt || !entry.offeredEndsAt) {
+    throw badRequest("Offer has no slot times");
+  }
+  if (entry.offerExpiresAt && entry.offerExpiresAt < new Date()) {
+    await prisma.waitlistEntry.update({
       where: { id: entry.id },
       data: {
-        status: WaitlistStatus.BOOKED,
-        bookedAppointmentId: appointment.id,
+        status: WaitlistStatus.WAITING,
+        offeredStartsAt: null,
+        offeredEndsAt: null,
+        offeredAt: null,
+        offerExpiresAt: null,
       },
-      include: waitlistInclude,
     });
+    throw badRequest("Offer expired — patient returned to waitlist");
+  }
 
-    return { entry: updated, appointment };
-  }).then(async (result) => {
+  const practitionerId = entry.practitionerId;
+  if (!practitionerId) throw badRequest("Offer missing practitioner");
+
+  const { findAvailableRoom } = await import("./rooms");
+  const freeRoom = await findAvailableRoom({
+    clinicId,
+    startsAt: entry.offeredStartsAt,
+    endsAt: entry.offeredEndsAt,
+  });
+
+  const { withScheduleLocks } = await import("./locks");
+  const { assertNoConflict } = await import("./service");
+
+  return withScheduleLocks(
+    prisma,
+    {
+      practitionerId,
+      roomId: freeRoom?.id ?? null,
+      clinicId,
+    },
+    async (tx) => {
+      const locked = await tx.waitlistEntry.findFirst({
+        where: { id, clinicId },
+        include: { appointmentType: true },
+      });
+      if (!locked || locked.status !== WaitlistStatus.OFFERED) {
+        throw conflict("Offer is no longer available");
+      }
+      if (!locked.offeredStartsAt || !locked.offeredEndsAt) {
+        throw badRequest("Offer has no slot times");
+      }
+      if (locked.offerExpiresAt && locked.offerExpiresAt < new Date()) {
+        await tx.waitlistEntry.update({
+          where: { id: locked.id },
+          data: {
+            status: WaitlistStatus.WAITING,
+            offeredStartsAt: null,
+            offeredEndsAt: null,
+            offeredAt: null,
+            offerExpiresAt: null,
+          },
+        });
+        throw badRequest("Offer expired — patient returned to waitlist");
+      }
+
+      await assertNoConflict(
+        {
+          clinicId,
+          practitionerId,
+          roomId: freeRoom?.id ?? null,
+          startsAt: locked.offeredStartsAt,
+          endsAt: locked.offeredEndsAt,
+          bufferBefore: locked.appointmentType.bufferBefore,
+          bufferAfter: locked.appointmentType.bufferAfter,
+        },
+        tx as typeof prisma,
+      );
+
+      const appointment = await tx.appointment.create({
+        data: {
+          clinicId,
+          patientId: locked.patientId,
+          practitionerId,
+          appointmentTypeId: locked.appointmentTypeId,
+          roomId: freeRoom?.id ?? null,
+          startsAt: locked.offeredStartsAt,
+          endsAt: locked.offeredEndsAt,
+          status: AppointmentStatus.BOOKED,
+          notes: "Booked from waitlist offer",
+        },
+        include: {
+          patient: true,
+          practitioner: true,
+          appointmentType: true,
+          room: true,
+        },
+      });
+
+      const updated = await tx.waitlistEntry.update({
+        where: { id: locked.id },
+        data: {
+          status: WaitlistStatus.BOOKED,
+          bookedAppointmentId: appointment.id,
+        },
+        include: waitlistInclude,
+      });
+
+      return { entry: updated, appointment };
+    },
+  ).then(async (result) => {
     try {
       const { recordScheduleAudit } = await import("./audit");
       await recordScheduleAudit({

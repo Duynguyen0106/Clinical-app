@@ -580,6 +580,12 @@ export function VisitRecorder({ visitId }: Props) {
                   documentation. Consent is stored on the visit record (UK GDPR).
                 </span>
               </label>
+              <p className="muted" style={{ marginTop: "0.75rem" }}>
+                After recording, Treow may send the transcript (and limited prior
+                note context from this diary) to a third-party AI provider to
+                draft a clinical note. You review and sign before anything is
+                final. Access is logged on the patient record.
+              </p>
               <button
                 type="button"
                 className="btn-primary"

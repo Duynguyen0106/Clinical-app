@@ -15,6 +15,7 @@ import {
   turnstileEnabledInBrowser,
 } from "@/components/TurnstileField";
 import { api, ApiError } from "@/lib/api";
+import { stashBookingHandoff } from "@/lib/booking-handoff";
 
 type Clinic = {
   id: string;
@@ -189,13 +190,19 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
     try {
       const booked = await api<{
         appointment: { id: string };
-        manageUrl?: string;
         deposit?: {
           status: string;
           depositCents: number;
           checkoutUrl: string | null;
           provider?: string;
-          manageToken?: string;
+          bankTransfer?: {
+            accountName: string;
+            sortCode: string;
+            accountNumber: string;
+            amountPounds: string;
+            reference: string;
+            currency: "GBP";
+          };
         } | null;
         policyText?: string;
         confirmation?: {
@@ -234,17 +241,20 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
           ?.practitionerName ??
         "";
 
+      // Deposit status + bank details for this tab only — manage link is email-only.
+      stashBookingHandoff(slug, {
+        depositStatus: booked.deposit?.status,
+        depositCents: booked.deposit?.depositCents,
+        policyText: booked.policyText,
+        bankTransfer: booked.deposit?.bankTransfer,
+      });
+
       const qs = new URLSearchParams();
       if (name.trim()) qs.set("name", name.trim());
       if (email.trim()) qs.set("email", email.trim());
       if (slot) qs.set("startsAt", slot);
       if (serviceName) qs.set("service", serviceName);
       if (practitionerName) qs.set("practitioner", practitionerName);
-      if (booked.manageUrl) qs.set("manage", booked.manageUrl);
-      if (booked.deposit?.status) qs.set("depositStatus", booked.deposit.status);
-      if (booked.deposit?.depositCents != null) {
-        qs.set("depositCents", String(booked.deposit.depositCents));
-      }
       if (booked.confirmation?.emailDelivered) qs.set("emailSent", "1");
       if (embed) qs.set("embed", "1");
 
@@ -471,7 +481,9 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                 />
                 <span>
                   I&apos;m happy for the clinician to record the consultation to
-                  help write clinical notes (confirmed again at the visit).
+                  help write clinical notes. Recording may be processed by a
+                  secure third-party AI service to draft notes — confirmed again
+                  at the visit before anything is signed.
                 </span>
               </label>
               <TurnstileField onToken={setCaptchaToken} />

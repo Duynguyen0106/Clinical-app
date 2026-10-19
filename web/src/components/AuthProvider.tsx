@@ -10,7 +10,13 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { ApiError, api, clearSession, getToken, setSession } from "@/lib/api";
+import {
+  ApiError,
+  api,
+  clearSession,
+  hasSessionHint,
+  setSession,
+} from "@/lib/api";
 
 type Me = {
   user: { id: string; email: string; name: string };
@@ -62,10 +68,10 @@ function writeMeCache(me: Me | null) {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me | null>(() =>
-    getToken() ? readMeCache() : null,
+    hasSessionHint() ? readMeCache() : null,
   );
   const [loading, setLoading] = useState(
-    () => !(typeof window !== "undefined" && getToken() && readMeCache()),
+    () => !(typeof window !== "undefined" && hasSessionHint() && readMeCache()),
   );
   const aliveRef = useRef(true);
   const refreshGen = useRef(0);
@@ -80,14 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     const gen = ++refreshGen.current;
-    if (!getToken()) {
-      writeMeCache(null);
-      if (aliveRef.current && gen === refreshGen.current) {
-        setMe(null);
-        setLoading(false);
-      }
-      return;
-    }
+    // Cookie session may exist even without a local hint (first paint) — always try /me
     try {
       const data = await Promise.race([
         api<Me>("/auth/me"),
@@ -101,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!aliveRef.current || gen !== refreshGen.current) return;
       writeMeCache(data);
       setMe(data);
+      setSession(data.clinic.id);
     } catch (e) {
       if (!aliveRef.current || gen !== refreshGen.current) return;
       const status = e instanceof ApiError ? e.status : 0;
@@ -120,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const cached = getToken() ? readMeCache() : null;
+    const cached = hasSessionHint() ? readMeCache() : null;
     if (cached) {
       setMe(cached);
       setLoading(false);
@@ -131,14 +131,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (email: string, password: string) => {
       const data = await api<{
-        accessToken: string;
+        accessToken?: string;
         clinic: { id: string };
       }>("/auth/login", {
         method: "POST",
         auth: false,
         body: JSON.stringify({ email, password }),
       });
-      setSession(data.accessToken, data.clinic.id);
+      // Cookie is set by the server; do not persist accessToken in JS storage.
+      setSession(data.clinic.id);
       setLoading(true);
       await refresh();
     },
@@ -182,7 +183,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
       retryRef.current = false;
       return;
     }
-    if (getToken() && !retryRef.current) {
+    if (hasSessionHint() && !retryRef.current) {
       retryRef.current = true;
       setBooting(true);
       void refresh().finally(() => setBooting(false));

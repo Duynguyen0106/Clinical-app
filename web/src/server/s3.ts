@@ -36,7 +36,11 @@ async function getClient() {
   });
 }
 
-export async function s3PutObject(key: string, body: Buffer) {
+export async function s3PutObject(
+  key: string,
+  body: Buffer,
+  contentType = "application/octet-stream",
+) {
   const { PutObjectCommand } = await import("@aws-sdk/client-s3");
   const client = await getClient();
   const env = s3Env();
@@ -45,7 +49,7 @@ export async function s3PutObject(key: string, body: Buffer) {
       Bucket: env.bucket,
       Key: key,
       Body: body,
-      ContentType: "application/octet-stream",
+      ContentType: contentType,
       ServerSideEncryption: env.endpoint ? undefined : "AES256",
     }),
   );

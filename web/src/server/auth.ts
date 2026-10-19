@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { MembershipRole } from "@/generated/prisma/client";
 import { prisma } from "./db";
 import { forbidden, unauthorized } from "./errors";
+import { rawSessionTokenFromRequest } from "./session-cookie";
 
 export type AuthContext = {
   userId: string;
@@ -40,13 +41,8 @@ export async function resolveAuth(
   request: Request,
   clinicIdHeader?: string | null,
 ): Promise<AuthContext> {
-  const auth = request.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) {
-    throw unauthorized("Missing Bearer token");
-  }
-
-  const raw = auth.slice("Bearer ".length).trim();
-  if (!raw) throw unauthorized("Missing Bearer token");
+  const raw = rawSessionTokenFromRequest(request);
+  if (!raw) throw unauthorized("Missing session");
 
   const session = await prisma.session.findUnique({
     where: { token: hashToken(raw) },
@@ -80,6 +76,14 @@ export async function resolveAuth(
 
   if (!membership) {
     throw forbidden("Not a member of this clinic");
+  }
+
+  // Deactivated diary profiles must not keep using the API as that clinic's practitioner
+  if (
+    membership.practitionerProfile &&
+    membership.practitionerProfile.active === false
+  ) {
+    throw unauthorized("This account has been deactivated");
   }
 
   return {
