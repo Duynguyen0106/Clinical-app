@@ -17,9 +17,8 @@ export const POST = withPublic(async (req) => {
     sessionId?: string;
   };
 
-  if (!body.token) throw badRequest("Manage token required");
-
-  // Verify Stripe Checkout session — never trust a bare mark_paid from the client
+  // Verify Stripe Checkout session — session_id alone is enough (server retrieves
+  // from Stripe). Optional manage token kept for older return URLs.
   if (body.action === "verify_session") {
     if (!body.sessionId) throw badRequest("sessionId required");
     const result = await verifyStripeDepositSession({
@@ -28,6 +27,8 @@ export const POST = withPublic(async (req) => {
     });
     return jsonOk(result);
   }
+
+  if (!body.token) throw badRequest("Manage token required");
 
   if (body.action === "mark_paid") {
     throw badRequest(

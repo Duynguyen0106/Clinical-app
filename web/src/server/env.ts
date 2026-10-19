@@ -41,6 +41,21 @@ export function assertProductionSecrets() {
       "[treow] AI_PROVIDER is not mock but OPENAI_API_KEY is missing.",
     );
   }
+
+  const allowNoCaptcha =
+    process.env.ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA?.trim() === "1";
+  const turnstileSecret = process.env.TURNSTILE_SECRET_KEY?.trim();
+  const turnstileSite = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+  if (!allowNoCaptcha && (!turnstileSecret || !turnstileSite)) {
+    throw new Error(
+      "Production requires TURNSTILE_SECRET_KEY and NEXT_PUBLIC_TURNSTILE_SITE_KEY (or set ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA=1 to opt out).",
+    );
+  }
+  if (allowNoCaptcha && (!turnstileSecret || !turnstileSite)) {
+    console.warn(
+      "[treow] Public booking captcha disabled via ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA=1.",
+    );
+  }
 }
 
 export function getSupportEmail() {

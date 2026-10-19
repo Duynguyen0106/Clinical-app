@@ -3,6 +3,7 @@ import { withPublic } from "@/server/api";
 import { jsonOk } from "@/server/http";
 import { unauthorized, badRequest } from "@/server/errors";
 import { isAdminProvisionAuthorized } from "@/server/admin-auth";
+import { enforceAdminEmailTestLimits } from "@/server/abuse";
 import { sendEmail } from "@/modules/notifications/email";
 import { loadEmailRuntimeConfig } from "@/modules/notifications/email-config";
 import { buildBookingConfirmationEmail } from "@/modules/notifications/booking-confirmation-email";
@@ -14,6 +15,7 @@ const bodySchema = z.object({
 
 /** Send a sample booking confirmation (+ ICS) to verify Resend delivery. */
 export const POST = withPublic(async (req) => {
+  await enforceAdminEmailTestLimits(req);
   if (!isAdminProvisionAuthorized(req)) {
     throw unauthorized("Invalid provision secret");
   }

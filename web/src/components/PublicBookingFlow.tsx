@@ -15,6 +15,7 @@ import {
   turnstileEnabledInBrowser,
 } from "@/components/TurnstileField";
 import { api, ApiError } from "@/lib/api";
+import { stashBookingHandoff } from "@/lib/booking-handoff";
 
 type Clinic = {
   id: string;
@@ -234,17 +235,21 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
           ?.practitionerName ??
         "";
 
+      // Sensitive capability URL + deposit status stay in sessionStorage —
+      // never the confirmation query string (Referer / history / ads).
+      stashBookingHandoff(slug, {
+        manageHref: booked.manageUrl,
+        depositStatus: booked.deposit?.status,
+        depositCents: booked.deposit?.depositCents,
+        policyText: booked.policyText,
+      });
+
       const qs = new URLSearchParams();
       if (name.trim()) qs.set("name", name.trim());
       if (email.trim()) qs.set("email", email.trim());
       if (slot) qs.set("startsAt", slot);
       if (serviceName) qs.set("service", serviceName);
       if (practitionerName) qs.set("practitioner", practitionerName);
-      if (booked.manageUrl) qs.set("manage", booked.manageUrl);
-      if (booked.deposit?.status) qs.set("depositStatus", booked.deposit.status);
-      if (booked.deposit?.depositCents != null) {
-        qs.set("depositCents", String(booked.deposit.depositCents));
-      }
       if (booked.confirmation?.emailDelivered) qs.set("emailSent", "1");
       if (embed) qs.set("embed", "1");
 

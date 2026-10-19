@@ -8,28 +8,26 @@ import { api, ApiError } from "@/lib/api";
 
 function DepositSuccessBody() {
   const params = useSearchParams();
-  const token = params.get("token");
   const sessionId = params.get("session_id");
+  // Legacy return URLs may still include ?token= — optional now
+  const token = params.get("token");
   const [status, setStatus] = useState<"checking" | "paid" | "pending" | "error">(
-    sessionId && token ? "checking" : "pending",
+    sessionId ? "checking" : "pending",
   );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!sessionId || !token) return;
+    if (!sessionId) return;
     let cancelled = false;
-    void api<{ status: string }>(
-      "/public/deposits",
-      {
-        method: "POST",
-        auth: false,
-        body: JSON.stringify({
-          action: "verify_session",
-          sessionId,
-          token,
-        }),
-      },
-    )
+    void api<{ status: string }>("/public/deposits", {
+      method: "POST",
+      auth: false,
+      body: JSON.stringify({
+        action: "verify_session",
+        sessionId,
+        ...(token ? { token } : {}),
+      }),
+    })
       .then((d) => {
         if (cancelled) return;
         setStatus(d.status === "paid" ? "paid" : "pending");

@@ -301,6 +301,29 @@ export async function stopRecordingAndOrganise(
     visit.appointment.practitionerId,
   );
 
+  // UK access accountability — log before PHI leaves the clinic boundary
+  try {
+    await prisma.patientAccessEvent.create({
+      data: {
+        clinicId: ctx.clinicId,
+        patientId: visit.appointment.patientId,
+        actorId: ctx.userId,
+        action: "ai_organise",
+        meta: {
+          visitId: visit.id,
+          appointmentType: visit.appointment.appointmentType.name,
+          templateId: template?.id ?? null,
+          templateName: template?.name ?? null,
+          provider: process.env.AI_PROVIDER ?? "mock",
+          includedPriorContext: Boolean(priorContext),
+          transcriptChars: transcriptText?.length ?? 0,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("AI organise access audit failed", err);
+  }
+
   let organised;
   try {
     organised = await organiseNote({

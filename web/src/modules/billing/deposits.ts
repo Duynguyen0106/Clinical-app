@@ -165,8 +165,11 @@ export async function createDepositCheckout(opts: {
 
   const provider = getPaymentProvider();
   const pounds = (apt.depositCents / 100).toFixed(2);
-  const successUrl = `${getAppBaseUrl()}/book/manage/deposit-success?token=${encodeURIComponent(token)}`;
+  // Do not put manage tokens in Stripe return URLs (Referer / browser history).
+  // Success page verifies via Stripe session_id alone (server-side retrieve).
+  const successUrl = `${getAppBaseUrl()}/book/manage/deposit-success`;
   const cancelUrl = `${getAppBaseUrl()}/book/${apt.clinic.slug}`;
+  void token;
 
   if (provider === "bank_transfer") {
     const accountName = apt.clinic.depositBankAccountName?.trim() || "";
@@ -279,7 +282,12 @@ export async function markDepositPaid(appointmentId: string) {
   });
   if (!apt) throw notFound("Appointment not found");
   if (apt.depositStatus === DepositStatus.PAID) return apt;
-  // Never resurrect cancelled / completed / no-show visits when money clears
+  if (TERMINAL_APPOINTMENT.includes(apt.status)) {
+    throw badRequest(
+      "Cannot mark a deposit paid on a cancelled, completed, or no-show appointment",
+    );
+  }
+  // Only BOOKED → CONFIRMED; never resurrect other statuses
   const promoteToConfirmed = apt.status === AppointmentStatus.BOOKED;
   return withClinicTransaction(apt.clinicId, async (tx) => {
     return tx.appointment.update({
@@ -297,14 +305,14 @@ export async function markDepositPaid(appointmentId: string) {
 
 /**
  * Verify a Stripe Checkout session and mark the deposit paid.
- * Public success page calls this with session_id + manage token.
+ * Public success page calls this with session_id (Stripe retrieve is authoritative).
+ * Optional manage token still accepted for older return URLs.
  * Response is minimal — no raw appointment row.
  */
 export async function verifyStripeDepositSession(opts: {
   sessionId: string;
-  token: string;
+  token?: string;
 }) {
-  const { appointmentId } = verifyManageToken(opts.token);
   const key = process.env.STRIPE_SECRET_KEY?.trim();
   if (!key) throw badRequest("STRIPE_SECRET_KEY is not configured");
 
@@ -328,15 +336,21 @@ export async function verifyStripeDepositSession(opts: {
   };
 
   const metaApt = session.metadata?.appointmentId;
-  if (!metaApt || metaApt !== appointmentId) {
-    throw unauthorized("Session does not match this appointment");
+  if (!metaApt) {
+    throw unauthorized("Session is missing appointment metadata");
+  }
+  if (opts.token) {
+    const { appointmentId } = verifyManageToken(opts.token);
+    if (metaApt !== appointmentId) {
+      throw unauthorized("Session does not match this appointment");
+    }
   }
   if (session.mode && session.mode !== "payment") {
     throw badRequest("Unexpected checkout mode");
   }
   if (session.payment_status !== "paid") {
     const apt = await prisma.appointment.findUniqueOrThrow({
-      where: { id: appointmentId },
+      where: { id: metaApt },
       select: { depositCents: true, depositStatus: true },
     });
     return {
@@ -345,7 +359,7 @@ export async function verifyStripeDepositSession(opts: {
     };
   }
 
-  const appointment = await markDepositPaid(appointmentId);
+  const appointment = await markDepositPaid(metaApt);
   return {
     status: "paid" as const,
     depositCents: appointment.depositCents,
@@ -362,9 +376,22 @@ export async function applyDepositCheckoutCompleted(session: {
   if (session.mode !== "payment") return { applied: false as const };
   if (session.payment_status !== "paid") return { applied: false as const };
   const appointmentId = session.metadata?.appointmentId;
+  const clinicId = session.metadata?.clinicId;
   if (!appointmentId) return { applied: false as const };
-  const appointment = await markDepositPaid(appointmentId);
-  return { applied: true as const, appointmentId: appointment.id };
+  if (clinicId) {
+    const apt = await prisma.appointment.findFirst({
+      where: { id: appointmentId, clinicId },
+      select: { id: true },
+    });
+    if (!apt) return { applied: false as const };
+  }
+  try {
+    const appointment = await markDepositPaid(appointmentId);
+    return { applied: true as const, appointmentId: appointment.id };
+  } catch {
+    // Terminal appointments / already handled — do not fail the webhook
+    return { applied: false as const, appointmentId };
+  }
 }
 
 export async function waiveDeposit(
