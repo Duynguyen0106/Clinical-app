@@ -190,13 +190,19 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
     try {
       const booked = await api<{
         appointment: { id: string };
-        manageUrl?: string;
         deposit?: {
           status: string;
           depositCents: number;
           checkoutUrl: string | null;
           provider?: string;
-          manageToken?: string;
+          bankTransfer?: {
+            accountName: string;
+            sortCode: string;
+            accountNumber: string;
+            amountPounds: string;
+            reference: string;
+            currency: "GBP";
+          };
         } | null;
         policyText?: string;
         confirmation?: {
@@ -235,13 +241,12 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
           ?.practitionerName ??
         "";
 
-      // Sensitive capability URL + deposit status stay in sessionStorage —
-      // never the confirmation query string (Referer / history / ads).
+      // Deposit status + bank details for this tab only — manage link is email-only.
       stashBookingHandoff(slug, {
-        manageHref: booked.manageUrl,
         depositStatus: booked.deposit?.status,
         depositCents: booked.deposit?.depositCents,
         policyText: booked.policyText,
+        bankTransfer: booked.deposit?.bankTransfer,
       });
 
       const qs = new URLSearchParams();
@@ -476,7 +481,9 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                 />
                 <span>
                   I&apos;m happy for the clinician to record the consultation to
-                  help write clinical notes (confirmed again at the visit).
+                  help write clinical notes. Recording may be processed by a
+                  secure third-party AI service to draft notes — confirmed again
+                  at the visit before anything is signed.
                 </span>
               </label>
               <TurnstileField onToken={setCaptchaToken} />

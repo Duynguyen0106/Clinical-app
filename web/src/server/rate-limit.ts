@@ -102,9 +102,8 @@ async function consumeUpstash(
   });
 
   if (!res.ok) {
-    // Fail open to memory so a Redis blip does not take down booking
     console.error("Upstash rate limit failed", res.status);
-    return consumeMemory(key, opts);
+    return failClosedResult(opts);
   }
 
   const rows = (await res.json()) as { result: number }[];
@@ -145,6 +144,23 @@ export function consumeRateLimit(
   return consumeMemory(key, opts);
 }
 
+function failClosedResult(key: string, opts: RateLimitOpts): RateLimitResult {
+  // When Upstash is configured it is the source of truth — do not fall back to
+  // per-instance memory (that multiplies quotas under Redis outages).
+  // Escape hatch: RATE_LIMIT_FAIL_OPEN=1
+  if (process.env.RATE_LIMIT_FAIL_OPEN?.trim() === "1") {
+    return consumeMemory(key, opts);
+  }
+  const at = now();
+  return {
+    ok: false,
+    limit: opts.limit,
+    remaining: 0,
+    retryAfterSec: 30,
+    resetAt: at + 30_000,
+  };
+}
+
 export async function consumeRateLimitAsync(
   key: string,
   opts: RateLimitOpts,
@@ -154,7 +170,7 @@ export async function consumeRateLimitAsync(
       return await consumeUpstash(key, opts);
     } catch (err) {
       console.error("Upstash rate limit error", err);
-      return consumeMemory(key, opts);
+      return failClosedResult(key, opts);
     }
   }
   return consumeMemory(key, opts);

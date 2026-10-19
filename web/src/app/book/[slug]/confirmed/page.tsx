@@ -22,7 +22,6 @@ function ConfirmedInner({ slug }: { slug: string }) {
     setHandoffReady(true);
   }, [slug]);
 
-  // Prefer session handoff; fall back to legacy ?manage= query for old links.
   const depositCentsRaw =
     handoff?.depositCents != null
       ? String(handoff.depositCents)
@@ -33,11 +32,13 @@ function ConfirmedInner({ slug }: { slug: string }) {
     startsAt: search.get("startsAt") ?? undefined,
     serviceName: search.get("service") ?? undefined,
     practitionerName: search.get("practitioner") ?? undefined,
-    manageHref: handoff?.manageHref ?? search.get("manage") ?? undefined,
+    // Manage link is email-only. Legacy ?manage= still accepted for old tabs.
+    manageHref: search.get("manage") ?? undefined,
     depositStatus:
       handoff?.depositStatus ?? search.get("depositStatus") ?? undefined,
     depositCents: depositCentsRaw ? Number(depositCentsRaw) : undefined,
     policyText: handoff?.policyText,
+    bankTransfer: handoff?.bankTransfer,
     emailDelivered: search.get("emailSent") === "1",
   };
 
@@ -62,10 +63,7 @@ function ConfirmedInner({ slug }: { slug: string }) {
 
 /**
  * Stable thank-you URL for post-booking + Google Ads conversion matching.
- * Ads landing: /book/nguyens-osteopathy
- * Conversion:  /book/nguyens-osteopathy/confirmed
- *
- * Manage capability is passed via sessionStorage handoff, not the query string.
+ * Manage capability is delivered by email, not this page’s query string.
  */
 export default function BookingConfirmedPage({ params }: Props) {
   const { slug } = use(params);

@@ -33,6 +33,8 @@ export type BookingConfirmedDetails = {
   depositStatus?: string;
   depositCents?: number;
   policyText?: string;
+  /** Bank details from booking handoff (no manage token required). */
+  bankTransfer?: BankTransferDetails;
   /** True when confirmation email was handed to Resend (or similar) */
   emailDelivered?: boolean;
 };
@@ -66,6 +68,12 @@ export function BookingConfirmed({ slug, details = {}, embed = false }: Props) {
 
   useEffect(() => {
     if (details.depositStatus !== "bank_transfer") return;
+    // Prefer handoff payload from the booking response (no manage token).
+    if (details.bankTransfer) {
+      setBankTransfer(details.bankTransfer);
+      return;
+    }
+    // Legacy: fetch via manage token if present (old tabs / emailed deep links).
     const token = manageTokenFromHref(details.manageHref);
     if (!token) return;
     let cancelled = false;
@@ -92,7 +100,7 @@ export function BookingConfirmed({ slug, details = {}, embed = false }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [details.depositStatus, details.manageHref]);
+  }, [details.depositStatus, details.manageHref, details.bankTransfer]);
 
   const accent = clinic?.brandColour || undefined;
   const clinicLogo = clinic?.logoUrl ?? null;
@@ -171,11 +179,18 @@ export function BookingConfirmed({ slug, details = {}, embed = false }: Props) {
             ) : null}
             .
             {details.emailDelivered && details.email ? (
-              <> A confirmation email is on its way to that address.</>
+              <>
+                {" "}
+                A confirmation email with your manage link is on its way — use
+                that link to cancel or reschedule.
+              </>
             ) : details.email ? (
-              <> Save the manage link below for your records.</>
-            ) : null}{" "}
-            Use Manage this booking if you need to cancel or reschedule.
+              <>
+                {" "}
+                Check your inbox for the confirmation email with a manage link
+                if you need to cancel or reschedule.
+              </>
+            ) : null}
           </p>
 
           {details.depositStatus ? (

@@ -1,14 +1,23 @@
 /**
- * Pass sensitive post-booking fields (manage URL, deposit status) via
- * sessionStorage so they never land in the confirmation page query string
- * (Referer, history, analytics).
+ * Pass post-booking fields via sessionStorage so they never land in the
+ * confirmation page query string (Referer, history, analytics).
+ *
+ * Manage capability is intentionally NOT stored here — patients use the
+ * link from their confirmation email.
  */
 
 export type BookingHandoff = {
-  manageHref?: string;
   depositStatus?: string;
   depositCents?: number;
   policyText?: string;
+  bankTransfer?: {
+    accountName: string;
+    sortCode: string;
+    accountNumber: string;
+    amountPounds: string;
+    reference: string;
+    currency: "GBP";
+  };
 };
 
 function key(slug: string) {
@@ -20,7 +29,7 @@ export function stashBookingHandoff(slug: string, data: BookingHandoff) {
   try {
     sessionStorage.setItem(key(slug), JSON.stringify(data));
   } catch {
-    /* private mode / quota — confirmed page can still show non-manage UI */
+    /* private mode / quota */
   }
 }
 
