@@ -65,6 +65,20 @@ export default function TodayPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** One overflow menu open at a time on the day board */
+  const [rowMenuId, setRowMenuId] = useState<string | null>(null);
+  const [pulseOpen, setPulseOpen] = useState(false);
+  /** null = still reading storage; false = show first-run tips; true = dismissed */
+  const [tipsHidden, setTipsHidden] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    try {
+      // First visit: key missing → show tips. After dismiss: "1" → hide.
+      setTipsHidden(localStorage.getItem("treow.hideDeskTips") === "1");
+    } catch {
+      setTipsHidden(false);
+    }
+  }, []);
 
   const myPractitionerId = me?.practitionerProfileId ?? null;
   const isClinician =
@@ -238,48 +252,67 @@ export default function TodayPage() {
               </p>
               <p className="muted">{nextUp.appointmentType.name}</p>
               <div className="apt-actions next-up-actions">
-                {canEditSchedule &&
-                (nextUp.status === "BOOKED" ||
-                  nextUp.status === "CONFIRMED") ? (
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={() =>
-                      void setAppointmentStatus(nextUp.id, "CHECKED_IN")
-                    }
-                  >
-                    Check in
-                  </button>
-                ) : null}
-                {isClinician &&
-                !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
-                  nextUp.status,
-                ) ? (
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={() =>
-                      void setAppointmentStatus(nextUp.id, "COMPLETED")
-                    }
-                  >
-                    Mark completed
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="btn-primary btn-sm"
-                  onClick={() =>
-                    void openVisit(nextUp.id, nextUp.visit?.id ?? undefined)
-                  }
-                >
-                  Open visit
-                </button>
-                <Link
-                  href={`/app/patients?id=${encodeURIComponent(nextUp.patient.id)}`}
-                  className="btn-secondary btn-sm"
-                >
-                  {isPractitioner ? "Prior notes" : "Patient directory"}
-                </Link>
+                {(() => {
+                  const awaiting =
+                    nextUp.status === "BOOKED" ||
+                    nextUp.status === "CONFIRMED";
+                  const primaryIsCheckIn = canEditSchedule && awaiting;
+                  const patientHref = `/app/patients?id=${encodeURIComponent(nextUp.patient.id)}`;
+                  return (
+                    <>
+                      {primaryIsCheckIn ? (
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={() =>
+                            void setAppointmentStatus(
+                              nextUp.id,
+                              "CHECKED_IN",
+                            )
+                          }
+                        >
+                          Check in
+                        </button>
+                      ) : isClinician ? (
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={() =>
+                            void openVisit(
+                              nextUp.id,
+                              nextUp.visit?.id ?? undefined,
+                            )
+                          }
+                        >
+                          Open visit
+                        </button>
+                      ) : (
+                        <Link href={patientHref} className="btn-primary btn-sm">
+                          Patient
+                        </Link>
+                      )}
+                      {primaryIsCheckIn && isClinician ? (
+                        <button
+                          type="button"
+                          className="btn-secondary btn-sm"
+                          onClick={() =>
+                            void openVisit(
+                              nextUp.id,
+                              nextUp.visit?.id ?? undefined,
+                            )
+                          }
+                        >
+                          Open visit
+                        </button>
+                      ) : null}
+                      {isClinician || primaryIsCheckIn ? (
+                        <Link href={patientHref} className="btn-ghost btn-sm">
+                          {isPractitioner ? "Prior notes" : "Patient"}
+                        </Link>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
             </section>
           ) : null}
@@ -316,65 +349,121 @@ export default function TodayPage() {
                     >
                       {apt.status.replaceAll("_", " ").toLowerCase()}
                     </span>
-                    {canEditSchedule &&
-                    (apt.status === "BOOKED" || apt.status === "CONFIRMED") ? (
-                      <button
-                        type="button"
-                        className="btn-secondary btn-sm"
-                        onClick={() =>
-                          void setAppointmentStatus(apt.id, "CHECKED_IN")
-                        }
-                      >
-                        Check in
-                      </button>
-                    ) : null}
-                    {isClinician &&
-                    !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
-                      apt.status,
-                    ) ? (
-                      <button
-                        type="button"
-                        className="btn-secondary btn-sm"
-                        onClick={() =>
-                          void setAppointmentStatus(apt.id, "COMPLETED")
-                        }
-                      >
-                        Done
-                      </button>
-                    ) : null}
-                    {isClinician ? (
-                      <button
-                        type="button"
-                        className="btn-primary btn-sm"
-                        onClick={() =>
-                          void openVisit(apt.id, apt.visit?.id ?? undefined)
-                        }
-                      >
-                        Open visit
-                      </button>
-                    ) : null}
-                    {isClinician ? (
-                      <Link
-                        href={`/app/patients?id=${encodeURIComponent(apt.patient.id)}`}
-                        className="btn-ghost btn-sm"
-                      >
-                        Prior notes
-                      </Link>
-                    ) : null}
-                    {canEditSchedule &&
-                    !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
-                      apt.status,
-                    ) ? (
-                      <button
-                        type="button"
-                        className="btn-ghost btn-sm"
-                        onClick={() =>
-                          void setAppointmentStatus(apt.id, "CANCELLED")
-                        }
-                      >
-                        Cancel
-                      </button>
-                    ) : null}
+                    {(() => {
+                      const terminal = [
+                        "CANCELLED",
+                        "COMPLETED",
+                        "NO_SHOW",
+                      ].includes(apt.status);
+                      const awaiting =
+                        apt.status === "BOOKED" || apt.status === "CONFIRMED";
+                      const canCancel = canEditSchedule && !terminal;
+                      const primaryIsCheckIn = canEditSchedule && awaiting;
+                      const primaryIsPatient =
+                        canEditSchedule && !awaiting && !isClinician && !terminal;
+                      const showOpenInOverflow =
+                        isClinician && primaryIsCheckIn;
+                      const showOverflow =
+                        !terminal &&
+                        (showOpenInOverflow || isClinician || canCancel);
+                      const patientHref = `/app/patients?id=${encodeURIComponent(apt.patient.id)}`;
+
+                      return (
+                        <>
+                          {primaryIsCheckIn ? (
+                            <button
+                              type="button"
+                              className="btn-primary btn-sm"
+                              onClick={() =>
+                                void setAppointmentStatus(apt.id, "CHECKED_IN")
+                              }
+                            >
+                              Check in
+                            </button>
+                          ) : isClinician && !terminal ? (
+                            <button
+                              type="button"
+                              className="btn-primary btn-sm"
+                              onClick={() =>
+                                void openVisit(
+                                  apt.id,
+                                  apt.visit?.id ?? undefined,
+                                )
+                              }
+                            >
+                              Open visit
+                            </button>
+                          ) : primaryIsPatient ? (
+                            <Link
+                              href={patientHref}
+                              className="btn-primary btn-sm"
+                            >
+                              Patient
+                            </Link>
+                          ) : null}
+
+                          {showOverflow ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn-ghost btn-sm"
+                                aria-expanded={rowMenuId === apt.id}
+                                onClick={() =>
+                                  setRowMenuId((id) =>
+                                    id === apt.id ? null : apt.id,
+                                  )
+                                }
+                              >
+                                {rowMenuId === apt.id ? "Less" : "More"}
+                              </button>
+                              {rowMenuId === apt.id ? (
+                                <>
+                                  {showOpenInOverflow ? (
+                                    <button
+                                      type="button"
+                                      className="btn-secondary btn-sm"
+                                      onClick={() => {
+                                        setRowMenuId(null);
+                                        void openVisit(
+                                          apt.id,
+                                          apt.visit?.id ?? undefined,
+                                        );
+                                      }}
+                                    >
+                                      Open visit
+                                    </button>
+                                  ) : null}
+                                  {isClinician ? (
+                                    <Link
+                                      href={patientHref}
+                                      className="btn-ghost btn-sm"
+                                      onClick={() => setRowMenuId(null)}
+                                    >
+                                      Prior notes
+                                    </Link>
+                                  ) : null}
+                                  {canCancel ? (
+                                    <button
+                                      type="button"
+                                      className="btn-ghost btn-sm apt-cancel-btn"
+                                      onClick={() => {
+                                        setRowMenuId(null);
+                                        void setAppointmentStatus(
+                                          apt.id,
+                                          "CANCELLED",
+                                        );
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  ) : null}
+                                </>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </div>
                 </li>
               ))}
@@ -431,84 +520,83 @@ export default function TodayPage() {
           {pulse ? (
             <section className="panel pulse-panel">
               <div className="panel-head">
-                <h2>Practice pulse</h2>
-                <Link href="/app/tasks" className="btn-ghost btn-sm">
-                  Tasks
-                </Link>
+                <h2>Needs attention</h2>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  aria-expanded={pulseOpen}
+                  onClick={() => setPulseOpen((o) => !o)}
+                >
+                  {pulseOpen ? "Hide pulse" : "Full pulse"}
+                </button>
               </div>
-              <div className="pulse-grid">
-                <Link
-                  href={pulseHrefForRole(
-                    "utilisation",
-                    me?.role,
-                    pulse.links?.utilisation ?? "/app/calendar",
-                  )}
-                  className="pulse-metric"
-                >
-                  <strong>{pulse.utilisationPct}%</strong>
-                  <span>Utilisation</span>
-                </Link>
-                <Link
-                  href={pulseHrefForRole(
-                    "rebook",
-                    me?.role,
-                    pulse.links?.rebook ?? "/app/patients",
-                  )}
-                  className="pulse-metric"
-                >
-                  <strong>{pulse.rebookRatePct}%</strong>
-                  <span>Rebook</span>
-                </Link>
+              <div className="pulse-needs">
                 <Link
                   href={pulseHrefForRole(
                     "unsigned",
                     me?.role,
                     pulse.links?.unsigned ?? "/app/notes?status=DRAFT",
                   )}
-                  className="pulse-metric"
                 >
-                  <strong>{pulse.unsignedNotes}</strong>
-                  <span>Unsigned</span>
+                  {pulse.unsignedNotes} unsigned
                 </Link>
+                <span className="muted">·</span>
                 <Link
                   href={pulseHrefForRole(
                     "unpaid",
                     me?.role,
                     pulse.links?.unpaid ?? "/app/money?status=unpaid",
                   )}
-                  className="pulse-metric"
                 >
-                  <strong>{pulse.unpaidInvoices}</strong>
-                  <span>Unpaid</span>
-                </Link>
-                <Link
-                  href={pulseHrefForRole(
-                    "mix",
-                    me?.role,
-                    pulse.links?.mix ?? "/app/patients",
-                  )}
-                  className="pulse-metric"
-                >
-                  <strong>
-                    {pulse.newPatients}/{pulse.returningPatients}
-                  </strong>
-                  <span>New / return</span>
+                  {pulse.unpaidInvoices} unpaid (£
+                  {(pulse.unpaidCents / 100).toFixed(0)})
                 </Link>
               </div>
-              <p className="muted pulse-meta">
-                <Link
-                  href={pulseHrefForRole(
-                    "unpaid",
-                    me?.role,
-                    pulse.links?.unpaid ?? "/app/money?status=unpaid",
-                  )}
-                >
-                  £{(pulse.unpaidCents / 100).toFixed(0)} outstanding
-                </Link>
-                {" · "}
-                {pulse.bookedMinutes}/{pulse.availableMinutes} min booked this
-                week
-              </p>
+              {pulseOpen ? (
+                <>
+                  <div className="pulse-grid" style={{ marginTop: "0.75rem" }}>
+                    <Link
+                      href={pulseHrefForRole(
+                        "utilisation",
+                        me?.role,
+                        pulse.links?.utilisation ?? "/app/calendar",
+                      )}
+                      className="pulse-metric"
+                    >
+                      <strong>{pulse.utilisationPct}%</strong>
+                      <span>Utilisation</span>
+                    </Link>
+                    <Link
+                      href={pulseHrefForRole(
+                        "rebook",
+                        me?.role,
+                        pulse.links?.rebook ?? "/app/patients",
+                      )}
+                      className="pulse-metric"
+                    >
+                      <strong>{pulse.rebookRatePct}%</strong>
+                      <span>Rebook</span>
+                    </Link>
+                    <Link
+                      href={pulseHrefForRole(
+                        "mix",
+                        me?.role,
+                        pulse.links?.mix ?? "/app/patients",
+                      )}
+                      className="pulse-metric"
+                    >
+                      <strong>
+                        {pulse.newPatients}/{pulse.returningPatients}
+                      </strong>
+                      <span>New / return</span>
+                    </Link>
+                  </div>
+                  <p className="muted pulse-meta">
+                    {pulse.bookedMinutes}/{pulse.availableMinutes} min booked
+                    this week
+                  </p>
+                </>
+              ) : null}
             </section>
           ) : null}
 
@@ -533,7 +621,7 @@ export default function TodayPage() {
             </section>
           ) : null}
 
-          {isClinician && !isPractitioner ? (
+          {tipsHidden === false && isClinician && !isPractitioner ? (
             <section className="panel tip-panel">
               <h2>Visit mode</h2>
               <p>
@@ -543,13 +631,24 @@ export default function TodayPage() {
               <Link href="/app/notes" className="btn-secondary">
                 Unsigned drafts →
               </Link>
-              <Link href="/app/patients" className="btn-ghost">
-                Patient prep →
-              </Link>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  try {
+                    localStorage.setItem("treow.hideDeskTips", "1");
+                  } catch {
+                    /* ignore */
+                  }
+                  setTipsHidden(true);
+                }}
+              >
+                Got it — hide tips
+              </button>
             </section>
           ) : null}
 
-          {!isClinician ? (
+          {tipsHidden === false && !isClinician ? (
             <section className="panel tip-panel">
               <h2>Front desk</h2>
               <p>
@@ -559,9 +658,20 @@ export default function TodayPage() {
               <Link href="/app/calendar" className="btn-secondary">
                 Calendar →
               </Link>
-              <Link href="/app/waitlist" className="btn-ghost">
-                Waitlist →
-              </Link>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  try {
+                    localStorage.setItem("treow.hideDeskTips", "1");
+                  } catch {
+                    /* ignore */
+                  }
+                  setTipsHidden(true);
+                }}
+              >
+                Got it — hide tips
+              </button>
             </section>
           ) : null}
         </aside>

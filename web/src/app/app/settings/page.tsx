@@ -29,6 +29,10 @@ type SupportInfo = {
   appBaseUrl: string;
   privacyPath: string;
   smsProvider?: "console" | "twilio";
+  messaging?: {
+    patientEmailLive: boolean;
+    smsLive: boolean;
+  };
 };
 
 type BookingPolicy = {
@@ -82,6 +86,8 @@ export default function SettingsPage() {
   const [smsProvider, setSmsProvider] = useState<"console" | "twilio" | null>(
     null,
   );
+  type SettingsSection = "brand" | "booking" | "comms" | "compliance";
+  const [section, setSection] = useState<SettingsSection>("brand");
 
   const website = useMemo(() => {
     if (!clinic?.slug || !support?.appBaseUrl) return null;
@@ -344,16 +350,56 @@ export default function SettingsPage() {
 
   const isOwner = me?.role === "OWNER";
 
+  const sectionNav: { id: SettingsSection; label: string }[] = [
+    { id: "brand", label: "Brand" },
+    { id: "booking", label: "Booking" },
+    { id: "comms", label: "Communications" },
+    { id: "compliance", label: "Compliance" },
+  ];
+
   return (
     <AppShell
       title="Settings"
-      subtitle="Clinic brand, booking policy, compliance, and launch support."
+      subtitle="Brand, booking, patient messaging status, and compliance — grouped for owners."
     >
+      <div
+        className="view-toggle settings-section-nav"
+        role="tablist"
+        aria-label="Settings sections"
+      >
+        {sectionNav.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            role="tab"
+            id={`settings-tab-${s.id}`}
+            aria-selected={section === s.id}
+            aria-controls={`settings-panel-${s.id}`}
+            className={`btn-sm ${section === s.id ? "btn-secondary" : "btn-ghost"}`}
+            onClick={() => {
+              setError(null);
+              setMessage(null);
+              setSection(s.id);
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {error ? <p className="form-error">{error}</p> : null}
+      {message ? <p className="alert-line">{message}</p> : null}
+
       <div className="settings-grid">
-        <section className="panel">
+        {section === "brand" ? (
+        <section
+          className="panel"
+          style={{ gridColumn: "1 / -1" }}
+          id="settings-panel-brand"
+          role="tabpanel"
+          aria-labelledby="settings-tab-brand"
+        >
           <h2>Clinic brand</h2>
-          {error ? <p className="form-error">{error}</p> : null}
-          {message ? <p className="alert-line">{message}</p> : null}
           <p className="muted">
             Logo, name, and letterhead appear on booking pages and printed notes.
           </p>
@@ -484,8 +530,15 @@ export default function SettingsPage() {
             <p className="muted">Only clinic owners can change brand settings.</p>
           )}
         </section>
+        ) : null}
 
-        <section className="panel">
+        {section === "compliance" ? (
+        <section
+          className="panel"
+          id="settings-panel-compliance"
+          role="tabpanel"
+          aria-labelledby="settings-tab-compliance"
+        >
           <h2>Privacy & data</h2>
           <p className="muted">
             Notice version: {clinic?.privacyNoticeVersion ?? "…"} · Region:{" "}
@@ -531,8 +584,15 @@ export default function SettingsPage() {
             <p className="muted">Only clinic owners can change retention.</p>
           )}
         </section>
+        ) : null}
 
-        <section className="panel">
+        {section === "booking" ? (
+        <section
+          className="panel"
+          id="settings-panel-booking"
+          role="tabpanel"
+          aria-labelledby="settings-tab-booking"
+        >
           <h2>Online booking policy</h2>
           <p className="muted">
             Notice windows, how far ahead patients can book, and deposits (like
@@ -712,8 +772,166 @@ export default function SettingsPage() {
             <p className="muted">Loading…</p>
           )}
         </section>
+        ) : null}
 
-        <section className="panel">
+        {section === "booking" ? (
+        <section
+          className="panel"
+          role="tabpanel"
+          aria-labelledby="settings-tab-booking"
+        >
+          <h2>Website booking</h2>
+          <p className="muted">
+            Part of Treow Clinic: put online booking on your website in minutes.
+            We host the page; you paste a button or embed. No download required.
+          </p>
+          {website ? (
+            <>
+              <label className="field">
+                <span>Public booking link</span>
+                <div className="inline-row">
+                  <input readOnly value={website.bookUrl} />
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => void copyText("link", website.bookUrl)}
+                  >
+                    {copied === "link" ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </label>
+              <label className="field">
+                <span>Book online button (HTML)</span>
+                <textarea readOnly rows={6} value={website.buttonHtml} />
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={() => void copyText("button", website.buttonHtml)}
+                >
+                  {copied === "button" ? "Copied" : "Copy button HTML"}
+                </button>
+              </label>
+              <label className="field">
+                <span>Embed widget (iframe)</span>
+                <textarea readOnly rows={7} value={website.iframeHtml} />
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={() => void copyText("iframe", website.iframeHtml)}
+                >
+                  {copied === "iframe" ? "Copied" : "Copy iframe HTML"}
+                </button>
+              </label>
+              <p className="muted book-fineprint">
+                WordPress / Squarespace / Wix: add a Custom HTML block and paste
+                the iframe. Preview:{" "}
+                <a href={website.embedUrl} target="_blank" rel="noreferrer">
+                  open embed
+                </a>
+                .
+              </p>
+            </>
+          ) : (
+            <p className="muted">Loading clinic slug…</p>
+          )}
+        </section>
+        ) : null}
+
+        {section === "comms" ? (
+          <>
+        <section
+          className="panel"
+          style={{ gridColumn: "1 / -1" }}
+          id="settings-panel-comms"
+          role="tabpanel"
+          aria-labelledby="settings-tab-comms"
+        >
+          <h2>Patient messaging</h2>
+          <p className="muted">
+            Status for emails and texts patients get after booking, moves, and
+            reminders.
+          </p>
+          <ul className="apt-list">
+            <li className="apt-row">
+              <div className="apt-body">
+                <p className="apt-name">Clinic inbox</p>
+                <p className="muted">
+                  {email.trim()
+                    ? `Reception notifications go to ${email.trim()}.`
+                    : "No clinic email yet — online bookings will not notify reception."}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => setSection("brand")}
+              >
+                Edit in Brand
+              </button>
+            </li>
+            <li className="apt-row">
+              <div className="apt-body">
+                <p className="apt-name">Patient email</p>
+                <p className="muted">
+                  {support?.messaging?.patientEmailLive
+                    ? "Confirmations and change notices are sending to patients."
+                    : "Not sending yet — ask Treow support if you need patient email switched on."}
+                </p>
+              </div>
+              <span
+                className={`status ${
+                  support?.messaging?.patientEmailLive
+                    ? "status-checked_in"
+                    : ""
+                }`}
+              >
+                {support?.messaging
+                  ? support.messaging.patientEmailLive
+                    ? "Sending"
+                    : "Not sending"
+                  : "Checking…"}
+              </span>
+            </li>
+            <li className="apt-row">
+              <div className="apt-body">
+                <p className="apt-name">SMS reminders</p>
+                <p className="muted">
+                  {support?.messaging?.smsLive
+                    ? "Text reminders can be delivered to patients with a mobile number."
+                    : "Text reminders are not on yet — ask Treow support if you need SMS."}
+                </p>
+              </div>
+              <span
+                className={`status ${
+                  support?.messaging?.smsLive ? "status-checked_in" : ""
+                }`}
+              >
+                {support?.messaging
+                  ? support.messaging.smsLive
+                    ? "Sending"
+                    : "Not sending"
+                  : "Checking…"}
+              </span>
+            </li>
+          </ul>
+          <div className="home-cta" style={{ marginTop: "1rem" }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => void runReminders()}
+            >
+              Send due reminders
+            </button>
+            <a
+              className="btn-ghost"
+              href={`mailto:${support?.email ?? "support@treow.example"}`}
+            >
+              Contact Treow support
+            </a>
+          </div>
+        </section>
+
+        <section className="panel" style={{ gridColumn: "1 / -1" }}>
           <h2>Patient emails</h2>
           <p className="muted">
             Opt-in automation via Resend. Requires{" "}
@@ -929,113 +1147,51 @@ export default function SettingsPage() {
             <p className="muted">Loading…</p>
           )}
         </section>
+          </>
+        ) : null}
 
-        <section className="panel">
-          <h2>Website booking</h2>
-          <p className="muted">
-            Part of Treow Clinic: put online booking on your website in minutes.
-            We host the page; you paste a button or embed. No download required.
-          </p>
-          {website ? (
-            <>
-              <label className="field">
-                <span>Public booking link</span>
-                <div className="inline-row">
-                  <input readOnly value={website.bookUrl} />
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={() => void copyText("link", website.bookUrl)}
-                  >
-                    {copied === "link" ? "Copied" : "Copy"}
-                  </button>
-                </div>
-              </label>
-              <label className="field">
-                <span>Book online button (HTML)</span>
-                <textarea readOnly rows={6} value={website.buttonHtml} />
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={() => void copyText("button", website.buttonHtml)}
-                >
-                  {copied === "button" ? "Copied" : "Copy button HTML"}
-                </button>
-              </label>
-              <label className="field">
-                <span>Embed widget (iframe)</span>
-                <textarea readOnly rows={7} value={website.iframeHtml} />
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={() => void copyText("iframe", website.iframeHtml)}
-                >
-                  {copied === "iframe" ? "Copied" : "Copy iframe HTML"}
-                </button>
-              </label>
-              <p className="muted book-fineprint">
-                WordPress / Squarespace / Wix: add a Custom HTML block and paste
-                the iframe. Preview:{" "}
-                <a href={website.embedUrl} target="_blank" rel="noreferrer">
-                  open embed
-                </a>
-                .
+        {section === "compliance" ? (
+          <>
+            <section className="panel">
+              <h2>Audit export</h2>
+              <p className="muted">
+                Download note access / edit / sign events for this clinic (JSON).
               </p>
-            </>
-          ) : (
-            <p className="muted">Loading clinic slug…</p>
-          )}
-        </section>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void exportAudits()}
+              >
+                Export access audits
+              </button>
+              {auditCount !== null ? (
+                <p className="muted">{auditCount} events in last export</p>
+              ) : (
+                <p className="muted">
+                  Includes note views and who opened patient prep / note history.
+                </p>
+              )}
+            </section>
 
-        <section className="panel">
-          <h2>Audit export</h2>
-          <p className="muted">
-            Download note access / edit / sign events for this clinic (JSON).
-          </p>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => void exportAudits()}
-          >
-            Export access audits
-          </button>
-          {auditCount !== null ? (
-            <p className="muted">{auditCount} events in last export</p>
-          ) : (
-            <p className="muted">
-              Includes note views and who opened patient prep / note history.
-            </p>
-          )}
-        </section>
-
-        <section className="panel">
-          <h2>Launch support</h2>
-          <p className="muted">
-            For pilot incidents and privacy assistance. The clinic remains the
-            data controller; Treow assists as processor.
-          </p>
-          <p>
-            <strong>Support:</strong>{" "}
-            <a href={`mailto:${support?.email ?? "support@treow.example"}`}>
-              {support?.email ?? "…"}
-            </a>
-          </p>
-          <p className="muted">
-            App URL: {support?.appBaseUrl ?? "…"}
-          </p>
-          <div className="home-cta">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => void runReminders()}
-            >
-              Send due reminders
-            </button>
-            <Link href="/privacy" className="btn-ghost">
-              Privacy notice
-            </Link>
-          </div>
-        </section>
+            <section className="panel">
+              <h2>Launch support</h2>
+              <p className="muted">
+                For pilot incidents and privacy assistance. The clinic remains
+                the data controller; Treow assists as processor.
+              </p>
+              <p>
+                <strong>Support:</strong>{" "}
+                <a href={`mailto:${support?.email ?? "support@treow.example"}`}>
+                  {support?.email ?? "…"}
+                </a>
+              </p>
+              <p className="muted">App URL: {support?.appBaseUrl ?? "…"}</p>
+              <Link href="/privacy" className="btn-ghost">
+                Privacy notice
+              </Link>
+            </section>
+          </>
+        ) : null}
       </div>
     </AppShell>
   );

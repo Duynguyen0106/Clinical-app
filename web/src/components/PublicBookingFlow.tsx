@@ -302,12 +302,16 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
           </div>
         ) : null}
         <div className="book-card">
-          <p
-            className="eyebrow"
-            style={accent ? { color: accent } : undefined}
-          >
-            {clinic?.name ?? slug}
-          </p>
+          {clinic?.name ? (
+            <p
+              className="eyebrow book-clinic-name"
+              style={accent ? { color: accent } : undefined}
+            >
+              {clinic.name}
+            </p>
+          ) : (
+            <p className="eyebrow book-clinic-name muted">Loading clinic…</p>
+          )}
           {clinic?.address || clinic?.phone ? (
             <p className="muted book-fineprint">
               {[clinic?.address, clinic?.phone].filter(Boolean).join(" · ")}

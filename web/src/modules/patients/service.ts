@@ -190,7 +190,26 @@ export async function listPatients(
     return Array.from(byPatient.values());
   }
 
-  // Own-diary history search when practitionerId set without a day filter
+  // Practitioner diary search (no day filter): anyone this practitioner has seen
+  if (opts.practitionerId) {
+    return prisma.patient.findMany({
+      where: {
+        clinicId: ctx.clinicId,
+        archivedAt: null,
+        ...search,
+        appointments: {
+          some: {
+            clinicId: ctx.clinicId,
+            practitionerId: opts.practitionerId,
+            status: { not: "CANCELLED" },
+          },
+        },
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take,
+    });
+  }
+
   return prisma.patient.findMany({
     where: {
       clinicId: ctx.clinicId,

@@ -132,6 +132,12 @@ export default function CalendarPage() {
   const [seriesMove, setSeriesMove] = useState(false);
 
   const [selected, setSelected] = useState<Appointment | null>(null);
+  /** Appointment sheet: secondary actions behind More */
+  const [sheetMoreOpen, setSheetMoreOpen] = useState(false);
+  const setSelectedAppt = useCallback((apt: Appointment | null) => {
+    setSelected(apt);
+    setSheetMoreOpen(false);
+  }, []);
   const [bookOpen, setBookOpen] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);
   /** When true, slot came from clicking a diary cell */
@@ -150,6 +156,8 @@ export default function CalendarPage() {
   const [bookWeeklyCount, setBookWeeklyCount] = useState(1);
   /** 1 = weekly; 2 = fortnightly */
   const [bookIntervalWeeks, setBookIntervalWeeks] = useState(1);
+  /** Book sheet: fee + notes (+ repeat) behind Options */
+  const [bookOptionsOpen, setBookOptionsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const privacyMode =
     me?.clinic.calendarPrivacyMode === "INITIALS" ? "INITIALS" : "FULL_NAME";
@@ -158,6 +166,9 @@ export default function CalendarPage() {
   const [feedWebcal, setFeedWebcal] = useState<string | null>(null);
   const [feedHint, setFeedHint] = useState<string[] | null>(null);
   const [feedMessage, setFeedMessage] = useState<string | null>(null);
+  /** Toolbar: Sync / Blocks / legend stay out of the first viewport */
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
 
   const [blockPractitionerId, setBlockPractitionerId] = useState("");
   const [blockDate, setBlockDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -393,12 +404,13 @@ export default function CalendarPage() {
     /** Prefer this practitioner if free; otherwise first free. */
     practitionerId?: string;
   }) {
-    setSelected(null);
+    setSelectedAppt(null);
     setMessage(null);
     setError(null);
     setBookPatientId("");
     setBookIntakeNote(null);
     setBookNotes("");
+    setBookOptionsOpen(false);
     if (opts?.day != null && opts.hour != null) {
       const startsAt = clinicLocalDateTime(
         clinicDateKey(opts.day, timeZone),
@@ -808,6 +820,49 @@ export default function CalendarPage() {
                 Week
               </button>
             </div>
+            <div className="cal-toolbar-nav">
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                aria-label="Previous"
+                onClick={() =>
+                  viewMode === "day"
+                    ? setDayFocus((d) => addDays(d, -1))
+                    : setWeekStart((d) => addDays(d, -7))
+                }
+              >
+                ←
+              </button>
+              <h2 className="cal-date-label">
+                {viewMode === "day"
+                  ? format(dayFocus, isNarrow ? "EEE d MMM" : "EEE d MMM yyyy")
+                  : `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 6), isNarrow ? "d MMM" : "d MMM yyyy")}`}
+              </h2>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                aria-label="Next"
+                onClick={() =>
+                  viewMode === "day"
+                    ? setDayFocus((d) => addDays(d, 1))
+                    : setWeekStart((d) => addDays(d, 7))
+                }
+              >
+                →
+              </button>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => {
+                  const todayKey = clinicDateKey(new Date(), timeZone);
+                  const today = clinicLocalDateTime(todayKey, 12 * 60, timeZone);
+                  setDayFocus(today);
+                  setWeekStart(startOfWeek(today, { weekStartsOn: 1 }));
+                }}
+              >
+                Today
+              </button>
+            </div>
             <div className="week-actions">
               {canEditSchedule ? (
                 <button
@@ -818,10 +873,36 @@ export default function CalendarPage() {
                   Book
                 </button>
               ) : null}
+              {me?.practitionerProfileId ||
+              canEditSchedule ||
+              appointments.length > 0 ? (
+                <button
+                  type="button"
+                  className={`btn-sm cal-tools-toggle ${toolsOpen ? "btn-secondary" : "btn-ghost"}`}
+                  aria-expanded={toolsOpen}
+                  aria-controls="cal-tools-panel"
+                  onClick={() => setToolsOpen((o) => !o)}
+                >
+                  Tools
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {toolsOpen &&
+          (me?.practitionerProfileId ||
+            canEditSchedule ||
+            appointments.length > 0) ? (
+            <div
+              id="cal-tools-panel"
+              className="cal-tools-panel"
+              role="region"
+              aria-label="Calendar tools"
+            >
               {me?.practitionerProfileId ? (
                 <button
                   type="button"
-                  className="btn-ghost btn-sm cal-secondary-action"
+                  className="btn-ghost btn-sm"
                   onClick={() => void openPhoneFeed()}
                 >
                   {isNarrow ? "Sync" : "Phone calendar"}
@@ -830,14 +911,44 @@ export default function CalendarPage() {
               {canEditSchedule ? (
                 <button
                   type="button"
-                  className="btn-secondary btn-sm cal-secondary-action"
+                  className="btn-secondary btn-sm"
                   onClick={() => setBlockOpen(true)}
                 >
                   Blocks{blocks.length ? ` (${blocks.length})` : ""}
                 </button>
               ) : null}
+              {canEditSchedule || appointments.length > 0 ? (
+                <button
+                  type="button"
+                  className={`btn-sm ${legendOpen ? "btn-secondary" : "btn-ghost"}`}
+                  aria-expanded={legendOpen}
+                  onClick={() => setLegendOpen((o) => !o)}
+                >
+                  Legend
+                </button>
+              ) : null}
             </div>
-          </div>
+          ) : null}
+
+          {toolsOpen && legendOpen ? (
+            <div className="cal-legend" aria-label="Appointment status colours">
+              <span className="cal-legend-item">
+                <i className="cal-swatch status-booked" aria-hidden /> Booked
+              </span>
+              <span className="cal-legend-item">
+                <i className="cal-swatch status-completed" aria-hidden /> Completed
+              </span>
+              <span className="cal-legend-item">
+                <i className="cal-swatch status-no_show" aria-hidden /> No-show
+              </span>
+              <span className="cal-legend-item">
+                <i className="cal-swatch status-in_progress" aria-hidden /> In progress
+              </span>
+              <span className="cal-legend-item">
+                <i className="cal-swatch cal-swatch-closed" aria-hidden /> Closed
+              </span>
+            </div>
+          ) : null}
 
           {catalog &&
           catalog.practitioners.length > 1 &&
@@ -871,54 +982,10 @@ export default function CalendarPage() {
             </div>
           ) : null}
 
-          <div className="cal-toolbar-nav">
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              aria-label="Previous"
-              onClick={() =>
-                viewMode === "day"
-                  ? setDayFocus((d) => addDays(d, -1))
-                  : setWeekStart((d) => addDays(d, -7))
-              }
-            >
-              ←
-            </button>
-            <h2 className="cal-date-label">
-              {viewMode === "day"
-                ? format(dayFocus, isNarrow ? "EEE d MMM" : "EEE d MMM yyyy")
-                : `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 6), isNarrow ? "d MMM" : "d MMM yyyy")}`}
-            </h2>
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              aria-label="Next"
-              onClick={() =>
-                viewMode === "day"
-                  ? setDayFocus((d) => addDays(d, 1))
-                  : setWeekStart((d) => addDays(d, 7))
-              }
-            >
-              →
-            </button>
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              onClick={() => {
-                const todayKey = clinicDateKey(new Date(), timeZone);
-                const today = clinicLocalDateTime(todayKey, 12 * 60, timeZone);
-                setDayFocus(today);
-                setWeekStart(startOfWeek(today, { weekStartsOn: 1 }));
-              }}
-            >
-              Today
-            </button>
-          </div>
-
           {viewMode === "day" ? (
             <div className="cal-day-strip" role="tablist" aria-label="Days this week">
               {stripDays.map((day) => {
-                const selected =
+                const chipSelected =
                   clinicDateKey(day, timeZone) ===
                   clinicDateKey(dayFocus, timeZone);
                 const isToday =
@@ -930,8 +997,8 @@ export default function CalendarPage() {
                     key={day.toISOString()}
                     type="button"
                     role="tab"
-                    aria-selected={selected}
-                    className={`cal-day-chip ${selected ? "active" : ""} ${
+                    aria-selected={chipSelected}
+                    className={`cal-day-chip ${chipSelected ? "active" : ""} ${
                       isToday ? "is-today" : ""
                     } ${dayClosed ? "is-closed" : ""}`}
                     title={dayClosed ? "Closed — outside open hours" : undefined}
@@ -955,26 +1022,6 @@ export default function CalendarPage() {
         </div>
         {error ? <p className="form-error">{error}</p> : null}
         {message ? <p className="form-ok">{message}</p> : null}
-
-        {canEditSchedule || appointments.length > 0 ? (
-          <div className="cal-legend" aria-label="Appointment status colours">
-            <span className="cal-legend-item">
-              <i className="cal-swatch status-booked" aria-hidden /> Booked
-            </span>
-            <span className="cal-legend-item">
-              <i className="cal-swatch status-completed" aria-hidden /> Completed
-            </span>
-            <span className="cal-legend-item">
-              <i className="cal-swatch status-no_show" aria-hidden /> No-show
-            </span>
-            <span className="cal-legend-item">
-              <i className="cal-swatch status-in_progress" aria-hidden /> In progress
-            </span>
-            <span className="cal-legend-item">
-              <i className="cal-swatch cal-swatch-closed" aria-hidden /> Closed
-            </span>
-          </div>
-        ) : null}
 
         <div
           className={`week-grid ${viewMode === "day" ? "week-grid-day" : ""}`}
@@ -1133,7 +1180,7 @@ export default function CalendarPage() {
                           e.stopPropagation();
                           setMessage(null);
                           setError(null);
-                          setSelected(apt);
+                          setSelectedAppt(apt);
                         }}
                         title={
                           canEditSchedule
@@ -1163,7 +1210,7 @@ export default function CalendarPage() {
       </div>
 
       {selected ? (
-        <div className="sheet-backdrop" onClick={() => setSelected(null)}>
+        <div className="sheet-backdrop" onClick={() => setSelectedAppt(null)}>
           <div
             className="sheet-card"
             role="dialog"
@@ -1177,7 +1224,7 @@ export default function CalendarPage() {
               <button
                 type="button"
                 className="btn-ghost btn-sm"
-                onClick={() => setSelected(null)}
+                onClick={() => setSelectedAppt(null)}
               >
                 Close
               </button>
@@ -1336,306 +1383,343 @@ export default function CalendarPage() {
               </div>
             ) : null}
 
-            {canEditSchedule ? (
-              <label className="consent-label notify-patient-toggle">
-                <input
-                  type="checkbox"
-                  checked={notifyPatientOnChange}
-                  onChange={(e) => setNotifyPatientOnChange(e.target.checked)}
-                />
-                <span>
-                  Notify patient by email/SMS when time or length changes
-                  (also applies when you move to a new slot)
-                </span>
-              </label>
-            ) : null}
-
-            <div className="sheet-actions">
-              {(me?.role === "OWNER" ||
-                me?.role === "PRACTITIONER") ? (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => void openVisit(selected)}
-                >
-                  Open visit
-                </button>
-              ) : null}
-              {canEditSchedule ? (
-                <>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={
-                      busy ||
-                      !pickFreePractitioner(
-                        new Date(selected.startsAt),
-                        Math.floor(
-                          clinicMinutesFromMidnight(
-                            new Date(selected.startsAt),
-                            timeZone,
-                          ) / 60,
-                        ),
-                        null,
-                      )
-                    }
-                    onClick={() => openBookAlongside(selected)}
-                  >
-                    Book another practitioner
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={busy || selected.status === "CANCELLED"}
-                    onClick={() => {
-                      setSeriesMove(false);
-                      setDraggingId(selected.id);
-                      setSelected(null);
-                      setMessage(
-                        "Tap a diary slot to move this appointment (or drag on desktop).",
-                      );
-                    }}
-                  >
-                    Move to another slot
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={busy || selected.status === "CANCELLED"}
-                    onClick={() =>
-                      void patchSelected({ status: "CANCELLED" }, "Cancelled")
-                    }
-                  >
-                    Cancel
-                  </button>
-                  {selected.recurrenceGroupId ? (
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      disabled={busy || selected.status === "CANCELLED"}
-                      onClick={() => {
-                        void (async () => {
-                          setBusy(true);
-                          setError(null);
-                          try {
-                            const d = await api<{
-                              cancelledCount: number;
-                            }>(
-                              `/appointments/${selected.id}/cancel-series`,
-                              { method: "POST" },
-                            );
-                            setSelected(null);
+            <div className="sheet-actions sheet-actions-primary">
+              {(() => {
+                const terminal = ["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
+                  selected.status,
+                );
+                const awaiting =
+                  selected.status === "BOOKED" ||
+                  selected.status === "CONFIRMED";
+                const isClinician =
+                  me?.role === "OWNER" || me?.role === "PRACTITIONER";
+                const primaryIsCheckIn = canEditSchedule && awaiting;
+                return (
+                  <>
+                    {primaryIsCheckIn ? (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={busy}
+                        onClick={() =>
+                          void patchSelected(
+                            { status: "CHECKED_IN" },
+                            "Checked in",
+                          )
+                        }
+                      >
+                        Check in
+                      </button>
+                    ) : null}
+                    {isClinician && !terminal ? (
+                      <button
+                        type="button"
+                        className={
+                          primaryIsCheckIn ? "btn-secondary" : "btn-primary"
+                        }
+                        onClick={() => void openVisit(selected)}
+                      >
+                        Open visit
+                      </button>
+                    ) : null}
+                    {canEditSchedule && !terminal ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={busy}
+                          onClick={() => {
+                            setSeriesMove(false);
+                            setDraggingId(selected.id);
+                            setSelectedAppt(null);
                             setMessage(
-                              `Cancelled ${d.cancelledCount} remaining series appointments.`,
+                              "Tap a diary slot to move this appointment (or drag on desktop).",
                             );
-                            load();
-                          } catch (e) {
-                            setError(
-                              e instanceof ApiError
-                                ? e.message
-                                : "Could not cancel series",
-                            );
-                          } finally {
-                            setBusy(false);
+                          }}
+                        >
+                          Move
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary apt-cancel-btn"
+                          disabled={busy}
+                          onClick={() =>
+                            void patchSelected(
+                              { status: "CANCELLED" },
+                              "Cancelled",
+                            )
                           }
-                        })();
-                      }}
-                    >
-                      Cancel series from here
-                    </button>
-                  ) : null}
-                  {selected.recurrenceGroupId ? (
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      disabled={busy || selected.status === "CANCELLED"}
-                      onClick={() => {
-                        setSeriesMove(true);
-                        setDraggingId(selected.id);
-                        setSelected(null);
-                        setMessage(
-                          "Tap a diary slot to move this and later series appointments by the same amount.",
-                        );
-                      }}
-                    >
-                      Move series from here
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={
-                      busy ||
-                      selected.status === "COMPLETED" ||
-                      selected.status === "CANCELLED" ||
-                      selected.status === "NO_SHOW"
-                    }
-                    onClick={() =>
-                      void patchSelected(
-                        { status: "COMPLETED" },
-                        "Marked completed — thank-you email may follow",
-                      )
-                    }
-                  >
-                    Mark completed
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    disabled={busy || selected.status === "NO_SHOW"}
-                    onClick={() =>
-                      void patchSelected({ status: "NO_SHOW" }, "Marked no-show")
-                    }
-                  >
-                    No-show
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="muted">
-                    Open the visit to record and take the clinical note. Schedule
-                    changes are managed by reception.
-                  </p>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={
-                      busy ||
-                      selected.status === "COMPLETED" ||
-                      selected.status === "CANCELLED" ||
-                      selected.status === "NO_SHOW"
-                    }
-                    onClick={() =>
-                      void patchSelected(
-                        { status: "COMPLETED" },
-                        "Marked completed — thank-you email may follow",
-                      )
-                    }
-                  >
-                    Mark completed
-                  </button>
-                </>
-              )}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : null}
+                    {!canEditSchedule && !isClinician ? (
+                      <p className="muted">
+                        Schedule changes are managed by reception.
+                      </p>
+                    ) : null}
+                    {!canEditSchedule && isClinician && !terminal ? (
+                      <p className="muted">
+                        Open the visit to record and take the clinical note.
+                        Schedule changes are managed by reception.
+                      </p>
+                    ) : null}
+                    {terminal ? (
+                      <p className="muted">
+                        This appointment is {humanStatusLabel(selected.status).toLowerCase()}.
+                        {isClinician && selected.visit
+                          ? " Open the visit from Notes if you need the record."
+                          : ""}
+                      </p>
+                    ) : null}
+                  </>
+                );
+              })()}
             </div>
-
-            {canEditSchedule ? (
-              <>
-            <label className="field">
-              <span>Length (minutes)</span>
-              <div className="inline-row">
-                <input
-                  type="number"
-                  min={5}
-                  max={480}
-                  step={5}
-                  value={editDuration}
-                  onChange={(e) => setEditDuration(Number(e.target.value))}
-                />
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  disabled={busy}
-                  onClick={() =>
-                    void patchSelected(
-                      { durationMinutes: editDuration },
-                      "Length updated",
-                    )
-                  }
-                >
-                  Save length
-                </button>
-              </div>
-            </label>
-
-            <label className="field">
-              <span>Additional fee (£)</span>
-              <div className="inline-row">
-                <input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  placeholder="e.g. 15"
-                  value={extraFee}
-                  onChange={(e) => setExtraFee(e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Reason (tape, injection…)"
-                  value={feeNote}
-                  onChange={(e) => setFeeNote(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  disabled={busy || !extraFee || Number(extraFee) <= 0}
-                  onClick={() =>
-                    void patchSelected(
-                      {
-                        additionalFeeCents: Math.round(Number(extraFee) * 100),
-                        feeNote: feeNote || undefined,
-                      },
-                      "Fee added",
-                    )
-                  }
-                >
-                  Add fee
-                </button>
-              </div>
-            </label>
-              </>
-            ) : null}
 
             {selected.notes ? (
               <p className="muted sheet-notes">{selected.notes}</p>
+            ) : null}
+
+            {canEditSchedule &&
+            !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(selected.status) ? (
+              <div className="sheet-more">
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm sheet-more-toggle"
+                  aria-expanded={sheetMoreOpen}
+                  onClick={() => setSheetMoreOpen((o) => !o)}
+                >
+                  {sheetMoreOpen ? "Hide more" : "More…"}
+                </button>
+                {sheetMoreOpen ? (
+                  <div className="sheet-more-body">
+                    <div className="sheet-actions">
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={
+                          busy ||
+                          !pickFreePractitioner(
+                            new Date(selected.startsAt),
+                            Math.floor(
+                              clinicMinutesFromMidnight(
+                                new Date(selected.startsAt),
+                                timeZone,
+                              ) / 60,
+                            ),
+                            null,
+                          )
+                        }
+                        onClick={() => openBookAlongside(selected)}
+                      >
+                        Book another practitioner
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost apt-cancel-btn"
+                        disabled={busy}
+                        onClick={() =>
+                          void patchSelected(
+                            { status: "NO_SHOW" },
+                            "Marked no-show",
+                          )
+                        }
+                      >
+                        No-show
+                      </button>
+                      {selected.recurrenceGroupId ? (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={busy || selected.status === "CANCELLED"}
+                          onClick={() => {
+                            void (async () => {
+                              setBusy(true);
+                              setError(null);
+                              try {
+                                const d = await api<{
+                                  cancelledCount: number;
+                                }>(
+                                  `/appointments/${selected.id}/cancel-series`,
+                                  { method: "POST" },
+                                );
+                                setSelectedAppt(null);
+                                setMessage(
+                                  `Cancelled ${d.cancelledCount} remaining series appointments.`,
+                                );
+                                load();
+                              } catch (e) {
+                                setError(
+                                  e instanceof ApiError
+                                    ? e.message
+                                    : "Could not cancel series",
+                                );
+                              } finally {
+                                setBusy(false);
+                              }
+                            })();
+                          }}
+                        >
+                          Cancel series from here
+                        </button>
+                      ) : null}
+                      {selected.recurrenceGroupId ? (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={busy || selected.status === "CANCELLED"}
+                          onClick={() => {
+                            setSeriesMove(true);
+                            setDraggingId(selected.id);
+                            setSelectedAppt(null);
+                            setMessage(
+                              "Tap a diary slot to move this and later series appointments by the same amount.",
+                            );
+                          }}
+                        >
+                          Move series from here
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <label className="consent-label notify-patient-toggle">
+                      <input
+                        type="checkbox"
+                        checked={notifyPatientOnChange}
+                        onChange={(e) =>
+                          setNotifyPatientOnChange(e.target.checked)
+                        }
+                      />
+                      <span>
+                        Notify patient by email/SMS when time or length changes
+                        (also applies when you move to a new slot)
+                      </span>
+                    </label>
+
+                    <label className="field">
+                      <span>Length (minutes)</span>
+                      <div className="inline-row">
+                        <input
+                          type="number"
+                          min={5}
+                          max={480}
+                          step={5}
+                          value={editDuration}
+                          onChange={(e) =>
+                            setEditDuration(Number(e.target.value))
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="btn-secondary btn-sm"
+                          disabled={busy}
+                          onClick={() =>
+                            void patchSelected(
+                              { durationMinutes: editDuration },
+                              "Length updated",
+                            )
+                          }
+                        >
+                          Save length
+                        </button>
+                      </div>
+                    </label>
+
+                    <label className="field">
+                      <span>Additional fee (£)</span>
+                      <div className="inline-row">
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          placeholder="e.g. 15"
+                          value={extraFee}
+                          onChange={(e) => setExtraFee(e.target.value)}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Reason (tape, injection…)"
+                          value={feeNote}
+                          onChange={(e) => setFeeNote(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="btn-secondary btn-sm"
+                          disabled={busy || !extraFee || Number(extraFee) <= 0}
+                          onClick={() =>
+                            void patchSelected(
+                              {
+                                additionalFeeCents: Math.round(
+                                  Number(extraFee) * 100,
+                                ),
+                                feeNote: feeNote || undefined,
+                              },
+                              "Fee added",
+                            )
+                          }
+                        >
+                          Add fee
+                        </button>
+                      </div>
+                    </label>
+
+                    {blocks.some(
+                      (b) => b.practitioner.id === selected.practitioner.id,
+                    ) ? (
+                      <div className="block-list">
+                        <h3>Diary blocks in this view</h3>
+                        <p className="muted" style={{ margin: "0 0 0.5rem" }}>
+                          Or open <strong>Tools → Blocks</strong> to manage all
+                          blocks. Approved leave is under Team → Leave.
+                        </p>
+                        {blocks
+                          .filter(
+                            (b) =>
+                              b.practitioner.id === selected.practitioner.id,
+                          )
+                          .map((b) => (
+                            <div key={b.id} className="block-row">
+                              <span>
+                                {b.date.slice(0, 10)}{" "}
+                                {b.startMinute == null
+                                  ? "all day"
+                                  : `${minutesLabel(b.startMinute)}–${minutesLabel(b.endMinute ?? 0)}`}
+                                {b.reason ? ` · ${b.reason}` : ""}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn-ghost btn-sm"
+                                disabled={busy}
+                                onClick={() =>
+                                  void removeBlock(
+                                    b.id,
+                                    `${b.date.slice(0, 10)}${
+                                      b.reason ? ` · ${b.reason}` : ""
+                                    }`,
+                                  )
+                                }
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
 
             <PatientPrepPanel
               patientId={selected.patient.id}
               excludeAppointmentId={selected.id}
               compact
+              defaultCollapsed
               source="calendar"
               privacyMode={privacyMode}
             />
-
-            {blocks.some((b) => b.practitioner.id === selected.practitioner.id) ? (
-              <div className="block-list">
-                <h3>Diary blocks in this view</h3>
-                <p className="muted" style={{ margin: "0 0 0.5rem" }}>
-                  Or open <strong>Block</strong> in the toolbar to manage all
-                  blocks. Approved leave is managed under Team → Leave.
-                </p>
-                {blocks
-                  .filter((b) => b.practitioner.id === selected.practitioner.id)
-                  .map((b) => (
-                    <div key={b.id} className="block-row">
-                      <span>
-                        {b.date.slice(0, 10)}{" "}
-                        {b.startMinute == null
-                          ? "all day"
-                          : `${minutesLabel(b.startMinute)}–${minutesLabel(b.endMinute ?? 0)}`}
-                        {b.reason ? ` · ${b.reason}` : ""}
-                      </span>
-                      {canEditSchedule ? (
-                        <button
-                          type="button"
-                          className="btn-ghost btn-sm"
-                          disabled={busy}
-                          onClick={() =>
-                            void removeBlock(
-                              b.id,
-                              `${b.date.slice(0, 10)}${
-                                b.reason ? ` · ${b.reason}` : ""
-                              }`,
-                            )
-                          }
-                        >
-                          Remove
-                        </button>
-                      ) : null}
-                    </div>
-                  ))}
-              </div>
-            ) : null}
           </div>
         </div>
       ) : null}
@@ -1788,16 +1872,6 @@ export default function CalendarPage() {
                 onChange={(e) => setBookDuration(Number(e.target.value))}
               />
             </label>
-            <label className="field">
-              <span>Fee (£) — optional invoice</span>
-              <input
-                type="number"
-                min={0}
-                step={0.01}
-                value={bookFeePounds}
-                onChange={(e) => setBookFeePounds(e.target.value)}
-              />
-            </label>
             {!bookSlotFixed ? (
               <label className="field">
                 <span>Slot</span>
@@ -1817,42 +1891,91 @@ export default function CalendarPage() {
                 </select>
               </label>
             ) : null}
-            <label className="field">
-              <span>Repeat</span>
-              <select
-                value={bookWeeklyCount}
-                onChange={(e) => setBookWeeklyCount(Number(e.target.value))}
+            <div className="sheet-more">
+              <button
+                type="button"
+                className="btn-ghost btn-sm sheet-more-toggle"
+                aria-expanded={bookOptionsOpen}
+                onClick={() => setBookOptionsOpen((o) => !o)}
               >
-                <option value={1}>No repeat — one appointment</option>
-                {[2, 3, 4, 6, 8, 12].map((n) => (
-                  <option key={n} value={n}>
-                    {n} occurrences (same day/time)
-                  </option>
-                ))}
-              </select>
-            </label>
-            {bookWeeklyCount > 1 ? (
-              <label className="field">
-                <span>Cadence</span>
-                <select
-                  value={bookIntervalWeeks}
-                  onChange={(e) =>
-                    setBookIntervalWeeks(Number(e.target.value))
-                  }
-                >
-                  <option value={1}>Every week</option>
-                  <option value={2}>Every fortnight</option>
-                </select>
-              </label>
-            ) : null}
-            <label className="field">
-              <span>Notes</span>
-              <textarea
-                rows={2}
-                value={bookNotes}
-                onChange={(e) => setBookNotes(e.target.value)}
-              />
-            </label>
+                {bookOptionsOpen ? "Hide options" : "Options…"}
+              </button>
+              {!bookOptionsOpen &&
+              (bookFeePounds.trim() ||
+                bookNotes.trim() ||
+                bookWeeklyCount > 1) ? (
+                <p className="muted book-fineprint">
+                  {bookWeeklyCount > 1
+                    ? `${bookWeeklyCount}× ${
+                        bookIntervalWeeks > 1 ? "fortnightly" : "weekly"
+                      }`
+                    : null}
+                  {bookWeeklyCount > 1 &&
+                  (bookFeePounds.trim() || bookNotes.trim())
+                    ? " · "
+                    : null}
+                  {bookFeePounds.trim()
+                    ? `Fee £${Number(bookFeePounds).toFixed(2)}`
+                    : null}
+                  {bookFeePounds.trim() && bookNotes.trim() ? " · " : null}
+                  {bookNotes.trim()
+                    ? `Notes: ${bookNotes.trim().slice(0, 60)}${
+                        bookNotes.trim().length > 60 ? "…" : ""
+                      }`
+                    : null}
+                </p>
+              ) : null}
+              {bookOptionsOpen ? (
+                <div className="sheet-more-body">
+                  <label className="field">
+                    <span>Repeat</span>
+                    <select
+                      value={bookWeeklyCount}
+                      onChange={(e) => setBookWeeklyCount(Number(e.target.value))}
+                    >
+                      <option value={1}>No repeat — one appointment</option>
+                      {[2, 3, 4, 6, 8, 12].map((n) => (
+                        <option key={n} value={n}>
+                          {n} occurrences (same day/time)
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {bookWeeklyCount > 1 ? (
+                    <label className="field">
+                      <span>Cadence</span>
+                      <select
+                        value={bookIntervalWeeks}
+                        onChange={(e) =>
+                          setBookIntervalWeeks(Number(e.target.value))
+                        }
+                      >
+                        <option value={1}>Every week</option>
+                        <option value={2}>Every fortnight</option>
+                      </select>
+                    </label>
+                  ) : null}
+                  <label className="field">
+                    <span>Fee (£) — optional invoice</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={bookFeePounds}
+                      onChange={(e) => setBookFeePounds(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Notes</span>
+                    <textarea
+                      rows={2}
+                      value={bookNotes}
+                      onChange={(e) => setBookNotes(e.target.value)}
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               className="btn-primary"

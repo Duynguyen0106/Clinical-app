@@ -1733,6 +1733,11 @@ h3 {
   font-size: 0.9rem;
 }
 
+.settings-section-nav {
+  margin: 0 0 1rem;
+  flex-wrap: wrap;
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -2454,6 +2459,12 @@ h3 {
   margin: 0 0 0.5rem;
 }
 
+.eyebrow.book-clinic-name {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 650;
+}
+
 .visit-panel h2 {
   margin: 0;
   font-size: 2rem;
@@ -3094,6 +3105,19 @@ h3 {
   min-width: 0;
 }
 
+.cal-toolbar-top .cal-toolbar-nav {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.cal-tools-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.15rem 0.1rem;
+}
+
 .cal-toolbar-nav {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
@@ -3245,6 +3269,97 @@ button.cal-block-btn:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.sheet-actions-primary {
+  margin-top: 0.15rem;
+}
+
+.sheet-more {
+  display: grid;
+  gap: 0.65rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.sheet-more-toggle {
+  justify-self: start;
+}
+
+.sheet-more-body {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.apt-cancel-btn {
+  color: var(--danger);
+}
+
+.money-pay-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.prep-collapsed {
+  display: grid;
+  gap: 0.45rem;
+  justify-items: start;
+}
+
+.pulse-needs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.pulse-needs a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.auth-boot {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+
+.auth-boot-card {
+  display: grid;
+  justify-items: center;
+  gap: 0.65rem;
+  text-align: center;
+}
+
+.auth-boot-card .brand-word {
+  margin: 0.25rem 0 0;
+  font-size: 1.35rem;
+}
+
+.auth-boot-spinner {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: auth-boot-spin 0.75s linear infinite;
+}
+
+@keyframes auth-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-boot-spinner {
+    animation: none;
+    border-top-color: var(--accent-soft);
+    background: var(--accent-soft);
+  }
 }
 
 .inline-row {
@@ -4279,6 +4394,28 @@ button.cal-block-btn:focus-visible {
   .mobile-tab.active {
     color: var(--accent-deep);
     background: var(--accent-soft);
+  }
+
+  .mobile-tab-icon-wrap {
+    position: relative;
+    display: inline-flex;
+    line-height: 0;
+  }
+
+  .mobile-tab-badge {
+    position: absolute;
+    top: -0.35rem;
+    right: -0.55rem;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1.1rem;
+    text-align: center;
   }
 
   .mobile-tab span {

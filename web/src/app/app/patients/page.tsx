@@ -112,7 +112,7 @@ function PatientsPageInner() {
     const qs = new URLSearchParams();
     if (q.trim()) qs.set("q", q.trim());
     if (isPractitioner) {
-      // Search → own diary history; empty query → today's patients
+      // Empty query = today’s diary; typing searches anyone you’ve seen
       if (!q.trim()) qs.set("appointmentOn", todayYmd(clinicTz));
       if (myPractitionerId) qs.set("practitionerId", myPractitionerId);
     }
@@ -287,7 +287,7 @@ function PatientsPageInner() {
         isPractitioner
           ? q.trim()
             ? `Searching your diary patients — matches anyone you’ve seen, not only today.`
-            : `Today’s diary · ${dayLabel} — search to find patients from other days.`
+            : `Today’s list · ${dayLabel} — type a name to search anyone you’ve seen.`
           : "Directory, contact details, NHS/GP fields — search then book from Calendar."
       }
     >
@@ -319,7 +319,7 @@ function PatientsPageInner() {
             className="search-input"
             placeholder={
               isPractitioner
-                ? "Filter today’s list by name"
+                ? "Search anyone you’ve seen"
                 : "Search name, email, phone, NHS number"
             }
             value={q}
@@ -413,7 +413,9 @@ function PatientsPageInner() {
           {!loading && patients.length === 0 ? (
             <p className="muted">
               {isPractitioner
-                ? "No patients on your diary today."
+                ? q.trim()
+                  ? "No past patients match that search."
+                  : "Nobody on today’s list. Search above for anyone you’ve seen."
                 : "No patients match that search."}
             </p>
           ) : null}

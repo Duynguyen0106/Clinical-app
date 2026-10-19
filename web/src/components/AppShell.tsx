@@ -24,7 +24,7 @@ import { useEffect, useId, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { BrandLogo } from "@/components/BrandLogo";
 import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
-import { getClinicId, getToken } from "@/lib/api";
+import { api, getClinicId, getToken } from "@/lib/api";
 
 type NavItem = {
   href: string;
@@ -74,7 +74,8 @@ const navGroups: NavGroup[] = [
         label: "Notes",
         icon: ClipboardList,
         clinicianOnly: true,
-        mobileTab: true,
+        /** Phone: Notes lives under More so the tab bar stays at 4 slots */
+        mobileTab: false,
       },
     ],
   },
@@ -101,7 +102,11 @@ const navGroups: NavGroup[] = [
     id: "clinic",
     label: "Clinic",
     items: [
-      { href: "/app/team", label: "Team", icon: UserRoundPlus },
+      {
+        href: "/app/team",
+        label: "Team",
+        icon: UserRoundPlus,
+      },
       { href: "/app/rooms", label: "Rooms", icon: DoorOpen, staffOps: true },
       {
         href: "/app/services",
@@ -166,12 +171,16 @@ export function AppShell({
   const menuId = useId();
   const [clinicLogoUrl, setClinicLogoUrl] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  /** Badge on More for pending desk work (tasks + leave) */
+  const [moreBadge, setMoreBadge] = useState(0);
+  const [leavePending, setLeavePending] = useState(0);
   const clinicName = me?.clinic.name ?? DEMO_CLINIC.name;
   const userName = me?.user.name ?? DEMO_CLINIC.practitioner;
   const bookHref = `/book/${me?.clinic.slug ?? DEMO_CLINIC.slug}`;
   const isClinician = me?.role === "OWNER" || me?.role === "PRACTITIONER";
   const isOwner = me?.role === "OWNER";
   const isPractitioner = me?.role === "PRACTITIONER";
+  const canReviewLeave = isOwner || me?.role === "RECEPTION";
   const hasDiary = Boolean(me?.practitionerProfileId);
 
   useEffect(() => {
@@ -219,6 +228,41 @@ export function AppShell({
   }, [pathname]);
 
   useEffect(() => {
+    if (!me) {
+      setMoreBadge(0);
+      setLeavePending(0);
+      return;
+    }
+    let cancelled = false;
+    const taskJob = !isPractitioner
+      ? api<{ tasks: unknown[] }>("/ops/tasks")
+          .then((d) => d.tasks.length)
+          .catch(() => 0)
+      : Promise.resolve(0);
+    const leaveJob = canReviewLeave
+      ? api<{ requests: unknown[] }>("/leave-requests?pending=1")
+          .then((d) => d.requests.length)
+          .catch(() => 0)
+      : isPractitioner && me.practitionerProfileId
+        ? api<{ requests: Array<{ status: string }> }>(
+            `/leave-requests?practitionerId=${me.practitionerProfileId}`,
+          )
+            .then(
+              (d) => d.requests.filter((r) => r.status === "PENDING").length,
+            )
+            .catch(() => 0)
+        : Promise.resolve(0);
+    void Promise.all([taskJob, leaveJob]).then(([tasks, leave]) => {
+      if (cancelled) return;
+      setLeavePending(leave);
+      setMoreBadge(tasks + leave);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [me, isPractitioner, canReviewLeave, pathname]);
+
+  useEffect(() => {
     if (!menuOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMenuOpen(false);
@@ -246,7 +290,8 @@ export function AppShell({
     .filter((group) => group.items.length > 0);
 
   const flatItems = visibleGroups.flatMap((g) => g.items);
-  const mobileTabs = flatItems.filter((item) => item.mobileTab);
+  /** Cap at 3 destinations + More (= 4) so the bar never wraps */
+  const mobileTabs = flatItems.filter((item) => item.mobileTab).slice(0, 3);
   const labelOpts = { hasDiary, isPractitioner };
   const moreActive =
     menuOpen ||
@@ -259,12 +304,16 @@ export function AppShell({
       <div key={group.id} className="nav-group">
         <p className="nav-group-label">{group.label}</p>
         {group.items.map((item) => {
-          const { href, icon: Icon } = item;
+          const href =
+            item.href === "/app/team" && leavePending > 0
+              ? "/app/team?tab=leave"
+              : item.href;
+          const { icon: Icon } = item;
           const label = itemLabel(item, labelOpts);
-          const active = isNavActive(pathname, href);
+          const active = isNavActive(pathname, item.href);
           return (
             <Link
-              key={href}
+              key={item.href}
               href={href}
               className={`nav-link ${active ? "active" : ""}`}
               onClick={onNavigate}
@@ -361,7 +410,14 @@ export function AppShell({
           aria-controls={menuId}
           onClick={() => setMenuOpen((o) => !o)}
         >
-          <MoreHorizontal size={20} aria-hidden />
+          <span className="mobile-tab-icon-wrap">
+            <MoreHorizontal size={20} aria-hidden />
+            {moreBadge > 0 ? (
+              <span className="mobile-tab-badge" aria-label={`${moreBadge} items need attention`}>
+                {moreBadge > 9 ? "9+" : moreBadge}
+              </span>
+            ) : null}
+          </span>
           <span>More</span>
         </button>
       </nav>
