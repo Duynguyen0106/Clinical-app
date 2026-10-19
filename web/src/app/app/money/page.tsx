@@ -84,6 +84,7 @@ function MoneyPageInner() {
   const [message, setMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptDoc | null>(null);
   const [payMethodFor, setPayMethodFor] = useState<string | null>(null);
+  const [payBusy, setPayBusy] = useState(false);
   type PayMethod = "cash" | "card_terminal" | "bank_transfer";
 
   function humanInvoiceStatus(status: string) {
@@ -126,6 +127,7 @@ function MoneyPageInner() {
 
   async function markPaid(id: string, method: PayMethod) {
     setError(null);
+    setPayBusy(true);
     try {
       await api(`/invoices/${id}/pay`, {
         method: "POST",
@@ -144,6 +146,8 @@ function MoneyPageInner() {
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not mark paid");
+    } finally {
+      setPayBusy(false);
     }
   }
 
@@ -230,13 +234,15 @@ function MoneyPageInner() {
                       <button
                         type="button"
                         className="btn-primary btn-sm"
+                        disabled={payBusy}
                         onClick={() => void markPaid(inv.id, "cash")}
                       >
-                        Cash
+                        {payBusy ? "Saving…" : "Cash"}
                       </button>
                       <button
                         type="button"
                         className="btn-secondary btn-sm"
+                        disabled={payBusy}
                         onClick={() => void markPaid(inv.id, "card_terminal")}
                       >
                         Card
@@ -244,6 +250,7 @@ function MoneyPageInner() {
                       <button
                         type="button"
                         className="btn-secondary btn-sm"
+                        disabled={payBusy}
                         onClick={() => void markPaid(inv.id, "bank_transfer")}
                       >
                         Transfer
@@ -251,6 +258,7 @@ function MoneyPageInner() {
                       <button
                         type="button"
                         className="btn-ghost btn-sm"
+                        disabled={payBusy}
                         onClick={() => setPayMethodFor(null)}
                       >
                         Cancel

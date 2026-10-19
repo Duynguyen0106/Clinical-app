@@ -1583,6 +1583,20 @@ export default function CalendarPage() {
               >
                 {bookOptionsOpen ? "Hide options" : "Options…"}
               </button>
+              {!bookOptionsOpen &&
+              (bookFeePounds.trim() || bookNotes.trim()) ? (
+                <p className="muted book-fineprint">
+                  {bookFeePounds.trim()
+                    ? `Fee £${Number(bookFeePounds).toFixed(2)}`
+                    : null}
+                  {bookFeePounds.trim() && bookNotes.trim() ? " · " : null}
+                  {bookNotes.trim()
+                    ? `Notes: ${bookNotes.trim().slice(0, 60)}${
+                        bookNotes.trim().length > 60 ? "…" : ""
+                      }`
+                    : null}
+                </p>
+              ) : null}
               {bookOptionsOpen ? (
                 <div className="sheet-more-body">
                   <label className="field">

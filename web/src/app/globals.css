@@ -2451,6 +2451,12 @@ h3 {
   padding: 1.35rem;
 }
 
+.book-clinic-name {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 650;
+}
+
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -3312,6 +3318,48 @@ button.cal-block-btn:focus-visible {
 .pulse-needs a {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.auth-boot {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+
+.auth-boot-card {
+  display: grid;
+  justify-items: center;
+  gap: 0.65rem;
+  text-align: center;
+}
+
+.auth-boot-card .brand-word {
+  margin: 0.25rem 0 0;
+  font-size: 1.35rem;
+}
+
+.auth-boot-spinner {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: auth-boot-spin 0.75s linear infinite;
+}
+
+@keyframes auth-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-boot-spinner {
+    animation: none;
+    border-top-color: var(--accent-soft);
+    background: var(--accent-soft);
+  }
 }
 
 .inline-row {

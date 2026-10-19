@@ -198,8 +198,12 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
 
   if ((loading || booting) && !me) {
     return (
-      <div className="book-page">
-        <p className="muted">Loading clinic…</p>
+      <div className="book-page auth-boot">
+        <div className="auth-boot-card" role="status" aria-live="polite">
+          <span className="auth-boot-spinner" aria-hidden />
+          <p className="brand-word">Treow</p>
+          <p className="muted">Loading clinic…</p>
+        </div>
       </div>
     );
   }

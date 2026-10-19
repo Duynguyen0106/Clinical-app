@@ -67,13 +67,15 @@ export default function TodayPage() {
   /** One overflow menu open at a time on the day board */
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   const [pulseOpen, setPulseOpen] = useState(false);
-  const [tipsHidden, setTipsHidden] = useState(true);
+  /** null = still reading storage; false = show first-run tips; true = dismissed */
+  const [tipsHidden, setTipsHidden] = useState<boolean | null>(null);
 
   useEffect(() => {
     try {
-      setTipsHidden(localStorage.getItem("treow.hideDeskTips") !== "0");
+      // First visit: key missing → show tips. After dismiss: "1" → hide.
+      setTipsHidden(localStorage.getItem("treow.hideDeskTips") === "1");
     } catch {
-      setTipsHidden(true);
+      setTipsHidden(false);
     }
   }, []);
 
@@ -613,7 +615,7 @@ export default function TodayPage() {
             </section>
           ) : null}
 
-          {!tipsHidden && isClinician && !isPractitioner ? (
+          {tipsHidden === false && isClinician && !isPractitioner ? (
             <section className="panel tip-panel">
               <h2>Visit mode</h2>
               <p>
@@ -635,12 +637,12 @@ export default function TodayPage() {
                   setTipsHidden(true);
                 }}
               >
-                Hide tips
+                Got it — hide tips
               </button>
             </section>
           ) : null}
 
-          {!tipsHidden && !isClinician ? (
+          {tipsHidden === false && !isClinician ? (
             <section className="panel tip-panel">
               <h2>Front desk</h2>
               <p>
@@ -662,7 +664,7 @@ export default function TodayPage() {
                   setTipsHidden(true);
                 }}
               >
-                Hide tips
+                Got it — hide tips
               </button>
             </section>
           ) : null}

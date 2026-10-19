@@ -100,7 +100,8 @@ function PatientsPageInner() {
     const qs = new URLSearchParams();
     if (q.trim()) qs.set("q", q.trim());
     if (isPractitioner) {
-      qs.set("appointmentOn", todayYmd());
+      // Empty query = today’s diary; typing searches anyone you’ve seen
+      if (!q.trim()) qs.set("appointmentOn", todayYmd());
       if (myPractitionerId) qs.set("practitionerId", myPractitionerId);
     }
     void api<{ patients: Patient[] }>(`/patients?${qs}`)
@@ -271,7 +272,7 @@ function PatientsPageInner() {
       title="Patients"
       subtitle={
         isPractitioner
-          ? `Today’s diary · ${dayLabel} — open a patient to read prior notes before the visit.`
+          ? `Today’s list · ${dayLabel} — type a name to search anyone you’ve seen.`
           : "Directory, contact details, NHS/GP fields — search then book from Calendar."
       }
     >
@@ -297,7 +298,7 @@ function PatientsPageInner() {
             className="search-input"
             placeholder={
               isPractitioner
-                ? "Filter today’s list by name"
+                ? "Search anyone you’ve seen"
                 : "Search name, email, phone, NHS number"
             }
             value={q}
@@ -391,7 +392,9 @@ function PatientsPageInner() {
           {!loading && patients.length === 0 ? (
             <p className="muted">
               {isPractitioner
-                ? "No patients on your diary today."
+                ? q.trim()
+                  ? "No past patients match that search."
+                  : "Nobody on today’s list. Search above for anyone you’ve seen."
                 : "No patients match that search."}
             </p>
           ) : null}

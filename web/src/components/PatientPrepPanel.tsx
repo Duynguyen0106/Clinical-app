@@ -92,6 +92,10 @@ export function PatientPrepPanel({
   const loadedBodies = useRef<Set<string>>(new Set());
   const autoExpandedFor = useRef<string | null>(null);
 
+  useEffect(() => {
+    if (defaultCollapsed) setCollapsed(true);
+  }, [patientId, defaultCollapsed]);
+
   async function loadNoteBody(noteId: string) {
     if (loadedBodies.current.has(noteId)) return;
     loadedBodies.current.add(noteId);
