@@ -1235,7 +1235,8 @@ h3 {
   color: var(--accent-deep);
 }
 
-.status-unpaid {
+.status-unpaid,
+.status-deposit-due {
   background: #fff4ce;
   color: #7a5b00;
 }

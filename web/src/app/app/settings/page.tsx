@@ -150,9 +150,8 @@ export default function SettingsPage() {
   }, []);
 
   async function loadLogoPreview() {
-    // Use the authenticated URL directly so the browser can cache the image
-    // (avoid downloading a 640KB+ blob into memory on every Settings visit).
-    setLogoPreview(`/api/v1/clinic/logo?v=${Date.now()}`);
+    // Stable URL (same as AppShell) so the browser can cache the image.
+    setLogoPreview("/api/v1/clinic/logo");
   }
 
   async function saveBrand() {
@@ -386,6 +385,21 @@ export default function SettingsPage() {
         className="view-toggle settings-section-nav"
         role="tablist"
         aria-label="Settings sections"
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+          e.preventDefault();
+          const idx = sectionNav.findIndex((s) => s.id === section);
+          if (idx < 0) return;
+          const next =
+            e.key === "ArrowRight"
+              ? sectionNav[(idx + 1) % sectionNav.length]
+              : sectionNav[(idx - 1 + sectionNav.length) % sectionNav.length];
+          if (!next) return;
+          setError(null);
+          setMessage(null);
+          setSection(next.id);
+          document.getElementById(`settings-tab-${next.id}`)?.focus();
+        }}
       >
         {sectionNav.map((s) => (
           <button
@@ -395,6 +409,7 @@ export default function SettingsPage() {
             id={`settings-tab-${s.id}`}
             aria-selected={section === s.id}
             aria-controls={`settings-panel-${s.id}`}
+            tabIndex={section === s.id ? 0 : -1}
             className={`btn-sm ${section === s.id ? "btn-secondary" : "btn-ghost"}`}
             onClick={() => {
               setError(null);
@@ -559,7 +574,7 @@ export default function SettingsPage() {
           role="tabpanel"
           aria-labelledby="settings-tab-compliance"
         >
-          <h2>Privacy & data</h2>
+          <h2>Retention</h2>
           <p className="muted">
             Notice version: {clinic?.privacyNoticeVersion ?? "…"} · Region:{" "}
             {clinic?.dataRegion ?? "uk-eu"}
@@ -1173,7 +1188,7 @@ export default function SettingsPage() {
         {section === "compliance" ? (
           <>
             <section className="panel">
-              <h2>Audit export</h2>
+              <h2>Exports</h2>
               <p className="muted">
                 Download note access / edit / sign events for this clinic (JSON).
               </p>
@@ -1191,28 +1206,27 @@ export default function SettingsPage() {
                   Includes note views and who opened patient prep / note history.
                 </p>
               )}
+              {isOwner ? (
+                <>
+                  <h3 style={{ marginTop: "1.25rem" }}>Patient database</h3>
+                  <p className="muted">
+                    Download this clinic’s patient records as JSON (demographics,
+                    consents, appointments, note metadata, invoices). Clinical
+                    note bodies are not included.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => void exportPatientsDb()}
+                  >
+                    Download patient database
+                  </button>
+                </>
+              ) : null}
             </section>
 
-            {isOwner ? (
-              <section className="panel">
-                <h2>Patient database</h2>
-                <p className="muted">
-                  Download this clinic’s patient records as JSON (demographics,
-                  consents, appointments, note metadata, invoices). Clinical note
-                  bodies are not included.
-                </p>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => void exportPatientsDb()}
-                >
-                  Download patient database
-                </button>
-              </section>
-            ) : null}
-
             <section className="panel">
-              <h2>Launch support</h2>
+              <h2>Support</h2>
               <p className="muted">
                 For pilot incidents and privacy assistance. The clinic remains
                 the data controller; Treow assists as processor.
@@ -1225,13 +1239,6 @@ export default function SettingsPage() {
               </p>
               <p className="muted">App URL: {support?.appBaseUrl ?? "…"}</p>
               <div className="home-cta">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => void runReminders()}
-                >
-                  Send due reminders
-                </button>
                 <Link href="/privacy" className="btn-ghost">
                   Privacy notice
                 </Link>

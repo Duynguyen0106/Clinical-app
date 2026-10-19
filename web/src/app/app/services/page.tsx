@@ -46,6 +46,7 @@ export default function ServicesPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [overflowId, setOverflowId] = useState<string | null>(null);
   const canEdit = me?.role === "OWNER" || me?.role === "RECEPTION";
 
   useEffect(() => {
@@ -185,7 +186,7 @@ export default function ServicesPage() {
                   <div className="apt-actions">
                     <button
                       type="button"
-                      className="btn-ghost btn-sm"
+                      className="btn-primary btn-sm"
                       onClick={() => startEdit(s)}
                     >
                       Edit
@@ -193,18 +194,37 @@ export default function ServicesPage() {
                     <button
                       type="button"
                       className="btn-ghost btn-sm"
-                      onClick={() => void toggleOnline(s)}
-                      disabled={!s.active}
+                      aria-expanded={overflowId === s.id}
+                      aria-controls={`service-more-${s.id}`}
+                      onClick={() =>
+                        setOverflowId((id) => (id === s.id ? null : s.id))
+                      }
                     >
-                      {s.onlineBookable ? "Hide online" : "Show online"}
+                      More…
                     </button>
-                    <button
-                      type="button"
-                      className="btn-ghost btn-sm"
-                      onClick={() => void toggleActive(s)}
-                    >
-                      {s.active ? "Deactivate" : "Activate"}
-                    </button>
+                    {overflowId === s.id ? (
+                      <div
+                        id={`service-more-${s.id}`}
+                        className="apt-actions"
+                        style={{ width: "100%", marginTop: "0.35rem" }}
+                      >
+                        <button
+                          type="button"
+                          className="btn-ghost btn-sm"
+                          onClick={() => void toggleOnline(s)}
+                          disabled={!s.active}
+                        >
+                          {s.onlineBookable ? "Hide online" : "Show online"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost btn-sm"
+                          onClick={() => void toggleActive(s)}
+                        >
+                          {s.active ? "Deactivate" : "Activate"}
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </li>

@@ -199,11 +199,13 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }, [loading, booting]);
 
   if ((loading || booting) && !me) {
+    const bootName =
+      readMeCache()?.clinic.name?.trim() || "Treow";
     return (
       <div className="book-page auth-boot">
         <div className="auth-boot-card" role="status" aria-live="polite">
           <span className="auth-boot-spinner" aria-hidden />
-          <p className="brand-word">Treow</p>
+          <p className="brand-word">{bootName}</p>
           <p className="muted">Loading clinic…</p>
         </div>
       </div>

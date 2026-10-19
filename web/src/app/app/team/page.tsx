@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
@@ -116,6 +116,7 @@ export default function TeamPage() {
 
 function TeamPageInner() {
   const { me } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const isOwner = me?.role === "OWNER";
   const isReception = me?.role === "RECEPTION";
@@ -474,7 +475,7 @@ function TeamPageInner() {
     loadPendingLeave();
   }, [loadPendingLeave]);
 
-  const teamTabs: { id: TeamTab; label: string }[] = [
+  const teamTabs: { id: TeamTab | "pay"; label: string }[] = [
     { id: "people", label: "People" },
     { id: "hours", label: "Hours" },
     {
@@ -484,6 +485,7 @@ function TeamPageInner() {
           ? `Leave (${pendingLeave.length})`
           : "Leave",
     },
+    ...(isOwner ? [{ id: "pay" as const, label: "Pay" }] : []),
   ];
 
   return (
@@ -495,17 +497,29 @@ function TeamPageInner() {
           : "People, open hours, and leave — split so approvals do not compete with profiles."
       }
     >
-      {isOwner ? (
-        <p className="alert-line">
-          Staff rates and month due:{" "}
-          <Link href="/app/team/pay">Open staff pay →</Link>
-        </p>
-      ) : null}
-
       <div
         className="view-toggle settings-section-nav"
         role="tablist"
         aria-label="Team sections"
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+          e.preventDefault();
+          const currentId =
+            teamTabs.find((t) => t.id === teamTab)?.id ?? teamTabs[0]?.id;
+          const idx = teamTabs.findIndex((t) => t.id === currentId);
+          if (idx < 0) return;
+          const next =
+            e.key === "ArrowRight"
+              ? teamTabs[(idx + 1) % teamTabs.length]
+              : teamTabs[(idx - 1 + teamTabs.length) % teamTabs.length];
+          if (!next) return;
+          if (next.id === "pay") {
+            router.push("/app/team/pay");
+            return;
+          }
+          setTeamTab(next.id);
+          document.getElementById(`team-tab-${next.id}`)?.focus();
+        }}
       >
         {teamTabs.map((t) => (
           <button
@@ -513,10 +527,21 @@ function TeamPageInner() {
             type="button"
             role="tab"
             id={`team-tab-${t.id}`}
-            aria-selected={teamTab === t.id}
-            aria-controls={`team-panel-${t.id}`}
-            className={`btn-sm ${teamTab === t.id ? "btn-secondary" : "btn-ghost"}`}
-            onClick={() => setTeamTab(t.id)}
+            aria-selected={t.id === "pay" ? false : teamTab === t.id}
+            aria-controls={t.id === "pay" ? undefined : `team-panel-${t.id}`}
+            tabIndex={
+              t.id === "pay" ? -1 : teamTab === t.id ? 0 : -1
+            }
+            className={`btn-sm ${
+              t.id !== "pay" && teamTab === t.id ? "btn-secondary" : "btn-ghost"
+            }`}
+            onClick={() => {
+              if (t.id === "pay") {
+                router.push("/app/team/pay");
+                return;
+              }
+              setTeamTab(t.id);
+            }}
           >
             {t.label}
           </button>
@@ -708,44 +733,58 @@ function TeamPageInner() {
                 </div>
               </fieldset>
               {isOwner || isReception ? (
-                <fieldset className="field">
-                  <legend className="muted">Services offered</legend>
-                  <p className="muted">
-                    Empty / all = bookable for every active service. Restrict to
-                    limit public and staff booking.
-                  </p>
-                  <label className="inline-check">
-                    <input
-                      type="checkbox"
-                      checked={editAllServices}
-                      onChange={(e) => {
-                        setEditAllServices(e.target.checked);
-                        if (e.target.checked) setEditServiceIds([]);
-                      }}
-                    />
-                    All clinic services
-                  </label>
-                  {!editAllServices ? (
-                    <div className="side-stack">
-                      {serviceTypes.map((t) => (
-                        <label key={t.id} className="inline-check">
-                          <input
-                            type="checkbox"
-                            checked={editServiceIds.includes(t.id)}
-                            onChange={(e) => {
-                              setEditServiceIds((prev) =>
-                                e.target.checked
-                                  ? [...prev, t.id]
-                                  : prev.filter((id) => id !== t.id),
-                              );
-                            }}
-                          />
-                          {t.name}
-                        </label>
-                      ))}
-                    </div>
-                  ) : null}
-                </fieldset>
+                canEditSelected ? (
+                  <fieldset className="field">
+                    <legend className="muted">Services offered</legend>
+                    <p className="muted">
+                      Empty / all = bookable for every active service. Restrict
+                      to limit public and staff booking.
+                    </p>
+                    <label className="inline-check">
+                      <input
+                        type="checkbox"
+                        checked={editAllServices}
+                        onChange={(e) => {
+                          setEditAllServices(e.target.checked);
+                          if (e.target.checked) setEditServiceIds([]);
+                        }}
+                      />
+                      All clinic services
+                    </label>
+                    {!editAllServices ? (
+                      <div className="side-stack">
+                        {serviceTypes.map((t) => (
+                          <label key={t.id} className="inline-check">
+                            <input
+                              type="checkbox"
+                              checked={editServiceIds.includes(t.id)}
+                              onChange={(e) => {
+                                setEditServiceIds((prev) =>
+                                  e.target.checked
+                                    ? [...prev, t.id]
+                                    : prev.filter((id) => id !== t.id),
+                                );
+                              }}
+                            />
+                            {t.name}
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
+                  </fieldset>
+                ) : (
+                  <div className="field">
+                    <p className="muted">Services offered</p>
+                    <p>
+                      {editAllServices || editServiceIds.length === 0
+                        ? "All clinic services"
+                        : serviceTypes
+                            .filter((t) => editServiceIds.includes(t.id))
+                            .map((t) => t.name)
+                            .join(", ") || "None selected"}
+                    </p>
+                  </div>
+                )
               ) : null}
               {canEditSelected ? (
                 <div className="home-cta">

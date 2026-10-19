@@ -75,6 +75,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   const [reason, setReason] = useState("");
   const [privacy, setPrivacy] = useState(false);
   const [recordingPref, setRecordingPref] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
@@ -405,13 +406,13 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
               {clinic.booking?.depositMode &&
               clinic.booking.depositMode !== "OFF" ? (
                 <p className="muted book-fineprint">
-                  A deposit of about £
+                  A deposit of £
                   {(
                     (clinic.appointmentTypes.find((t) => t.id === serviceId)
                       ?.effectiveDepositCents ??
                       clinic.booking.depositDefaultCents) / 100
                   ).toFixed(2)}{" "}
-                  may be required
+                  is required
                   {clinic.booking.depositMode === "NEW_PATIENTS"
                     ? " for new patients"
                     : ""}
@@ -477,19 +478,35 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                   (UK GDPR).
                 </span>
               </label>
-              <label className="consent-label">
-                <input
-                  type="checkbox"
-                  checked={recordingPref}
-                  onChange={(e) => setRecordingPref(e.target.checked)}
-                />
-                <span>
-                  I&apos;m happy for the clinician to record the consultation to
-                  help write clinical notes. Recording may be processed by a
-                  secure third-party AI service to draft notes — confirmed again
-                  at the visit before anything is signed.
-                </span>
-              </label>
+              <div className="sheet-more">
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm sheet-more-toggle"
+                  aria-expanded={prefsOpen}
+                  aria-controls="book-prefs-panel"
+                  onClick={() => setPrefsOpen((o) => !o)}
+                >
+                  {prefsOpen ? "Hide preferences" : "Preferences (optional)"}
+                </button>
+                {prefsOpen ? (
+                  <div id="book-prefs-panel" className="sheet-more-body">
+                    <label className="consent-label">
+                      <input
+                        type="checkbox"
+                        checked={recordingPref}
+                        onChange={(e) => setRecordingPref(e.target.checked)}
+                      />
+                      <span>
+                        I&apos;m happy for the clinician to record the
+                        consultation to help write clinical notes. Recording may
+                        be processed by a secure third-party AI service to draft
+                        notes — confirmed again at the visit before anything is
+                        signed.
+                      </span>
+                    </label>
+                  </div>
+                ) : null}
+              </div>
               <TurnstileField onToken={setCaptchaToken} />
               <button
                 type="button"

@@ -24,6 +24,19 @@ function parseStatus(raw: string | null): StatusFilter {
   return "DRAFT";
 }
 
+function noteStatusLabel(status: string) {
+  switch (status.toUpperCase()) {
+    case "DRAFT":
+      return "Draft";
+    case "SIGNED":
+      return "Signed";
+    case "VOIDED":
+      return "Voided";
+    default:
+      return status.charAt(0) + status.slice(1).toLowerCase();
+  }
+}
+
 function NotesPageInner() {
   const router = useRouter();
   const { me, loading: authLoading } = useAuth();
@@ -87,11 +100,18 @@ function NotesPageInner() {
                 ? "Signed notes"
                 : "Voided notes"}
           </h2>
-          <div className="view-toggle" role="group">
+          <div
+            className="view-toggle settings-section-nav"
+            role="tablist"
+            aria-label="Note status"
+          >
             {(["DRAFT", "SIGNED", "VOIDED"] as const).map((s) => (
               <Link
                 key={s}
                 href={`/app/notes?status=${s}`}
+                role="tab"
+                id={`notes-tab-${s}`}
+                aria-selected={status === s}
                 className={`btn-sm ${status === s ? "btn-secondary" : "btn-ghost"}`}
               >
                 {s === "DRAFT" ? "Drafts" : s === "SIGNED" ? "Signed" : "Voided"}
@@ -119,7 +139,8 @@ function NotesPageInner() {
                   </p>
                   <p className="muted">
                     {n.template?.name ?? "Clinical note"}
-                    {n.parentNoteId ? " · addendum" : ""} · {n.status}
+                    {n.parentNoteId ? " · addendum" : ""} ·{" "}
+                    {noteStatusLabel(n.status)}
                   </p>
                 </div>
                 {n.visit ? (

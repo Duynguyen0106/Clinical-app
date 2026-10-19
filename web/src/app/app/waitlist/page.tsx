@@ -83,26 +83,61 @@ export default function WaitlistPage() {
     }
   }
 
+  function statusChipLabel(status: string) {
+    switch (status.toUpperCase()) {
+      case "WAITING":
+        return "Waiting";
+      case "OFFERED":
+        return "Offered";
+      case "BOOKED":
+        return "Booked";
+      case "DECLINED":
+        return "Declined";
+      case "CANCELLED":
+        return "Cancelled";
+      default:
+        return status
+          .toLowerCase()
+          .split("_")
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+    }
+  }
+
   async function act(id: string, action: "accept" | "decline" | "cancel") {
     setError(null);
     setMessage(null);
+    const entry = entries.find((e) => e.id === id);
+    const patientName = entry
+      ? `${entry.patient.firstName} ${entry.patient.lastName}`.trim()
+      : "Patient";
     try {
       if (action === "cancel") {
         await api(`/waitlist/${id}`, { method: "DELETE" });
-        setMessage("Removed from waitlist.");
+        setMessage(`Removed ${patientName} from waitlist.`);
       } else {
-        const d = await api<{ appointment?: { id: string } }>(
-          `/waitlist/${id}`,
-          {
-            method: "POST",
-            body: JSON.stringify({ action }),
-          },
-        );
-        setMessage(
-          action === "accept"
-            ? `Booked appointment ${d.appointment?.id ?? ""}`.trim()
-            : "Offer declined — next patient notified if available.",
-        );
+        const d = await api<{
+          appointment?: { id: string; startsAt?: string };
+        }>(`/waitlist/${id}`, {
+          method: "POST",
+          body: JSON.stringify({ action }),
+        });
+        if (action === "accept") {
+          const when = d.appointment?.startsAt
+            ? format(new Date(d.appointment.startsAt), "EEE d MMM HH:mm")
+            : entry?.offeredStartsAt
+              ? format(new Date(entry.offeredStartsAt), "EEE d MMM HH:mm")
+              : null;
+          setMessage(
+            when
+              ? `Booked ${patientName} · ${when}`
+              : `Booked ${patientName}`,
+          );
+        } else {
+          setMessage(
+            "Offer declined — next patient notified if available.",
+          );
+        }
       }
       load();
     } catch (e) {
@@ -186,7 +221,7 @@ export default function WaitlistPage() {
                 </div>
                 <div className="apt-actions">
                   <span className={`status status-${e.status.toLowerCase()}`}>
-                    {e.status.toLowerCase()}
+                    {statusChipLabel(e.status)}
                   </span>
                   {e.status === "OFFERED" ? (
                     <>
@@ -199,10 +234,17 @@ export default function WaitlistPage() {
                       </button>
                       <button
                         type="button"
-                        className="btn-ghost btn-sm"
+                        className="btn-secondary btn-sm"
                         onClick={() => void act(e.id, "decline")}
                       >
                         Decline
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        onClick={() => void act(e.id, "cancel")}
+                      >
+                        Remove
                       </button>
                     </>
                   ) : (

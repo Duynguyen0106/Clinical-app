@@ -195,7 +195,32 @@ export default function ManageBookingPage({ params }: Props) {
                 {appointment.practitioner.displayName}
                 {appointment.room ? ` · ${appointment.room.name}` : ""}
               </p>
-              <p className="muted">Status: {appointment.status}</p>
+              <p className="muted">
+                Status:{" "}
+                {(() => {
+                  switch (appointment.status.toUpperCase()) {
+                    case "BOOKED":
+                    case "CONFIRMED":
+                      return "Confirmed";
+                    case "CANCELLED":
+                      return "Cancelled";
+                    case "COMPLETED":
+                      return "Completed";
+                    case "CHECKED_IN":
+                      return "Checked in";
+                    case "NO_SHOW":
+                      return "No show";
+                    case "IN_PROGRESS":
+                      return "In progress";
+                    default:
+                      return appointment.status
+                        .toLowerCase()
+                        .split("_")
+                        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                        .join(" ");
+                  }
+                })()}
+              </p>
               {appointment.depositStatus === "REQUIRED" &&
               appointment.depositCents != null &&
               appointment.depositCents > 0 ? (

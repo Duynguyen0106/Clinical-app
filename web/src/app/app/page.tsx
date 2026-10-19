@@ -19,6 +19,8 @@ type Appointment = {
   appointmentType: { name: string };
   practitioner?: { id: string; displayName: string };
   visit: { id: string } | null;
+  depositStatus?: string;
+  depositCents?: number;
 };
 
 type DraftNote = {
@@ -190,7 +192,9 @@ export default function TodayPage() {
           status: string;
           waitlistOffer?: {
             offered: boolean;
-            entry: { patient: { firstName: string } } | null;
+            entry: {
+              patient: { firstName: string; lastName?: string };
+            } | null;
           };
         };
       }>(`/appointments/${id}`, {
@@ -200,10 +204,18 @@ export default function TodayPage() {
       if (status === "CANCELLED") {
         if (
           d.appointment.waitlistOffer?.offered &&
-          d.appointment.waitlistOffer.entry
+          d.appointment.waitlistOffer.entry?.patient
         ) {
+          const offerPatient = d.appointment.waitlistOffer.entry.patient;
+          const offerLabel = patientDiaryLabel(
+            {
+              firstName: offerPatient.firstName,
+              lastName: offerPatient.lastName ?? "",
+            },
+            privacyMode,
+          );
           setMessage(
-            `Cancelled — offered slot to ${d.appointment.waitlistOffer.entry.patient.firstName} on the waitlist.`,
+            `Cancelled — offered slot to ${offerLabel} on the waitlist.`,
           );
         } else {
           setMessage("Appointment cancelled.");
@@ -341,6 +353,10 @@ export default function TodayPage() {
                       {!isPractitionerHome && apt.practitioner
                         ? ` · ${apt.practitioner.displayName}`
                         : ""}
+                      {apt.depositStatus === "REQUIRED" &&
+                      (apt.depositCents ?? 0) > 0
+                        ? ` · Deposit £${((apt.depositCents ?? 0) / 100).toFixed(2)} due`
+                        : ""}
                     </p>
                   </div>
                   <div className="apt-actions">
@@ -349,6 +365,12 @@ export default function TodayPage() {
                     >
                       {apt.status.replaceAll("_", " ").toLowerCase()}
                     </span>
+                    {apt.depositStatus === "REQUIRED" &&
+                    (apt.depositCents ?? 0) > 0 ? (
+                      <span className="status status-deposit-due">
+                        Deposit due
+                      </span>
+                    ) : null}
                     {(() => {
                       const terminal = [
                         "CANCELLED",
@@ -499,14 +521,14 @@ export default function TodayPage() {
                     <li key={n.id}>
                       {n.visit ? (
                         <Link href={`/app/visits/${n.visit.id}`}>
-                          {n.patient.firstName} {n.patient.lastName}
+                          {patientDiaryLabel(n.patient, privacyMode)}
                           {n.template?.name ? ` · ${n.template.name}` : ""}
                         </Link>
                       ) : (
                         <Link
                           href={`/app/patients?id=${encodeURIComponent(n.patient.id)}`}
                         >
-                          {n.patient.firstName} {n.patient.lastName} · prior
+                          {patientDiaryLabel(n.patient, privacyMode)} · prior
                           notes
                         </Link>
                       )}

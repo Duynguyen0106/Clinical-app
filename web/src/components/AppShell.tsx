@@ -81,7 +81,7 @@ const navGroups: NavGroup[] = [
   },
   {
     id: "desk",
-    label: "Front desk",
+    label: "Desk",
     items: [
       {
         href: "/app/tasks",
@@ -122,7 +122,7 @@ const navGroups: NavGroup[] = [
       },
       {
         href: "/app/billing",
-        label: "Billing",
+        label: "Clinic plan",
         icon: CreditCard,
         ownerOnly: true,
       },
