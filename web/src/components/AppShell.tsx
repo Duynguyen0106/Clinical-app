@@ -24,7 +24,7 @@ import { useEffect, useId, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { BrandLogo } from "@/components/BrandLogo";
 import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
-import { getToken } from "@/lib/api";
+import { getClinicId, getToken } from "@/lib/api";
 
 type NavItem = {
   href: string;
@@ -186,7 +186,11 @@ export function AppShell({
     let objectUrl: string | null = null;
     const token = getToken();
     void fetch("/api/v1/clinic/logo", {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: "same-origin",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(getClinicId() ? { "X-Clinic-Id": getClinicId()! } : {}),
+      },
     })
       .then(async (res) => {
         if (!res.ok || cancelled) return null;

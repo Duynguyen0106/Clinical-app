@@ -3,7 +3,7 @@
  * optional same-day reminder. Driven by Clinic settings + cron.
  *
  * Hardenings: lookback windows, claim-before-send, per-send try/catch,
- * review time-gated (not thank-you delivery), MARKETING consent for reviews.
+ * MARKETING consent for thank-you / review / no-show (they include rebook CTAs).
  */
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { formatInTimeZone } from "date-fns-tz";
@@ -145,7 +145,10 @@ export async function sendDuePatientEmails(opts: {
           status: AppointmentStatus.COMPLETED,
           thankYouSentAt: null,
           endsAt: { lte: cutoff, gte: oldest },
-          patient: { email: { not: null } },
+          patient: {
+            email: { not: null },
+            consents: { some: { type: "MARKETING", granted: true } },
+          },
         },
         include: aptInclude,
         take: 50,
@@ -153,6 +156,7 @@ export async function sendDuePatientEmails(opts: {
       });
       for (const apt of due) {
         if (!apt.patient.email) continue;
+        if (apt.patient.consents.length === 0) continue;
         const claimed = await claimMarker(clinic.id, apt.id, "thankYouSentAt");
         if (!claimed) continue;
         try {
@@ -252,7 +256,10 @@ export async function sendDuePatientEmails(opts: {
           status: AppointmentStatus.NO_SHOW,
           noShowFollowUpSentAt: null,
           startsAt: { lte: cutoff, gte: oldest },
-          patient: { email: { not: null } },
+          patient: {
+            email: { not: null },
+            consents: { some: { type: "MARKETING", granted: true } },
+          },
         },
         include: aptInclude,
         take: 50,
@@ -260,6 +267,7 @@ export async function sendDuePatientEmails(opts: {
       });
       for (const apt of due) {
         if (!apt.patient.email) continue;
+        if (apt.patient.consents.length === 0) continue;
         const claimed = await claimMarker(
           clinic.id,
           apt.id,

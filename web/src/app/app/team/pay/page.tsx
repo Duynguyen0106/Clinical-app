@@ -277,7 +277,10 @@ export default function StaffPayPage() {
     try {
       const token = getToken();
       const res = await fetch(`/api/v1/team/pay?month=${month}&format=csv`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "same-origin",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
       if (!res.ok) throw new Error("CSV export failed");
       const blob = await res.blob();
