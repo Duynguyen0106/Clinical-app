@@ -76,7 +76,7 @@ async function resolveManageToken(opts: {
  * Never creates a Stripe session or marks console deposits paid.
  */
 export async function getDepositPaymentInfo(opts: { token: string }) {
-  const { appointmentId, token } = await resolveManageToken(opts);
+  const { appointmentId } = await resolveManageToken(opts);
   const apt = await prisma.appointment.findUnique({
     where: { id: appointmentId },
     include: {
@@ -91,7 +91,6 @@ export async function getDepositPaymentInfo(opts: { token: string }) {
       status: "already_paid" as const,
       depositCents: apt.depositCents,
       provider: getPaymentProvider(),
-      manageToken: token,
     };
   }
   if (apt.depositStatus !== DepositStatus.REQUIRED || apt.depositCents <= 0) {
@@ -99,7 +98,6 @@ export async function getDepositPaymentInfo(opts: { token: string }) {
       status: "none" as const,
       depositCents: apt.depositCents,
       provider: getPaymentProvider(),
-      manageToken: token,
     };
   }
 
@@ -129,7 +127,6 @@ export async function getDepositPaymentInfo(opts: { token: string }) {
         reference: depositPaymentReference(apt.id),
         currency: "GBP" as const,
       },
-      manageToken: token,
     };
   }
 
@@ -137,7 +134,6 @@ export async function getDepositPaymentInfo(opts: { token: string }) {
     status: "required" as const,
     depositCents: apt.depositCents,
     provider,
-    manageToken: token,
   };
 }
 
@@ -200,7 +196,6 @@ export async function createDepositCheckout(opts: {
       checkoutUrl: null as string | null,
       provider: "bank_transfer" as const,
       bankTransfer,
-      manageToken: token,
     };
   }
 
@@ -259,16 +254,7 @@ export async function createDepositCheckout(opts: {
     );
   }
 
-  await withClinicTransaction(apt.clinicId, async (tx) => {
-    await tx.appointment.update({
-      where: { id: apt.id },
-      data: {
-        depositStatus: DepositStatus.PAID,
-        depositPaidAt: new Date(),
-        status: AppointmentStatus.CONFIRMED,
-      },
-    });
-  });
+  await markDepositPaid(apt.id);
   console.info(
     `[payments:console] deposit £${pounds} marked PAID for apt=${apt.id}`,
   );
@@ -280,6 +266,12 @@ export async function createDepositCheckout(opts: {
   };
 }
 
+const TERMINAL_APPOINTMENT: AppointmentStatus[] = [
+  AppointmentStatus.CANCELLED,
+  AppointmentStatus.COMPLETED,
+  AppointmentStatus.NO_SHOW,
+];
+
 /** Internal — only call after Stripe session/webhook verification (or console pilot). */
 export async function markDepositPaid(appointmentId: string) {
   const apt = await prisma.appointment.findUnique({
@@ -287,13 +279,17 @@ export async function markDepositPaid(appointmentId: string) {
   });
   if (!apt) throw notFound("Appointment not found");
   if (apt.depositStatus === DepositStatus.PAID) return apt;
+  // Never resurrect cancelled / completed / no-show visits when money clears
+  const promoteToConfirmed = apt.status === AppointmentStatus.BOOKED;
   return withClinicTransaction(apt.clinicId, async (tx) => {
     return tx.appointment.update({
       where: { id: appointmentId },
       data: {
         depositStatus: DepositStatus.PAID,
         depositPaidAt: new Date(),
-        status: AppointmentStatus.CONFIRMED,
+        ...(promoteToConfirmed
+          ? { status: AppointmentStatus.CONFIRMED }
+          : {}),
       },
     });
   });
@@ -374,12 +370,18 @@ export async function applyDepositCheckoutCompleted(session: {
 export async function waiveDeposit(
   clinicId: string,
   appointmentId: string,
+  actorId?: string | null,
 ) {
   const apt = await prisma.appointment.findFirst({
     where: { id: appointmentId, clinicId },
   });
   if (!apt) throw notFound("Appointment not found");
-  return withClinicTransaction(clinicId, async (tx) => {
+  if (TERMINAL_APPOINTMENT.includes(apt.status)) {
+    throw badRequest(
+      "Cannot waive a deposit on a cancelled, completed, or no-show appointment",
+    );
+  }
+  const updated = await withClinicTransaction(clinicId, async (tx) => {
     return tx.appointment.update({
       where: { id: apt.id },
       data: {
@@ -388,6 +390,15 @@ export async function waiveDeposit(
       },
     });
   });
+  const { recordScheduleAudit } = await import("@/modules/scheduling/audit");
+  await recordScheduleAudit({
+    clinicId,
+    appointmentId,
+    actorId,
+    action: "deposit_waived",
+    meta: { depositCents: updated.depositCents },
+  });
+  return updated;
 }
 
 /**
@@ -397,16 +408,23 @@ export async function waiveDeposit(
 export async function staffConfirmDepositPaid(
   clinicId: string,
   appointmentId: string,
+  actorId?: string | null,
 ) {
   const apt = await prisma.appointment.findFirst({
     where: { id: appointmentId, clinicId },
     select: {
       id: true,
+      status: true,
       depositStatus: true,
       depositCents: true,
     },
   });
   if (!apt) throw notFound("Appointment not found");
+  if (TERMINAL_APPOINTMENT.includes(apt.status)) {
+    throw badRequest(
+      "Cannot mark a deposit paid on a cancelled, completed, or no-show appointment",
+    );
+  }
   if (apt.depositStatus === DepositStatus.PAID) {
     return markDepositPaid(appointmentId);
   }
@@ -416,5 +434,14 @@ export async function staffConfirmDepositPaid(
   console.info(
     `[payments:staff] deposit marked PAID apt=${appointmentId} clinic=${clinicId}`,
   );
-  return markDepositPaid(appointmentId);
+  const updated = await markDepositPaid(appointmentId);
+  const { recordScheduleAudit } = await import("@/modules/scheduling/audit");
+  await recordScheduleAudit({
+    clinicId,
+    appointmentId,
+    actorId,
+    action: "deposit_paid",
+    meta: { depositCents: updated.depositCents, via: "staff" },
+  });
+  return updated;
 }

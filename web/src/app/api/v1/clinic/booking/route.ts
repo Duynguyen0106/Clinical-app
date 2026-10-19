@@ -18,12 +18,41 @@ const bookingSelect = {
   bookingPolicyText: true,
 } as const;
 
+function maskSortCode(raw: string | null | undefined) {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 6) return "••-••-••";
+  return `••-••-${digits.slice(-2)}`;
+}
+
+function maskAccountNumber(raw: string | null | undefined) {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 4) return "••••";
+  return `${"•".repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+}
+
 export const GET = withAuth(async (_req, ctx) => {
   requireStaff(ctx);
   const booking = await prisma.clinic.findUniqueOrThrow({
     where: { id: ctx.clinicId },
     select: bookingSelect,
   });
+  // Bank account numbers are owner-sensitive — mask for reception/practitioners
+  if (ctx.role !== "OWNER") {
+    return jsonOk({
+      booking: {
+        ...booking,
+        depositBankAccountName: booking.depositBankAccountName
+          ? "••••••••"
+          : null,
+        depositBankSortCode: maskSortCode(booking.depositBankSortCode),
+        depositBankAccountNumber: maskAccountNumber(
+          booking.depositBankAccountNumber,
+        ),
+      },
+    });
+  }
   return jsonOk({ booking });
 });
 

@@ -16,7 +16,11 @@ export const POST = withAuth(async (req, ctx, params) => {
   requireOwnerOrReception(ctx);
   const body = bodySchema.parse(await req.json().catch(() => ({})));
   if (body.action === "mark_paid") {
-    const appointment = await staffConfirmDepositPaid(ctx.clinicId, params.id);
+    const appointment = await staffConfirmDepositPaid(
+      ctx.clinicId,
+      params.id,
+      ctx.userId,
+    );
     return jsonOk({
       appointment: {
         id: appointment.id,
@@ -28,7 +32,11 @@ export const POST = withAuth(async (req, ctx, params) => {
     });
   }
   if (body.action === "waive") {
-    const appointment = await waiveDeposit(ctx.clinicId, params.id);
+    const appointment = await waiveDeposit(
+      ctx.clinicId,
+      params.id,
+      ctx.userId,
+    );
     return jsonOk({
       appointment: {
         id: appointment.id,

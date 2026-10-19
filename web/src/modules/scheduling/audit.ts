@@ -9,7 +9,9 @@ export type ScheduleAuditAction =
   | "patient_cancelled"
   | "patient_rescheduled"
   | "series_created"
-  | "series_cancelled";
+  | "series_cancelled"
+  | "deposit_paid"
+  | "deposit_waived";
 
 export async function recordScheduleAudit(opts: {
   clinicId: string;
