@@ -24,10 +24,11 @@ export const GET = withAuth(async (_req, ctx) => {
 export const POST = withAuth(async (req, ctx) => {
   const form = await req.formData();
   const file = form.get("logo");
-  if (!(file instanceof File)) {
+  // Undici/Next may yield File or Blob depending on runtime.
+  if (typeof file === "string" || !(file instanceof Blob)) {
     throw badRequest("logo file required");
   }
-  const mime = file.type || "image/png";
+  const mime = file.type?.trim() || "image/png";
   const bytes = Buffer.from(await file.arrayBuffer());
   const clinic = await uploadClinicLogo(ctx, bytes, mime);
   return jsonOk({ clinic });
