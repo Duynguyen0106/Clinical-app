@@ -1202,13 +1202,6 @@ export default function CalendarPage() {
               <p className="muted sheet-notes">{selected.notes}</p>
             ) : null}
 
-            <PatientPrepPanel
-              patientId={selected.patient.id}
-              excludeAppointmentId={selected.id}
-              compact
-              source="calendar"
-            />
-
             {canEditSchedule ? (
               <div className="sheet-more">
                 <button
@@ -1383,6 +1376,13 @@ export default function CalendarPage() {
                 ) : null}
               </div>
             ) : null}
+
+            <PatientPrepPanel
+              patientId={selected.patient.id}
+              excludeAppointmentId={selected.id}
+              compact
+              source="calendar"
+            />
           </div>
         </div>
       ) : null}

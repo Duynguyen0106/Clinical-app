@@ -355,27 +355,25 @@ export default function TodayPage() {
                           ) : null}
 
                           {showOverflow ? (
-                            <div className="apt-overflow">
+                            <>
                               <button
                                 type="button"
-                                className="btn-ghost btn-sm apt-overflow-toggle"
+                                className="btn-ghost btn-sm"
                                 aria-expanded={rowMenuId === apt.id}
-                                aria-haspopup="menu"
                                 onClick={() =>
                                   setRowMenuId((id) =>
                                     id === apt.id ? null : apt.id,
                                   )
                                 }
                               >
-                                More
+                                {rowMenuId === apt.id ? "Less" : "More"}
                               </button>
                               {rowMenuId === apt.id ? (
-                                <div className="apt-overflow-menu" role="menu">
+                                <>
                                   {showOpenInOverflow ? (
                                     <button
                                       type="button"
-                                      role="menuitem"
-                                      className="apt-overflow-item"
+                                      className="btn-secondary btn-sm"
                                       onClick={() => {
                                         setRowMenuId(null);
                                         void openVisit(
@@ -389,9 +387,8 @@ export default function TodayPage() {
                                   ) : null}
                                   {isClinician ? (
                                     <Link
-                                      role="menuitem"
                                       href={`/app/patients?id=${encodeURIComponent(apt.patient.id)}`}
-                                      className="apt-overflow-item"
+                                      className="btn-ghost btn-sm"
                                       onClick={() => setRowMenuId(null)}
                                     >
                                       Prior notes
@@ -400,8 +397,7 @@ export default function TodayPage() {
                                   {canCancel ? (
                                     <button
                                       type="button"
-                                      role="menuitem"
-                                      className="apt-overflow-item apt-overflow-danger"
+                                      className="btn-ghost btn-sm apt-cancel-btn"
                                       onClick={() => {
                                         setRowMenuId(null);
                                         void setAppointmentStatus(
@@ -413,9 +409,9 @@ export default function TodayPage() {
                                       Cancel
                                     </button>
                                   ) : null}
-                                </div>
+                                </>
                               ) : null}
-                            </div>
+                            </>
                           ) : null}
                         </>
                       );
