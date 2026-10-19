@@ -143,6 +143,8 @@ export default function CalendarPage() {
   const [bookSlots, setBookSlots] = useState<string[]>([]);
   const [bookSlot, setBookSlot] = useState("");
   const [bookNotes, setBookNotes] = useState("");
+  /** Book sheet: fee + notes behind Options */
+  const [bookOptionsOpen, setBookOptionsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   const [feedUrl, setFeedUrl] = useState<string | null>(null);
@@ -362,6 +364,7 @@ export default function CalendarPage() {
     setBookPatientId("");
     setBookIntakeNote(null);
     setBookNotes("");
+    setBookOptionsOpen(false);
     if (opts?.day != null && opts.hour != null) {
       const startsAt = clinicLocalDateTime(
         clinicDateKey(opts.day, timeZone),
@@ -1420,6 +1423,7 @@ export default function CalendarPage() {
               patientId={selected.patient.id}
               excludeAppointmentId={selected.id}
               compact
+              defaultCollapsed
               source="calendar"
             />
           </div>
@@ -1551,16 +1555,6 @@ export default function CalendarPage() {
                 onChange={(e) => setBookDuration(Number(e.target.value))}
               />
             </label>
-            <label className="field">
-              <span>Fee (£) — optional invoice</span>
-              <input
-                type="number"
-                min={0}
-                step={0.01}
-                value={bookFeePounds}
-                onChange={(e) => setBookFeePounds(e.target.value)}
-              />
-            </label>
             {!bookSlotFixed ? (
               <label className="field">
                 <span>Slot</span>
@@ -1580,14 +1574,38 @@ export default function CalendarPage() {
                 </select>
               </label>
             ) : null}
-            <label className="field">
-              <span>Notes</span>
-              <textarea
-                rows={2}
-                value={bookNotes}
-                onChange={(e) => setBookNotes(e.target.value)}
-              />
-            </label>
+            <div className="sheet-more">
+              <button
+                type="button"
+                className="btn-ghost btn-sm sheet-more-toggle"
+                aria-expanded={bookOptionsOpen}
+                onClick={() => setBookOptionsOpen((o) => !o)}
+              >
+                {bookOptionsOpen ? "Hide options" : "Options…"}
+              </button>
+              {bookOptionsOpen ? (
+                <div className="sheet-more-body">
+                  <label className="field">
+                    <span>Fee (£) — optional invoice</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={bookFeePounds}
+                      onChange={(e) => setBookFeePounds(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Notes</span>
+                    <textarea
+                      rows={2}
+                      value={bookNotes}
+                      onChange={(e) => setBookNotes(e.target.value)}
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               className="btn-primary"

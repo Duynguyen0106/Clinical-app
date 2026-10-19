@@ -3289,6 +3289,31 @@ button.cal-block-btn:focus-visible {
   color: var(--danger);
 }
 
+.money-pay-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.prep-collapsed {
+  display: grid;
+  gap: 0.45rem;
+  justify-items: start;
+}
+
+.pulse-needs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.pulse-needs a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .inline-row {
   display: flex;
   flex-wrap: wrap;

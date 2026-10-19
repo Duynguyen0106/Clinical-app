@@ -60,6 +60,8 @@ type Props = {
   source?: string;
   /** Open the most recent signed note as soon as prep loads */
   autoExpandLatest?: boolean;
+  /** Calendar sheet: start collapsed to alerts + last visit only */
+  defaultCollapsed?: boolean;
 };
 
 function titleCase(key: string) {
@@ -77,6 +79,7 @@ export function PatientPrepPanel({
   className,
   source = "unknown",
   autoExpandLatest = false,
+  defaultCollapsed = false,
 }: Props) {
   const [prep, setPrep] = useState<PatientPrep | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +87,7 @@ export function PatientPrepPanel({
   const [noteBodies, setNoteBodies] = useState<Record<string, NoteBody>>({});
   const [loadingBodyId, setLoadingBodyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [nowMs] = useState(() => Date.now());
   const loadedBodies = useRef<Set<string>>(new Set());
   const autoExpandedFor = useRef<string | null>(null);
@@ -191,6 +195,7 @@ export function PatientPrepPanel({
   const otherNotes = prep.notes.filter(
     (n) => n.status !== "SIGNED" && n.status !== "VOIDED",
   );
+  const lastVisit = past[0] ?? null;
 
   return (
     <div className={`prep-panel ${compact ? "prep-compact" : ""} ${className ?? ""}`}>
@@ -214,6 +219,29 @@ export function PatientPrepPanel({
         </div>
       )}
 
+      {collapsed ? (
+        <div className="prep-collapsed">
+          {lastVisit ? (
+            <p className="muted">
+              Last visit:{" "}
+              {format(new Date(lastVisit.startsAt), "d MMM yyyy")} ·{" "}
+              {lastVisit.serviceName}
+            </p>
+          ) : (
+            <p className="muted">No prior visits on file.</p>
+          )}
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            onClick={() => setCollapsed(false)}
+          >
+            Show full prep
+          </button>
+        </div>
+      ) : null}
+
+      {!collapsed ? (
+        <>
       <PatientTimeline
         items={prep.timeline ?? []}
         compact={compact}
@@ -325,6 +353,17 @@ export function PatientPrepPanel({
           </ul>
         )}
       </section>
+      {defaultCollapsed ? (
+        <button
+          type="button"
+          className="btn-ghost btn-sm"
+          onClick={() => setCollapsed(true)}
+        >
+          Hide full prep
+        </button>
+      ) : null}
+        </>
+      ) : null}
     </div>
   );
 }

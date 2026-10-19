@@ -67,6 +67,8 @@ export function VisitInvoiceActions({ visitId }: Props) {
   const [busy, setBusy] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receipt, setReceipt] = useState<ReceiptDoc | null>(null);
+  const [chooseMethod, setChooseMethod] = useState(false);
+  type PayMethod = "cash" | "card_terminal" | "bank_transfer";
 
   const load = useCallback(() => {
     void api<{ invoice: InvoiceRow }>(`/visits/${visitId}/invoice`)
@@ -80,7 +82,7 @@ export function VisitInvoiceActions({ visitId }: Props) {
     load();
   }, [load]);
 
-  async function markPaid() {
+  async function markPaid(method: PayMethod) {
     setBusy(true);
     setError(null);
     try {
@@ -88,10 +90,11 @@ export function VisitInvoiceActions({ visitId }: Props) {
         `/visits/${visitId}/invoice`,
         {
           method: "POST",
-          body: JSON.stringify({ method: "card_terminal" }),
+          body: JSON.stringify({ method }),
         },
       );
       setInvoice(paid);
+      setChooseMethod(false);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not mark paid");
     } finally {
@@ -122,18 +125,59 @@ export function VisitInvoiceActions({ visitId }: Props) {
         <>
           <p className="muted">
             {formatGbp(invoice.amountCents)} ·{" "}
-            {invoice.status.replaceAll("_", " ").toLowerCase()}
+            {invoice.status === "PAID"
+              ? "Paid"
+              : invoice.status === "SENT" || invoice.status === "DRAFT"
+                ? "Unpaid"
+                : invoice.status.replaceAll("_", " ").toLowerCase()}
           </p>
           <div className="apt-actions" style={{ marginTop: "0.5rem" }}>
             {invoice.status !== "PAID" ? (
+              chooseMethod ? (
+                <div className="money-pay-methods">
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm"
+                    disabled={busy}
+                    onClick={() => void markPaid("cash")}
+                  >
+                    Cash
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    disabled={busy}
+                    onClick={() => void markPaid("card_terminal")}
+                  >
+                    Card
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    disabled={busy}
+                    onClick={() => void markPaid("bank_transfer")}
+                  >
+                    Transfer
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    disabled={busy}
+                    onClick={() => setChooseMethod(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
               <button
                 type="button"
                 className="btn-primary btn-sm"
                 disabled={busy}
-                onClick={() => void markPaid()}
+                onClick={() => setChooseMethod(true)}
               >
                 <Banknote size={14} aria-hidden /> Mark paid
               </button>
+              )
             ) : (
               <button
                 type="button"

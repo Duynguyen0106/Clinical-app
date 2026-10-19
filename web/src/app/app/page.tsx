@@ -66,6 +66,16 @@ export default function TodayPage() {
   const [loading, setLoading] = useState(true);
   /** One overflow menu open at a time on the day board */
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
+  const [pulseOpen, setPulseOpen] = useState(false);
+  const [tipsHidden, setTipsHidden] = useState(true);
+
+  useEffect(() => {
+    try {
+      setTipsHidden(localStorage.getItem("treow.hideDeskTips") !== "0");
+    } catch {
+      setTipsHidden(true);
+    }
+  }, []);
 
   const myPractitionerId = me?.practitionerProfileId ?? null;
   const isClinician =
@@ -502,84 +512,83 @@ export default function TodayPage() {
           {pulse ? (
             <section className="panel pulse-panel">
               <div className="panel-head">
-                <h2>Practice pulse</h2>
-                <Link href="/app/tasks" className="btn-ghost btn-sm">
-                  Tasks
-                </Link>
+                <h2>Needs attention</h2>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  aria-expanded={pulseOpen}
+                  onClick={() => setPulseOpen((o) => !o)}
+                >
+                  {pulseOpen ? "Hide pulse" : "Full pulse"}
+                </button>
               </div>
-              <div className="pulse-grid">
-                <Link
-                  href={pulseHrefForRole(
-                    "utilisation",
-                    me?.role,
-                    pulse.links?.utilisation ?? "/app/calendar",
-                  )}
-                  className="pulse-metric"
-                >
-                  <strong>{pulse.utilisationPct}%</strong>
-                  <span>Utilisation</span>
-                </Link>
-                <Link
-                  href={pulseHrefForRole(
-                    "rebook",
-                    me?.role,
-                    pulse.links?.rebook ?? "/app/patients",
-                  )}
-                  className="pulse-metric"
-                >
-                  <strong>{pulse.rebookRatePct}%</strong>
-                  <span>Rebook</span>
-                </Link>
+              <div className="pulse-needs">
                 <Link
                   href={pulseHrefForRole(
                     "unsigned",
                     me?.role,
                     pulse.links?.unsigned ?? "/app/notes?status=DRAFT",
                   )}
-                  className="pulse-metric"
                 >
-                  <strong>{pulse.unsignedNotes}</strong>
-                  <span>Unsigned</span>
+                  {pulse.unsignedNotes} unsigned
                 </Link>
+                <span className="muted">·</span>
                 <Link
                   href={pulseHrefForRole(
                     "unpaid",
                     me?.role,
                     pulse.links?.unpaid ?? "/app/money?status=unpaid",
                   )}
-                  className="pulse-metric"
                 >
-                  <strong>{pulse.unpaidInvoices}</strong>
-                  <span>Unpaid</span>
-                </Link>
-                <Link
-                  href={pulseHrefForRole(
-                    "mix",
-                    me?.role,
-                    pulse.links?.mix ?? "/app/patients",
-                  )}
-                  className="pulse-metric"
-                >
-                  <strong>
-                    {pulse.newPatients}/{pulse.returningPatients}
-                  </strong>
-                  <span>New / return</span>
+                  {pulse.unpaidInvoices} unpaid (£
+                  {(pulse.unpaidCents / 100).toFixed(0)})
                 </Link>
               </div>
-              <p className="muted pulse-meta">
-                <Link
-                  href={pulseHrefForRole(
-                    "unpaid",
-                    me?.role,
-                    pulse.links?.unpaid ?? "/app/money?status=unpaid",
-                  )}
-                >
-                  £{(pulse.unpaidCents / 100).toFixed(0)} outstanding
-                </Link>
-                {" · "}
-                {pulse.bookedMinutes}/{pulse.availableMinutes} min booked this
-                week
-              </p>
+              {pulseOpen ? (
+                <>
+                  <div className="pulse-grid" style={{ marginTop: "0.75rem" }}>
+                    <Link
+                      href={pulseHrefForRole(
+                        "utilisation",
+                        me?.role,
+                        pulse.links?.utilisation ?? "/app/calendar",
+                      )}
+                      className="pulse-metric"
+                    >
+                      <strong>{pulse.utilisationPct}%</strong>
+                      <span>Utilisation</span>
+                    </Link>
+                    <Link
+                      href={pulseHrefForRole(
+                        "rebook",
+                        me?.role,
+                        pulse.links?.rebook ?? "/app/patients",
+                      )}
+                      className="pulse-metric"
+                    >
+                      <strong>{pulse.rebookRatePct}%</strong>
+                      <span>Rebook</span>
+                    </Link>
+                    <Link
+                      href={pulseHrefForRole(
+                        "mix",
+                        me?.role,
+                        pulse.links?.mix ?? "/app/patients",
+                      )}
+                      className="pulse-metric"
+                    >
+                      <strong>
+                        {pulse.newPatients}/{pulse.returningPatients}
+                      </strong>
+                      <span>New / return</span>
+                    </Link>
+                  </div>
+                  <p className="muted pulse-meta">
+                    {pulse.bookedMinutes}/{pulse.availableMinutes} min booked
+                    this week
+                  </p>
+                </>
+              ) : null}
             </section>
           ) : null}
 
@@ -604,7 +613,7 @@ export default function TodayPage() {
             </section>
           ) : null}
 
-          {isClinician && !isPractitioner ? (
+          {!tipsHidden && isClinician && !isPractitioner ? (
             <section className="panel tip-panel">
               <h2>Visit mode</h2>
               <p>
@@ -614,13 +623,24 @@ export default function TodayPage() {
               <Link href="/app/notes" className="btn-secondary">
                 Unsigned drafts →
               </Link>
-              <Link href="/app/patients" className="btn-ghost">
-                Patient prep →
-              </Link>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  try {
+                    localStorage.setItem("treow.hideDeskTips", "1");
+                  } catch {
+                    /* ignore */
+                  }
+                  setTipsHidden(true);
+                }}
+              >
+                Hide tips
+              </button>
             </section>
           ) : null}
 
-          {!isClinician ? (
+          {!tipsHidden && !isClinician ? (
             <section className="panel tip-panel">
               <h2>Front desk</h2>
               <p>
@@ -630,9 +650,20 @@ export default function TodayPage() {
               <Link href="/app/calendar" className="btn-secondary">
                 Calendar →
               </Link>
-              <Link href="/app/waitlist" className="btn-ghost">
-                Waitlist →
-              </Link>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  try {
+                    localStorage.setItem("treow.hideDeskTips", "1");
+                  } catch {
+                    /* ignore */
+                  }
+                  setTipsHidden(true);
+                }}
+              >
+                Hide tips
+              </button>
             </section>
           ) : null}
         </aside>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
@@ -71,18 +72,6 @@ function timeToMinutes(t: string) {
   return h * 60 + m;
 }
 
-function formatRules(rules: Rule[]) {
-  if (!rules.length) return "No hours set";
-  return DAYS.filter((d) => rules.some((r) => r.dayOfWeek === d.value))
-    .map((d) => {
-      const dayRules = rules.filter((r) => r.dayOfWeek === d.value);
-      return `${d.label} ${dayRules
-        .map((r) => `${minutesToTime(r.startMinute)}–${minutesToTime(r.endMinute)}`)
-        .join(", ")}`;
-    })
-    .join(" · ");
-}
-
 function dateKey(iso: string) {
   return iso.slice(0, 10);
 }
@@ -108,7 +97,22 @@ function leaveStatusLabel(status: LeaveRequest["status"]) {
 }
 
 export default function TeamPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell title="Team" subtitle="Loading…">
+          <p className="muted">Loading team…</p>
+        </AppShell>
+      }
+    >
+      <TeamPageInner />
+    </Suspense>
+  );
+}
+
+function TeamPageInner() {
   const { me } = useAuth();
+  const searchParams = useSearchParams();
   const isOwner = me?.role === "OWNER";
   const isReception = me?.role === "RECEPTION";
   const canReviewLeave = isOwner || isReception;
@@ -146,7 +150,18 @@ export default function TeamPage() {
   const [leaveStart, setLeaveStart] = useState("09:00");
   const [leaveEnd, setLeaveEnd] = useState("17:00");
   type TeamTab = "people" | "hours" | "leave";
-  const [teamTab, setTeamTab] = useState<TeamTab>("people");
+  const tabParam = searchParams.get("tab");
+  const initialTab: TeamTab =
+    tabParam === "hours" || tabParam === "leave" || tabParam === "people"
+      ? tabParam
+      : "people";
+  const [teamTab, setTeamTab] = useState<TeamTab>(initialTab);
+
+  useEffect(() => {
+    if (tabParam === "hours" || tabParam === "leave" || tabParam === "people") {
+      setTeamTab(tabParam);
+    }
+  }, [tabParam]);
 
   const canEditSelected = useMemo(() => {
     if (!selectedId) return false;
@@ -442,7 +457,9 @@ export default function TeamPage() {
             key={t.id}
             type="button"
             role="tab"
+            id={`team-tab-${t.id}`}
             aria-selected={teamTab === t.id}
+            aria-controls={`team-panel-${t.id}`}
             className={`btn-sm ${teamTab === t.id ? "btn-secondary" : "btn-ghost"}`}
             onClick={() => setTeamTab(t.id)}
           >
@@ -505,7 +522,12 @@ export default function TeamPage() {
         ) : null}
 
         {teamTab === "people" ? (
-        <section className="panel">
+        <section
+          className="panel"
+          id="team-panel-people"
+          role="tabpanel"
+          aria-labelledby="team-tab-people"
+        >
           <div className="panel-head">
             <h2>Practitioners</h2>
             <span className="count">{listedPractitioners.length}</span>
@@ -533,9 +555,6 @@ export default function TeamPage() {
                         .filter(Boolean)
                         .join(" · ")}
                       {!p.active ? " · inactive" : ""}
-                    </p>
-                    <p className="muted team-hours">
-                      {formatRules(p.availability)}
                     </p>
                   </div>
                 </button>
@@ -661,7 +680,13 @@ export default function TeamPage() {
         ) : null}
 
         {teamTab === "hours" ? (
-        <section className="panel" style={{ gridColumn: "1 / -1" }}>
+        <section
+          className="panel"
+          style={{ gridColumn: "1 / -1" }}
+          id="team-panel-hours"
+          role="tabpanel"
+          aria-labelledby="team-tab-hours"
+        >
           <h2>Open hours</h2>
           {selected ? (
             <>
@@ -739,7 +764,13 @@ export default function TeamPage() {
         ) : null}
 
         {teamTab === "leave" ? (
-        <section className="panel" style={{ gridColumn: "1 / -1" }}>
+        <section
+          className="panel"
+          style={{ gridColumn: "1 / -1" }}
+          id="team-panel-leave"
+          role="tabpanel"
+          aria-labelledby="team-tab-leave"
+        >
           <h2>Leave</h2>
           {selected ? (
             <>

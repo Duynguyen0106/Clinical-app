@@ -102,7 +102,11 @@ const navGroups: NavGroup[] = [
     id: "clinic",
     label: "Clinic",
     items: [
-      { href: "/app/team", label: "Team", icon: UserRoundPlus },
+      {
+        href: "/app/team",
+        label: "Team",
+        icon: UserRoundPlus,
+      },
       { href: "/app/rooms", label: "Rooms", icon: DoorOpen, staffOps: true },
       {
         href: "/app/services",
@@ -169,6 +173,7 @@ export function AppShell({
   const [menuOpen, setMenuOpen] = useState(false);
   /** Badge on More for pending desk work (tasks + leave) */
   const [moreBadge, setMoreBadge] = useState(0);
+  const [leavePending, setLeavePending] = useState(0);
   const clinicName = me?.clinic.name ?? DEMO_CLINIC.name;
   const userName = me?.user.name ?? DEMO_CLINIC.practitioner;
   const bookHref = `/book/${me?.clinic.slug ?? DEMO_CLINIC.slug}`;
@@ -219,25 +224,34 @@ export function AppShell({
   }, [pathname]);
 
   useEffect(() => {
-    if (!me || isPractitioner) {
+    if (!me) {
       setMoreBadge(0);
+      setLeavePending(0);
       return;
     }
     let cancelled = false;
-    const jobs: Promise<number>[] = [
-      api<{ tasks: unknown[] }>("/ops/tasks")
-        .then((d) => d.tasks.length)
-        .catch(() => 0),
-    ];
-    if (canReviewLeave) {
-      jobs.push(
-        api<{ requests: unknown[] }>("/leave-requests?pending=1")
+    const taskJob = !isPractitioner
+      ? api<{ tasks: unknown[] }>("/ops/tasks")
+          .then((d) => d.tasks.length)
+          .catch(() => 0)
+      : Promise.resolve(0);
+    const leaveJob = canReviewLeave
+      ? api<{ requests: unknown[] }>("/leave-requests?pending=1")
           .then((d) => d.requests.length)
-          .catch(() => 0),
-      );
-    }
-    void Promise.all(jobs).then((counts) => {
-      if (!cancelled) setMoreBadge(counts.reduce((a, b) => a + b, 0));
+          .catch(() => 0)
+      : isPractitioner && me.practitionerProfileId
+        ? api<{ requests: Array<{ status: string }> }>(
+            `/leave-requests?practitionerId=${me.practitionerProfileId}`,
+          )
+            .then(
+              (d) => d.requests.filter((r) => r.status === "PENDING").length,
+            )
+            .catch(() => 0)
+        : Promise.resolve(0);
+    void Promise.all([taskJob, leaveJob]).then(([tasks, leave]) => {
+      if (cancelled) return;
+      setLeavePending(leave);
+      setMoreBadge(tasks + leave);
     });
     return () => {
       cancelled = true;
@@ -286,12 +300,16 @@ export function AppShell({
       <div key={group.id} className="nav-group">
         <p className="nav-group-label">{group.label}</p>
         {group.items.map((item) => {
-          const { href, icon: Icon } = item;
+          const href =
+            item.href === "/app/team" && leavePending > 0
+              ? "/app/team?tab=leave"
+              : item.href;
+          const { icon: Icon } = item;
           const label = itemLabel(item, labelOpts);
-          const active = isNavActive(pathname, href);
+          const active = isNavActive(pathname, item.href);
           return (
             <Link
-              key={href}
+              key={item.href}
               href={href}
               className={`nav-link ${active ? "active" : ""}`}
               onClick={onNavigate}

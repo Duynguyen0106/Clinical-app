@@ -27,6 +27,10 @@ type SupportInfo = {
   email: string;
   appBaseUrl: string;
   privacyPath: string;
+  messaging?: {
+    patientEmailLive: boolean;
+    smsLive: boolean;
+  };
 };
 
 type BookingPolicy = {
@@ -291,21 +295,34 @@ export default function SettingsPage() {
             key={s.id}
             type="button"
             role="tab"
+            id={`settings-tab-${s.id}`}
             aria-selected={section === s.id}
+            aria-controls={`settings-panel-${s.id}`}
             className={`btn-sm ${section === s.id ? "btn-secondary" : "btn-ghost"}`}
-            onClick={() => setSection(s.id)}
+            onClick={() => {
+              setError(null);
+              setMessage(null);
+              setSection(s.id);
+            }}
           >
             {s.label}
           </button>
         ))}
       </div>
 
+      {error ? <p className="form-error">{error}</p> : null}
+      {message ? <p className="alert-line">{message}</p> : null}
+
       <div className="settings-grid">
         {section === "brand" ? (
-        <section className="panel" style={{ gridColumn: "1 / -1" }}>
+        <section
+          className="panel"
+          style={{ gridColumn: "1 / -1" }}
+          id="settings-panel-brand"
+          role="tabpanel"
+          aria-labelledby="settings-tab-brand"
+        >
           <h2>Clinic brand</h2>
-          {error ? <p className="form-error">{error}</p> : null}
-          {message ? <p className="alert-line">{message}</p> : null}
           <p className="muted">
             Logo, name, and letterhead appear on booking pages and printed notes.
           </p>
@@ -410,7 +427,12 @@ export default function SettingsPage() {
         ) : null}
 
         {section === "compliance" ? (
-        <section className="panel">
+        <section
+          className="panel"
+          id="settings-panel-compliance"
+          role="tabpanel"
+          aria-labelledby="settings-tab-compliance"
+        >
           <h2>Privacy & data</h2>
           <p className="muted">
             Notice version: {clinic?.privacyNoticeVersion ?? "…"} · Region:{" "}
@@ -459,7 +481,12 @@ export default function SettingsPage() {
         ) : null}
 
         {section === "booking" ? (
-        <section className="panel">
+        <section
+          className="panel"
+          id="settings-panel-booking"
+          role="tabpanel"
+          aria-labelledby="settings-tab-booking"
+        >
           <h2>Online booking policy</h2>
           <p className="muted">
             Notice windows, how far ahead patients can book, and deposits (like
@@ -585,7 +612,11 @@ export default function SettingsPage() {
         ) : null}
 
         {section === "booking" ? (
-        <section className="panel">
+        <section
+          className="panel"
+          role="tabpanel"
+          aria-labelledby="settings-tab-booking"
+        >
           <h2>Website booking</h2>
           <p className="muted">
             Part of Treow Clinic: put online booking on your website in minutes.
@@ -644,11 +675,17 @@ export default function SettingsPage() {
         ) : null}
 
         {section === "comms" ? (
-        <section className="panel" style={{ gridColumn: "1 / -1" }}>
+        <section
+          className="panel"
+          style={{ gridColumn: "1 / -1" }}
+          id="settings-panel-comms"
+          role="tabpanel"
+          aria-labelledby="settings-tab-comms"
+        >
           <h2>Patient messaging</h2>
           <p className="muted">
-            Plain-language status for email and SMS that patients receive after
-            booking, moves, and reminders.
+            Status for emails and texts patients get after booking, moves, and
+            reminders.
           </p>
           <ul className="apt-list">
             <li className="apt-row">
@@ -672,22 +709,45 @@ export default function SettingsPage() {
               <div className="apt-body">
                 <p className="apt-name">Patient email</p>
                 <p className="muted">
-                  Confirmation and change emails send when an email provider is
-                  configured for this clinic environment.
+                  {support?.messaging?.patientEmailLive
+                    ? "Confirmations and change notices are sending to patients."
+                    : "Not sending yet — ask Treow support if you need patient email switched on."}
                 </p>
               </div>
-              <span className="status">
-                {support?.appBaseUrl ? "Ready when provider is set" : "Checking…"}
+              <span
+                className={`status ${
+                  support?.messaging?.patientEmailLive
+                    ? "status-checked_in"
+                    : ""
+                }`}
+              >
+                {support?.messaging
+                  ? support.messaging.patientEmailLive
+                    ? "Sending"
+                    : "Not sending"
+                  : "Checking…"}
               </span>
             </li>
             <li className="apt-row">
               <div className="apt-body">
                 <p className="apt-name">SMS reminders</p>
                 <p className="muted">
-                  Text reminders need an SMS provider. Use “Send due reminders”
-                  below to push anything waiting in the queue.
+                  {support?.messaging?.smsLive
+                    ? "Text reminders can be delivered to patients with a mobile number."
+                    : "Text reminders are not on yet — ask Treow support if you need SMS."}
                 </p>
               </div>
+              <span
+                className={`status ${
+                  support?.messaging?.smsLive ? "status-checked_in" : ""
+                }`}
+              >
+                {support?.messaging
+                  ? support.messaging.smsLive
+                    ? "Sending"
+                    : "Not sending"
+                  : "Checking…"}
+              </span>
             </li>
           </ul>
           <div className="home-cta" style={{ marginTop: "1rem" }}>

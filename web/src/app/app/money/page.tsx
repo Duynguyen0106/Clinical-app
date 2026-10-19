@@ -83,6 +83,22 @@ function MoneyPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptDoc | null>(null);
+  const [payMethodFor, setPayMethodFor] = useState<string | null>(null);
+  type PayMethod = "cash" | "card_terminal" | "bank_transfer";
+
+  function humanInvoiceStatus(status: string) {
+    switch (status) {
+      case "PAID":
+        return "Paid";
+      case "SENT":
+      case "DRAFT":
+        return "Unpaid";
+      case "VOID":
+        return "Void";
+      default:
+        return status.replaceAll("_", " ").toLowerCase();
+    }
+  }
 
   useEffect(() => {
     if (authLoading || !me) return;
@@ -108,12 +124,27 @@ function MoneyPageInner() {
     );
   }, [invoices, unpaidOnly]);
 
-  async function markPaid(id: string) {
-    await api(`/invoices/${id}/pay`, {
-      method: "POST",
-      body: JSON.stringify({ method: "card_terminal" }),
-    });
-    load();
+  async function markPaid(id: string, method: PayMethod) {
+    setError(null);
+    try {
+      await api(`/invoices/${id}/pay`, {
+        method: "POST",
+        body: JSON.stringify({ method }),
+      });
+      setPayMethodFor(null);
+      setMessage(
+        `Marked paid (${
+          method === "cash"
+            ? "cash"
+            : method === "bank_transfer"
+              ? "bank transfer"
+              : "card"
+        }).`,
+      );
+      load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not mark paid");
+    }
   }
 
   async function markUnpaid(id: string) {
@@ -186,21 +217,54 @@ function MoneyPageInner() {
                 <p className="apt-name">
                   {inv.patient.firstName} {inv.patient.lastName}
                 </p>
-                <p className="muted">{inv.status}</p>
+                <p className="muted">{humanInvoiceStatus(inv.status)}</p>
               </div>
               <div className="apt-actions">
                 <strong>{formatGbp(inv.amountCents)}</strong>
                 <span className={`status status-${inv.status.toLowerCase()}`}>
-                  {inv.status.toLowerCase()}
+                  {humanInvoiceStatus(inv.status)}
                 </span>
                 {inv.status !== "PAID" ? (
-                  <button
-                    type="button"
-                    className="btn-primary btn-sm"
-                    onClick={() => void markPaid(inv.id)}
-                  >
-                    Mark paid
-                  </button>
+                  payMethodFor === inv.id ? (
+                    <div className="money-pay-methods" role="group" aria-label="Payment method">
+                      <button
+                        type="button"
+                        className="btn-primary btn-sm"
+                        onClick={() => void markPaid(inv.id, "cash")}
+                      >
+                        Cash
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary btn-sm"
+                        onClick={() => void markPaid(inv.id, "card_terminal")}
+                      >
+                        Card
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary btn-sm"
+                        onClick={() => void markPaid(inv.id, "bank_transfer")}
+                      >
+                        Transfer
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        onClick={() => setPayMethodFor(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-primary btn-sm"
+                      onClick={() => setPayMethodFor(inv.id)}
+                    >
+                      Mark paid
+                    </button>
+                  )
                 ) : (
                   <>
                     <button
