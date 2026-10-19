@@ -42,19 +42,21 @@ export function assertProductionSecrets() {
     );
   }
 
-  const allowNoCaptcha =
-    process.env.ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA?.trim() === "1";
   const turnstileSecret = process.env.TURNSTILE_SECRET_KEY?.trim();
   const turnstileSite = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
-  if (!allowNoCaptcha && (!turnstileSecret || !turnstileSite)) {
-    throw new Error(
-      "Production requires TURNSTILE_SECRET_KEY and NEXT_PUBLIC_TURNSTILE_SITE_KEY (or set ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA=1 to opt out).",
-    );
-  }
-  if (allowNoCaptcha && (!turnstileSecret || !turnstileSite)) {
-    console.warn(
-      "[treow] Public booking captcha disabled via ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA=1.",
-    );
+  const requireCaptcha =
+    process.env.REQUIRE_PUBLIC_BOOK_CAPTCHA?.trim() === "1";
+  const allowNoCaptcha =
+    process.env.ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA?.trim() === "1";
+  if (!turnstileSecret || !turnstileSite) {
+    const msg =
+      "[treow] TURNSTILE_SECRET_KEY / NEXT_PUBLIC_TURNSTILE_SITE_KEY unset — public booking captcha is skipped.";
+    if (requireCaptcha && !allowNoCaptcha) {
+      throw new Error(
+        `${msg} Set the Turnstile keys, or ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA=1.`,
+      );
+    }
+    console.warn(msg);
   }
 }
 

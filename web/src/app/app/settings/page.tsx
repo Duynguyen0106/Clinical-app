@@ -145,12 +145,8 @@ export default function SettingsPage() {
 
   async function loadLogoPreview() {
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("treow_token")
-          : null;
       const res = await fetch("/api/v1/clinic/logo", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "same-origin",
       });
       if (!res.ok) return;
       const blob = await res.blob();
