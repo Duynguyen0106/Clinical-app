@@ -103,7 +103,7 @@ async function consumeUpstash(
 
   if (!res.ok) {
     console.error("Upstash rate limit failed", res.status);
-    return failClosedResult(opts);
+    return failClosedResult(key, opts);
   }
 
   const rows = (await res.json()) as { result: number }[];
