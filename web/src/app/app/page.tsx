@@ -64,6 +64,8 @@ export default function TodayPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** One overflow menu open at a time on the day board */
+  const [rowMenuId, setRowMenuId] = useState<string | null>(null);
 
   const myPractitionerId = me?.practitionerProfileId ?? null;
   const isClinician =
@@ -237,28 +239,43 @@ export default function TodayPage() {
                   nextUp.status === "CONFIRMED") ? (
                   <button
                     type="button"
-                    className="btn-secondary btn-sm"
+                    className="btn-primary btn-sm"
                     onClick={() =>
                       void setAppointmentStatus(nextUp.id, "CHECKED_IN")
                     }
                   >
                     Check in
                   </button>
+                ) : isClinician ? (
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm"
+                    onClick={() =>
+                      void openVisit(nextUp.id, nextUp.visit?.id ?? undefined)
+                    }
+                  >
+                    Open visit
+                  </button>
                 ) : null}
-                <button
-                  type="button"
-                  className="btn-primary btn-sm"
-                  onClick={() =>
-                    void openVisit(nextUp.id, nextUp.visit?.id ?? undefined)
-                  }
-                >
-                  Open visit
-                </button>
+                {canEditSchedule &&
+                (nextUp.status === "BOOKED" ||
+                  nextUp.status === "CONFIRMED") &&
+                isClinician ? (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() =>
+                      void openVisit(nextUp.id, nextUp.visit?.id ?? undefined)
+                    }
+                  >
+                    Open visit
+                  </button>
+                ) : null}
                 <Link
                   href={`/app/patients?id=${encodeURIComponent(nextUp.patient.id)}`}
-                  className="btn-secondary btn-sm"
+                  className="btn-ghost btn-sm"
                 >
-                  {isPractitioner ? "Prior notes" : "Patient directory"}
+                  {isPractitioner ? "Prior notes" : "Patient"}
                 </Link>
               </div>
             </section>
@@ -296,51 +313,113 @@ export default function TodayPage() {
                     >
                       {apt.status.replaceAll("_", " ").toLowerCase()}
                     </span>
-                    {canEditSchedule &&
-                    (apt.status === "BOOKED" || apt.status === "CONFIRMED") ? (
-                      <button
-                        type="button"
-                        className="btn-secondary btn-sm"
-                        onClick={() =>
-                          void setAppointmentStatus(apt.id, "CHECKED_IN")
-                        }
-                      >
-                        Check in
-                      </button>
-                    ) : null}
-                    {isClinician ? (
-                      <button
-                        type="button"
-                        className="btn-primary btn-sm"
-                        onClick={() =>
-                          void openVisit(apt.id, apt.visit?.id ?? undefined)
-                        }
-                      >
-                        Open visit
-                      </button>
-                    ) : null}
-                    {isClinician ? (
-                      <Link
-                        href={`/app/patients?id=${encodeURIComponent(apt.patient.id)}`}
-                        className="btn-ghost btn-sm"
-                      >
-                        Prior notes
-                      </Link>
-                    ) : null}
-                    {canEditSchedule &&
-                    !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
-                      apt.status,
-                    ) ? (
-                      <button
-                        type="button"
-                        className="btn-ghost btn-sm"
-                        onClick={() =>
-                          void setAppointmentStatus(apt.id, "CANCELLED")
-                        }
-                      >
-                        Cancel
-                      </button>
-                    ) : null}
+                    {(() => {
+                      const awaiting =
+                        apt.status === "BOOKED" || apt.status === "CONFIRMED";
+                      const canCancel =
+                        canEditSchedule &&
+                        !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
+                          apt.status,
+                        );
+                      const primaryIsCheckIn = canEditSchedule && awaiting;
+                      const showOpenInOverflow =
+                        isClinician && primaryIsCheckIn;
+                      const showOverflow =
+                        showOpenInOverflow || isClinician || canCancel;
+
+                      return (
+                        <>
+                          {primaryIsCheckIn ? (
+                            <button
+                              type="button"
+                              className="btn-primary btn-sm"
+                              onClick={() =>
+                                void setAppointmentStatus(apt.id, "CHECKED_IN")
+                              }
+                            >
+                              Check in
+                            </button>
+                          ) : isClinician ? (
+                            <button
+                              type="button"
+                              className="btn-primary btn-sm"
+                              onClick={() =>
+                                void openVisit(
+                                  apt.id,
+                                  apt.visit?.id ?? undefined,
+                                )
+                              }
+                            >
+                              Open visit
+                            </button>
+                          ) : null}
+
+                          {showOverflow ? (
+                            <div className="apt-overflow">
+                              <button
+                                type="button"
+                                className="btn-ghost btn-sm apt-overflow-toggle"
+                                aria-expanded={rowMenuId === apt.id}
+                                aria-haspopup="menu"
+                                onClick={() =>
+                                  setRowMenuId((id) =>
+                                    id === apt.id ? null : apt.id,
+                                  )
+                                }
+                              >
+                                More
+                              </button>
+                              {rowMenuId === apt.id ? (
+                                <div className="apt-overflow-menu" role="menu">
+                                  {showOpenInOverflow ? (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="apt-overflow-item"
+                                      onClick={() => {
+                                        setRowMenuId(null);
+                                        void openVisit(
+                                          apt.id,
+                                          apt.visit?.id ?? undefined,
+                                        );
+                                      }}
+                                    >
+                                      Open visit
+                                    </button>
+                                  ) : null}
+                                  {isClinician ? (
+                                    <Link
+                                      role="menuitem"
+                                      href={`/app/patients?id=${encodeURIComponent(apt.patient.id)}`}
+                                      className="apt-overflow-item"
+                                      onClick={() => setRowMenuId(null)}
+                                    >
+                                      Prior notes
+                                    </Link>
+                                  ) : null}
+                                  {canCancel ? (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="apt-overflow-item apt-overflow-danger"
+                                      onClick={() => {
+                                        setRowMenuId(null);
+                                        void setAppointmentStatus(
+                                          apt.id,
+                                          "CANCELLED",
+                                        );
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </div>
                 </li>
               ))}
