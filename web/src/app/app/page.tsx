@@ -234,49 +234,67 @@ export default function TodayPage() {
               </p>
               <p className="muted">{nextUp.appointmentType.name}</p>
               <div className="apt-actions next-up-actions">
-                {canEditSchedule &&
-                (nextUp.status === "BOOKED" ||
-                  nextUp.status === "CONFIRMED") ? (
-                  <button
-                    type="button"
-                    className="btn-primary btn-sm"
-                    onClick={() =>
-                      void setAppointmentStatus(nextUp.id, "CHECKED_IN")
-                    }
-                  >
-                    Check in
-                  </button>
-                ) : isClinician ? (
-                  <button
-                    type="button"
-                    className="btn-primary btn-sm"
-                    onClick={() =>
-                      void openVisit(nextUp.id, nextUp.visit?.id ?? undefined)
-                    }
-                  >
-                    Open visit
-                  </button>
-                ) : null}
-                {canEditSchedule &&
-                (nextUp.status === "BOOKED" ||
-                  nextUp.status === "CONFIRMED") &&
-                isClinician ? (
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={() =>
-                      void openVisit(nextUp.id, nextUp.visit?.id ?? undefined)
-                    }
-                  >
-                    Open visit
-                  </button>
-                ) : null}
-                <Link
-                  href={`/app/patients?id=${encodeURIComponent(nextUp.patient.id)}`}
-                  className="btn-ghost btn-sm"
-                >
-                  {isPractitioner ? "Prior notes" : "Patient"}
-                </Link>
+                {(() => {
+                  const awaiting =
+                    nextUp.status === "BOOKED" ||
+                    nextUp.status === "CONFIRMED";
+                  const primaryIsCheckIn = canEditSchedule && awaiting;
+                  const patientHref = `/app/patients?id=${encodeURIComponent(nextUp.patient.id)}`;
+                  return (
+                    <>
+                      {primaryIsCheckIn ? (
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={() =>
+                            void setAppointmentStatus(
+                              nextUp.id,
+                              "CHECKED_IN",
+                            )
+                          }
+                        >
+                          Check in
+                        </button>
+                      ) : isClinician ? (
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={() =>
+                            void openVisit(
+                              nextUp.id,
+                              nextUp.visit?.id ?? undefined,
+                            )
+                          }
+                        >
+                          Open visit
+                        </button>
+                      ) : (
+                        <Link href={patientHref} className="btn-primary btn-sm">
+                          Patient
+                        </Link>
+                      )}
+                      {primaryIsCheckIn && isClinician ? (
+                        <button
+                          type="button"
+                          className="btn-secondary btn-sm"
+                          onClick={() =>
+                            void openVisit(
+                              nextUp.id,
+                              nextUp.visit?.id ?? undefined,
+                            )
+                          }
+                        >
+                          Open visit
+                        </button>
+                      ) : null}
+                      {isClinician || primaryIsCheckIn ? (
+                        <Link href={patientHref} className="btn-ghost btn-sm">
+                          {isPractitioner ? "Prior notes" : "Patient"}
+                        </Link>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
             </section>
           ) : null}
@@ -314,18 +332,23 @@ export default function TodayPage() {
                       {apt.status.replaceAll("_", " ").toLowerCase()}
                     </span>
                     {(() => {
+                      const terminal = [
+                        "CANCELLED",
+                        "COMPLETED",
+                        "NO_SHOW",
+                      ].includes(apt.status);
                       const awaiting =
                         apt.status === "BOOKED" || apt.status === "CONFIRMED";
-                      const canCancel =
-                        canEditSchedule &&
-                        !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
-                          apt.status,
-                        );
+                      const canCancel = canEditSchedule && !terminal;
                       const primaryIsCheckIn = canEditSchedule && awaiting;
+                      const primaryIsPatient =
+                        canEditSchedule && !awaiting && !isClinician && !terminal;
                       const showOpenInOverflow =
                         isClinician && primaryIsCheckIn;
                       const showOverflow =
-                        showOpenInOverflow || isClinician || canCancel;
+                        !terminal &&
+                        (showOpenInOverflow || isClinician || canCancel);
+                      const patientHref = `/app/patients?id=${encodeURIComponent(apt.patient.id)}`;
 
                       return (
                         <>
@@ -339,7 +362,7 @@ export default function TodayPage() {
                             >
                               Check in
                             </button>
-                          ) : isClinician ? (
+                          ) : isClinician && !terminal ? (
                             <button
                               type="button"
                               className="btn-primary btn-sm"
@@ -352,6 +375,13 @@ export default function TodayPage() {
                             >
                               Open visit
                             </button>
+                          ) : primaryIsPatient ? (
+                            <Link
+                              href={patientHref}
+                              className="btn-primary btn-sm"
+                            >
+                              Patient
+                            </Link>
                           ) : null}
 
                           {showOverflow ? (
@@ -387,7 +417,7 @@ export default function TodayPage() {
                                   ) : null}
                                   {isClinician ? (
                                     <Link
-                                      href={`/app/patients?id=${encodeURIComponent(apt.patient.id)}`}
+                                      href={patientHref}
                                       className="btn-ghost btn-sm"
                                       onClick={() => setRowMenuId(null)}
                                     >

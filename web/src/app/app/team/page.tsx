@@ -145,6 +145,8 @@ export default function TeamPage() {
   const [leaveAllDay, setLeaveAllDay] = useState(true);
   const [leaveStart, setLeaveStart] = useState("09:00");
   const [leaveEnd, setLeaveEnd] = useState("17:00");
+  type TeamTab = "people" | "hours" | "leave";
+  const [teamTab, setTeamTab] = useState<TeamTab>("people");
 
   const canEditSelected = useMemo(() => {
     if (!selectedId) return false;
@@ -402,13 +404,25 @@ export default function TeamPage() {
     loadPendingLeave();
   }, [loadPendingLeave]);
 
+  const teamTabs: { id: TeamTab; label: string }[] = [
+    { id: "people", label: "People" },
+    { id: "hours", label: "Hours" },
+    {
+      id: "leave",
+      label:
+        canReviewLeave && pendingLeave.length
+          ? `Leave (${pendingLeave.length})`
+          : "Leave",
+    },
+  ];
+
   return (
     <AppShell
       title="Team"
       subtitle={
         me?.role === "PRACTITIONER"
           ? "Your weekly hours and leave requests (reception or an owner must approve leave)."
-          : "Profiles, weekly hours, leave approvals — staff pay under Clinic setup for owners."
+          : "People, open hours, and leave — split so approvals do not compete with profiles."
       }
     >
       {isOwner ? (
@@ -417,8 +431,33 @@ export default function TeamPage() {
           <Link href="/app/team/pay">Open staff pay →</Link>
         </p>
       ) : null}
+
+      <div
+        className="view-toggle settings-section-nav"
+        role="tablist"
+        aria-label="Team sections"
+      >
+        {teamTabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={teamTab === t.id}
+            className={`btn-sm ${teamTab === t.id ? "btn-secondary" : "btn-ghost"}`}
+            onClick={() => setTeamTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {error ? <p className="form-error">{error}</p> : null}
+      {message ? <p className="alert-line">{message}</p> : null}
+
       <div className="settings-grid">
-        {canReviewLeave && pendingLeave.length > 0 ? (
+        {teamTab === "leave" &&
+        canReviewLeave &&
+        pendingLeave.length > 0 ? (
           <section className="panel" style={{ gridColumn: "1 / -1" }}>
             <div className="panel-head">
               <h2>Leave awaiting approval</h2>
@@ -465,13 +504,12 @@ export default function TeamPage() {
           </section>
         ) : null}
 
+        {teamTab === "people" ? (
         <section className="panel">
           <div className="panel-head">
             <h2>Practitioners</h2>
             <span className="count">{listedPractitioners.length}</span>
           </div>
-          {error ? <p className="form-error">{error}</p> : null}
-          {message ? <p className="alert-line">{message}</p> : null}
           <ul className="apt-list">
             {listedPractitioners.map((p) => (
               <li key={p.id}>
@@ -505,7 +543,28 @@ export default function TeamPage() {
             ))}
           </ul>
         </section>
+        ) : null}
 
+        {teamTab !== "people" ? (
+          <section className="panel" style={{ gridColumn: "1 / -1" }}>
+            <label className="field">
+              <span>Practitioner</span>
+              <select
+                value={selectedId ?? ""}
+                onChange={(e) => setSelectedId(e.target.value || null)}
+              >
+                {listedPractitioners.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.displayName}
+                    {myProfileId === p.id ? " · you" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </section>
+        ) : null}
+
+        {teamTab === "people" ? (
         <section className="panel">
           <h2>Profile & registration</h2>
           {selected ? (
@@ -599,8 +658,10 @@ export default function TeamPage() {
             <p className="muted">Select a practitioner.</p>
           )}
         </section>
+        ) : null}
 
-        <section className="panel">
+        {teamTab === "hours" ? (
+        <section className="panel" style={{ gridColumn: "1 / -1" }}>
           <h2>Open hours</h2>
           {selected ? (
             <>
@@ -675,8 +736,10 @@ export default function TeamPage() {
             <p className="muted">Select a practitioner.</p>
           )}
         </section>
+        ) : null}
 
-        <section className="panel">
+        {teamTab === "leave" ? (
+        <section className="panel" style={{ gridColumn: "1 / -1" }}>
           <h2>Leave</h2>
           {selected ? (
             <>
@@ -810,8 +873,9 @@ export default function TeamPage() {
             <p className="muted">Select a practitioner to manage leave.</p>
           )}
         </section>
+        ) : null}
 
-        {isOwner ? (
+        {teamTab === "people" && isOwner ? (
           <section className="panel">
             <h2>Add practitioner</h2>
             <p className="muted">

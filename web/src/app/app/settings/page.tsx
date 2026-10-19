@@ -55,6 +55,8 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [auditCount, setAuditCount] = useState<number | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  type SettingsSection = "brand" | "booking" | "comms" | "compliance";
+  const [section, setSection] = useState<SettingsSection>("brand");
 
   const website = useMemo(() => {
     if (!clinic?.slug || !support?.appBaseUrl) return null;
@@ -267,13 +269,40 @@ export default function SettingsPage() {
 
   const isOwner = me?.role === "OWNER";
 
+  const sectionNav: { id: SettingsSection; label: string }[] = [
+    { id: "brand", label: "Brand" },
+    { id: "booking", label: "Booking" },
+    { id: "comms", label: "Communications" },
+    { id: "compliance", label: "Compliance" },
+  ];
+
   return (
     <AppShell
       title="Settings"
-      subtitle="Clinic brand, booking policy, compliance, and launch support."
+      subtitle="Brand, booking, patient messaging status, and compliance — grouped for owners."
     >
+      <div
+        className="view-toggle settings-section-nav"
+        role="tablist"
+        aria-label="Settings sections"
+      >
+        {sectionNav.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            role="tab"
+            aria-selected={section === s.id}
+            className={`btn-sm ${section === s.id ? "btn-secondary" : "btn-ghost"}`}
+            onClick={() => setSection(s.id)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
       <div className="settings-grid">
-        <section className="panel">
+        {section === "brand" ? (
+        <section className="panel" style={{ gridColumn: "1 / -1" }}>
           <h2>Clinic brand</h2>
           {error ? <p className="form-error">{error}</p> : null}
           {message ? <p className="alert-line">{message}</p> : null}
@@ -378,7 +407,9 @@ export default function SettingsPage() {
             <p className="muted">Only clinic owners can change brand settings.</p>
           )}
         </section>
+        ) : null}
 
+        {section === "compliance" ? (
         <section className="panel">
           <h2>Privacy & data</h2>
           <p className="muted">
@@ -425,7 +456,9 @@ export default function SettingsPage() {
             <p className="muted">Only clinic owners can change retention.</p>
           )}
         </section>
+        ) : null}
 
+        {section === "booking" ? (
         <section className="panel">
           <h2>Online booking policy</h2>
           <p className="muted">
@@ -549,7 +582,9 @@ export default function SettingsPage() {
             <p className="muted">Loading…</p>
           )}
         </section>
+        ) : null}
 
+        {section === "booking" ? (
         <section className="panel">
           <h2>Website booking</h2>
           <p className="muted">
@@ -606,44 +641,56 @@ export default function SettingsPage() {
             <p className="muted">Loading clinic slug…</p>
           )}
         </section>
+        ) : null}
 
-        <section className="panel">
-          <h2>Audit export</h2>
+        {section === "comms" ? (
+        <section className="panel" style={{ gridColumn: "1 / -1" }}>
+          <h2>Patient messaging</h2>
           <p className="muted">
-            Download note access / edit / sign events for this clinic (JSON).
+            Plain-language status for email and SMS that patients receive after
+            booking, moves, and reminders.
           </p>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => void exportAudits()}
-          >
-            Export access audits
-          </button>
-          {auditCount !== null ? (
-            <p className="muted">{auditCount} events in last export</p>
-          ) : (
-            <p className="muted">
-              Includes note views and who opened patient prep / note history.
-            </p>
-          )}
-        </section>
-
-        <section className="panel">
-          <h2>Launch support</h2>
-          <p className="muted">
-            For pilot incidents and privacy assistance. The clinic remains the
-            data controller; Treow assists as processor.
-          </p>
-          <p>
-            <strong>Support:</strong>{" "}
-            <a href={`mailto:${support?.email ?? "support@treow.example"}`}>
-              {support?.email ?? "…"}
-            </a>
-          </p>
-          <p className="muted">
-            App URL: {support?.appBaseUrl ?? "…"}
-          </p>
-          <div className="home-cta">
+          <ul className="apt-list">
+            <li className="apt-row">
+              <div className="apt-body">
+                <p className="apt-name">Clinic inbox</p>
+                <p className="muted">
+                  {email.trim()
+                    ? `Reception notifications go to ${email.trim()}.`
+                    : "No clinic email yet — online bookings will not notify reception."}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => setSection("brand")}
+              >
+                Edit in Brand
+              </button>
+            </li>
+            <li className="apt-row">
+              <div className="apt-body">
+                <p className="apt-name">Patient email</p>
+                <p className="muted">
+                  Confirmation and change emails send when an email provider is
+                  configured for this clinic environment.
+                </p>
+              </div>
+              <span className="status">
+                {support?.appBaseUrl ? "Ready when provider is set" : "Checking…"}
+              </span>
+            </li>
+            <li className="apt-row">
+              <div className="apt-body">
+                <p className="apt-name">SMS reminders</p>
+                <p className="muted">
+                  Text reminders need an SMS provider. Use “Send due reminders”
+                  below to push anything waiting in the queue.
+                </p>
+              </div>
+            </li>
+          </ul>
+          <div className="home-cta" style={{ marginTop: "1rem" }}>
             <button
               type="button"
               className="btn-secondary"
@@ -651,11 +698,58 @@ export default function SettingsPage() {
             >
               Send due reminders
             </button>
-            <Link href="/privacy" className="btn-ghost">
-              Privacy notice
-            </Link>
+            <a
+              className="btn-ghost"
+              href={`mailto:${support?.email ?? "support@treow.example"}`}
+            >
+              Contact Treow support
+            </a>
           </div>
         </section>
+        ) : null}
+
+        {section === "compliance" ? (
+          <>
+            <section className="panel">
+              <h2>Audit export</h2>
+              <p className="muted">
+                Download note access / edit / sign events for this clinic (JSON).
+              </p>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void exportAudits()}
+              >
+                Export access audits
+              </button>
+              {auditCount !== null ? (
+                <p className="muted">{auditCount} events in last export</p>
+              ) : (
+                <p className="muted">
+                  Includes note views and who opened patient prep / note history.
+                </p>
+              )}
+            </section>
+
+            <section className="panel">
+              <h2>Launch support</h2>
+              <p className="muted">
+                For pilot incidents and privacy assistance. The clinic remains
+                the data controller; Treow assists as processor.
+              </p>
+              <p>
+                <strong>Support:</strong>{" "}
+                <a href={`mailto:${support?.email ?? "support@treow.example"}`}>
+                  {support?.email ?? "…"}
+                </a>
+              </p>
+              <p className="muted">App URL: {support?.appBaseUrl ?? "…"}</p>
+              <Link href="/privacy" className="btn-ghost">
+                Privacy notice
+              </Link>
+            </section>
+          </>
+        ) : null}
       </div>
     </AppShell>
   );

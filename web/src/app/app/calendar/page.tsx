@@ -770,19 +770,26 @@ export default function CalendarPage() {
                   Book
                 </button>
               ) : null}
-              <button
-                type="button"
-                className={`btn-sm cal-tools-toggle ${toolsOpen ? "btn-secondary" : "btn-ghost"}`}
-                aria-expanded={toolsOpen}
-                aria-controls="cal-tools-panel"
-                onClick={() => setToolsOpen((o) => !o)}
-              >
-                Tools
-              </button>
+              {me?.practitionerProfileId ||
+              canEditSchedule ||
+              appointments.length > 0 ? (
+                <button
+                  type="button"
+                  className={`btn-sm cal-tools-toggle ${toolsOpen ? "btn-secondary" : "btn-ghost"}`}
+                  aria-expanded={toolsOpen}
+                  aria-controls="cal-tools-panel"
+                  onClick={() => setToolsOpen((o) => !o)}
+                >
+                  Tools
+                </button>
+              ) : null}
             </div>
           </div>
 
-          {toolsOpen ? (
+          {toolsOpen &&
+          (me?.practitionerProfileId ||
+            canEditSchedule ||
+            appointments.length > 0) ? (
             <div
               id="cal-tools-panel"
               className="cal-tools-panel"
@@ -1136,73 +1143,105 @@ export default function CalendarPage() {
             </p>
 
             <div className="sheet-actions sheet-actions-primary">
-              {canEditSchedule &&
-              (selected.status === "BOOKED" ||
-                selected.status === "CONFIRMED") ? (
-                <button
-                  type="button"
-                  className={
-                    me?.role === "OWNER" || me?.role === "PRACTITIONER"
-                      ? "btn-secondary"
-                      : "btn-primary"
-                  }
-                  disabled={busy}
-                  onClick={() =>
-                    void patchSelected({ status: "CHECKED_IN" }, "Checked in")
-                  }
-                >
-                  Check in
-                </button>
-              ) : null}
-              {me?.role === "OWNER" || me?.role === "PRACTITIONER" ? (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => void openVisit(selected)}
-                >
-                  Open visit
-                </button>
-              ) : null}
-              {canEditSchedule ? (
-                <>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={busy || selected.status === "CANCELLED"}
-                    onClick={() => {
-                      setDraggingId(selected.id);
-                      setSelectedAppt(null);
-                      setMessage(
-                        "Tap a diary slot to move this appointment (or drag on desktop).",
-                      );
-                    }}
-                  >
-                    Move
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={busy || selected.status === "CANCELLED"}
-                    onClick={() =>
-                      void patchSelected({ status: "CANCELLED" }, "Cancelled")
-                    }
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <p className="muted">
-                  Open the visit to record and take the clinical note. Schedule
-                  changes are managed by reception.
-                </p>
-              )}
+              {(() => {
+                const terminal = ["CANCELLED", "COMPLETED", "NO_SHOW"].includes(
+                  selected.status,
+                );
+                const awaiting =
+                  selected.status === "BOOKED" ||
+                  selected.status === "CONFIRMED";
+                const isClinician =
+                  me?.role === "OWNER" || me?.role === "PRACTITIONER";
+                const primaryIsCheckIn = canEditSchedule && awaiting;
+                return (
+                  <>
+                    {primaryIsCheckIn ? (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={busy}
+                        onClick={() =>
+                          void patchSelected(
+                            { status: "CHECKED_IN" },
+                            "Checked in",
+                          )
+                        }
+                      >
+                        Check in
+                      </button>
+                    ) : null}
+                    {isClinician && !terminal ? (
+                      <button
+                        type="button"
+                        className={
+                          primaryIsCheckIn ? "btn-secondary" : "btn-primary"
+                        }
+                        onClick={() => void openVisit(selected)}
+                      >
+                        Open visit
+                      </button>
+                    ) : null}
+                    {canEditSchedule && !terminal ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={busy}
+                          onClick={() => {
+                            setDraggingId(selected.id);
+                            setSelectedAppt(null);
+                            setMessage(
+                              "Tap a diary slot to move this appointment (or drag on desktop).",
+                            );
+                          }}
+                        >
+                          Move
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary apt-cancel-btn"
+                          disabled={busy}
+                          onClick={() =>
+                            void patchSelected(
+                              { status: "CANCELLED" },
+                              "Cancelled",
+                            )
+                          }
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : null}
+                    {!canEditSchedule && !isClinician ? (
+                      <p className="muted">
+                        Schedule changes are managed by reception.
+                      </p>
+                    ) : null}
+                    {!canEditSchedule && isClinician && !terminal ? (
+                      <p className="muted">
+                        Open the visit to record and take the clinical note.
+                        Schedule changes are managed by reception.
+                      </p>
+                    ) : null}
+                    {terminal ? (
+                      <p className="muted">
+                        This appointment is {humanStatusLabel(selected.status).toLowerCase()}.
+                        {isClinician && selected.visit
+                          ? " Open the visit from Notes if you need the record."
+                          : ""}
+                      </p>
+                    ) : null}
+                  </>
+                );
+              })()}
             </div>
 
             {selected.notes ? (
               <p className="muted sheet-notes">{selected.notes}</p>
             ) : null}
 
-            {canEditSchedule ? (
+            {canEditSchedule &&
+            !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(selected.status) ? (
               <div className="sheet-more">
                 <button
                   type="button"
@@ -1237,8 +1276,8 @@ export default function CalendarPage() {
                       </button>
                       <button
                         type="button"
-                        className="btn-ghost"
-                        disabled={busy || selected.status === "NO_SHOW"}
+                        className="btn-ghost apt-cancel-btn"
+                        disabled={busy}
                         onClick={() =>
                           void patchSelected(
                             { status: "NO_SHOW" },
