@@ -24,7 +24,6 @@ import { useEffect, useId, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { BrandLogo } from "@/components/BrandLogo";
 import { BRAND, DEMO_CLINIC } from "@/modules/config/brand";
-import { getClinicId, getToken } from "@/lib/api";
 
 type NavItem = {
   href: string;
@@ -174,45 +173,15 @@ export function AppShell({
   const isPractitioner = me?.role === "PRACTITIONER";
   const hasDiary = Boolean(me?.practitionerProfileId);
 
+  // Use the authenticated logo URL directly so the browser can cache it
+  // (avoid blob re-fetch + resolveAuth on every AppShell mount).
   useEffect(() => {
     if (!me?.clinic.hasLogo) {
-      setClinicLogoUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
+      setClinicLogoUrl(null);
       return;
     }
-    let cancelled = false;
-    let objectUrl: string | null = null;
-    const token = getToken();
-    void fetch("/api/v1/clinic/logo", {
-      credentials: "same-origin",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(getClinicId() ? { "X-Clinic-Id": getClinicId()! } : {}),
-      },
-    })
-      .then(async (res) => {
-        if (!res.ok || cancelled) return null;
-        return URL.createObjectURL(await res.blob());
-      })
-      .then((url) => {
-        if (cancelled || !url) {
-          if (url) URL.revokeObjectURL(url);
-          return;
-        }
-        objectUrl = url;
-        setClinicLogoUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return url;
-        });
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [me?.clinic.hasLogo, me?.clinic.id]);
+    setClinicLogoUrl(me.clinic.logoUrl ?? "/api/v1/clinic/logo");
+  }, [me?.clinic.hasLogo, me?.clinic.logoUrl, me?.clinic.id]);
 
   useEffect(() => {
     setMenuOpen(false);

@@ -55,6 +55,7 @@ export async function getPracticePulse(ctx: AuthContext) {
     }),
     prisma.availabilityRule.findMany({
       where: { practitioner: { membership: { clinicId: ctx.clinicId } } },
+      select: { dayOfWeek: true, startMinute: true, endMinute: true },
     }),
     ctx.role === "RECEPTION"
       ? Promise.resolve(0)
@@ -90,7 +91,6 @@ export async function getPracticePulse(ctx: AuthContext) {
     }),
   ]);
 
-  // Utilisation: booked minutes / availability minutes this week
   let bookedMinutes = 0;
   for (const a of appointments) {
     bookedMinutes += Math.max(
@@ -115,47 +115,62 @@ export async function getPracticePulse(ctx: AuthContext) {
       ? Math.round((bookedMinutes / availableMinutes) * 1000) / 10
       : 0;
 
-  // Rebook rate: completed visits that already have a later booking for same patient
+  // Rebook: one query for later bookings (no per-visit N+1).
+  const completedPatientIds = [
+    ...new Set(completedThisWeek.map((c) => c.patientId)),
+  ];
   let rebooked = 0;
-  for (const done of completedThisWeek) {
-    const followUp = await prisma.appointment.findFirst({
+  if (completedPatientIds.length > 0) {
+    const followUps = await prisma.appointment.findMany({
       where: {
         clinicId: ctx.clinicId,
-        patientId: done.patientId,
-        startsAt: { gt: done.endsAt },
+        patientId: { in: completedPatientIds },
+        startsAt: { gt: weekStart },
         status: {
           notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW],
         },
       },
-      select: { id: true },
+      select: { patientId: true, startsAt: true },
     });
-    if (followUp) rebooked += 1;
+    for (const done of completedThisWeek) {
+      if (
+        followUps.some(
+          (f) => f.patientId === done.patientId && f.startsAt > done.endsAt,
+        )
+      ) {
+        rebooked += 1;
+      }
+    }
   }
+
   const rebookRatePct =
     completedThisWeek.length > 0
       ? Math.round((rebooked / completedThisWeek.length) * 1000) / 10
       : 0;
 
-  // New vs returning this week (by first-ever appointment for patient at clinic)
+  // New vs returning: first-ever appointment per patient in one query.
   const patientIds = [...new Set(appointments.map((a) => a.patientId))];
   let newPatients = 0;
   let returningPatients = 0;
-  for (const patientId of patientIds) {
-    const first = await prisma.appointment.findFirst({
+  if (patientIds.length > 0) {
+    const firsts = await prisma.appointment.groupBy({
+      by: ["patientId"],
       where: {
         clinicId: ctx.clinicId,
-        patientId,
+        patientId: { in: patientIds },
         status: {
           notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW],
         },
       },
-      orderBy: { startsAt: "asc" },
-      select: { startsAt: true },
+      _min: { startsAt: true },
     });
-    if (first && first.startsAt >= weekStart && first.startsAt < weekEnd) {
-      newPatients += 1;
-    } else {
-      returningPatients += 1;
+    const firstByPatient = new Map(
+      firsts.map((f) => [f.patientId, f._min.startsAt] as const),
+    );
+    for (const patientId of patientIds) {
+      const first = firstByPatient.get(patientId);
+      if (first && first >= weekStart && first < weekEnd) newPatients += 1;
+      else returningPatients += 1;
     }
   }
 

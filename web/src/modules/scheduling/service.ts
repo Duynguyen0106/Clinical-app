@@ -121,6 +121,12 @@ export async function listAppointments(
     throw badRequest("Invalid from/to");
   }
 
+  // Cap diary range so calendar cannot request unbounded history.
+  const maxRangeMs = 62 * 24 * 60 * 60 * 1000;
+  if (to.getTime() - from.getTime() > maxRangeMs) {
+    throw badRequest("Appointment range must be 62 days or less");
+  }
+
   // Practitioners: own diary only (ignore client practitionerId)
   let practitionerId = opts.practitionerId;
   if (ctx.role === "PRACTITIONER") {
@@ -139,15 +145,55 @@ export async function listAppointments(
         ...(practitionerId ? { practitionerId } : {}),
         status: { not: AppointmentStatus.CANCELLED },
       },
-      include: {
-        patient: true,
-        practitioner: true,
-        appointmentType: true,
-        location: true,
-        room: true,
+      select: {
+        id: true,
+        clinicId: true,
+        patientId: true,
+        practitionerId: true,
+        appointmentTypeId: true,
+        locationId: true,
+        roomId: true,
+        startsAt: true,
+        endsAt: true,
+        status: true,
+        notes: true,
+        recurrenceGroupId: true,
+        depositCents: true,
+        depositStatus: true,
+        depositPaidAt: true,
+        createdAt: true,
+        updatedAt: true,
+        patient: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+          },
+        },
+        practitioner: {
+          select: {
+            id: true,
+            displayName: true,
+            colour: true,
+          },
+        },
+        appointmentType: {
+          select: {
+            id: true,
+            name: true,
+            durationMinutes: true,
+            colour: true,
+            defaultPriceCents: true,
+          },
+        },
+        location: { select: { id: true, name: true } },
+        room: { select: { id: true, name: true } },
         visit: { select: { id: true, recordingConsentAt: true } },
       },
       orderBy: { startsAt: "asc" },
+      take: 2000,
     }),
   ]);
 

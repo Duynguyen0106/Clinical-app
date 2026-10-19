@@ -238,16 +238,21 @@ export default function CalendarPage() {
     load();
   }, [load, filterReady]);
 
-  // Resync open sheet after completing a visit in another tab / Today
+  // Resync after completing a visit in another tab — debounce focus storms.
   useEffect(() => {
     if (!filterReady) return;
-    const onFocus = () => load();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onFocus = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => load(), 400);
+    };
     const onVisibility = () => {
       if (document.visibilityState === "visible") onFocus();
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
