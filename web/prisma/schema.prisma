@@ -371,6 +371,7 @@ model Patient {
 
   @@index([clinicId, lastName, firstName])
   @@index([clinicId, archivedAt])
+  @@index([clinicId, email])
 }
 
 /// Who opened a patient's prep / note history (UK access accountability)

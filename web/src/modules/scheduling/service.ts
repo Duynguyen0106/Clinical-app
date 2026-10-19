@@ -9,7 +9,6 @@ import type { AuthContext } from "@/server/auth";
 import { badRequest, conflict, notFound } from "@/server/errors";
 import { requirePatient } from "@/modules/patients/service";
 import { assertWithinAvailability } from "./availability";
-import { listClinicSlots } from "./slots";
 import { intervalsOverlap, withBuffers } from "./conflict";
 import { withScheduleLocks } from "./locks";
 import { addClinicCalendarDays } from "./clinic-time";
@@ -1371,26 +1370,20 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
   ).getClinicBookingPolicy(clinic.id);
   assertSlotWithinBookingWindow(policy, startsAt);
 
-  const openSlots = await listClinicSlots({
-    clinicId: clinic.id,
-    appointmentTypeId: type.id,
-    practitionerId: input.practitionerId,
-    days: Math.max(policy.bookingMaxAdvanceDays, 21),
-    onlineBookableOnly: true,
-    limit: 200,
-  });
-  const slotOk = openSlots.some(
-    (s) => Math.abs(new Date(s).getTime() - startsAt.getTime()) < 60_000,
-  );
-  if (!slotOk) {
-    throw conflict("That slot is no longer available");
-  }
-
+  // Validate the chosen instant only — do not regenerate the whole slot window.
   await assertWithinAvailability({
     clinicId: clinic.id,
     practitionerId: input.practitionerId,
     startsAt,
     endsAt,
+  });
+  await assertNoConflict({
+    clinicId: clinic.id,
+    practitionerId: input.practitionerId,
+    startsAt,
+    endsAt,
+    bufferBefore: type.bufferBefore,
+    bufferAfter: type.bufferAfter,
   });
 
   const { findAvailableRoom } = await import("./rooms");

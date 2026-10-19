@@ -175,6 +175,125 @@ export async function exportNoteAudits(
   );
 }
 
+/**
+ * Owner-only full patient database export (JSON) for backup / portability.
+ * Includes demographics, consents, appointments, note metadata (not bodies),
+ * and invoices. Clinical note bodies are omitted — use note print/export flows
+ * for individual clinical records.
+ */
+export async function exportPatientsDatabase(ctx: AuthContext) {
+  requireRole(ctx, ["OWNER"]);
+
+  const clinic = await prisma.clinic.findUniqueOrThrow({
+    where: { id: ctx.clinicId },
+    select: { id: true, name: true, slug: true },
+  });
+
+  const patients = await prisma.patient.findMany({
+    where: { clinicId: ctx.clinicId },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      dateOfBirth: true,
+      alerts: true,
+      gpName: true,
+      gpPractice: true,
+      gpEmail: true,
+      nhsNumber: true,
+      archivedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      consents: {
+        orderBy: { capturedAt: "desc" },
+        select: {
+          id: true,
+          type: true,
+          granted: true,
+          method: true,
+          capturedAt: true,
+        },
+      },
+      appointments: {
+        orderBy: { startsAt: "desc" },
+        take: 200,
+        select: {
+          id: true,
+          startsAt: true,
+          endsAt: true,
+          status: true,
+          notes: true,
+          depositCents: true,
+          depositStatus: true,
+          appointmentType: { select: { name: true, durationMinutes: true } },
+          practitioner: { select: { displayName: true } },
+          location: { select: { name: true } },
+          room: { select: { name: true } },
+        },
+      },
+      notes: {
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: {
+          id: true,
+          status: true,
+          source: true,
+          signedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          template: { select: { name: true } },
+          visitId: true,
+        },
+      },
+      invoices: {
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: {
+          id: true,
+          amountCents: true,
+          currency: true,
+          status: true,
+          issuedAt: true,
+          paidAt: true,
+          createdAt: true,
+          appointmentId: true,
+          payments: {
+            select: {
+              id: true,
+              amountCents: true,
+              method: true,
+              paidAt: true,
+            },
+          },
+        },
+      },
+      waitlistEntries: {
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          status: true,
+          preferredFrom: true,
+          preferredTo: true,
+          notes: true,
+          createdAt: true,
+          appointmentType: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  return {
+    exportedAt: new Date().toISOString(),
+    clinic,
+    patientCount: patients.length,
+    patients,
+  };
+}
+
 export async function getClinicCompliance(ctx: AuthContext) {
   const clinic = await prisma.clinic.findUniqueOrThrow({
     where: { id: ctx.clinicId },
