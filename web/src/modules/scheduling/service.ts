@@ -1158,22 +1158,42 @@ export async function getPublicClinicBySlug(slug: string) {
       depositDefaultCents: clinic.depositDefaultCents,
       policyText: clinic.bookingPolicyText,
     },
+    // Whitelist only — never spread PractitionerProfile (calendarFeedToken,
+    // membershipId, registration fields are staff-only).
     appointmentTypes: clinic.appointmentTypes.map((t) => ({
-      ...t,
+      id: t.id,
+      clinicId: t.clinicId,
+      name: t.name,
+      durationMinutes: t.durationMinutes,
+      defaultPriceCents: t.defaultPriceCents,
+      depositCents: t.depositCents,
+      bufferBefore: t.bufferBefore,
+      bufferAfter: t.bufferAfter,
+      colour: t.colour,
+      onlineBookable: t.onlineBookable,
+      active: t.active,
       effectiveDepositCents:
         t.depositCents ?? clinic.depositDefaultCents,
     })),
     practitioners: clinic.memberships
       .map((m) => m.practitionerProfile)
       .filter((p): p is NonNullable<typeof p> => Boolean(p))
-      .map(({ services, ...p }) => ({
-        ...p,
+      .map((p) => ({
+        id: p.id,
+        displayName: p.displayName,
+        colour: p.colour,
+        professionalTitle: p.professionalTitle,
         appointmentTypeIds:
-          services.length === 0
+          p.services.length === 0
             ? null
-            : services.map((s) => s.appointmentTypeId),
+            : p.services.map((s) => s.appointmentTypeId),
       })),
-    locations: clinic.locations,
+    locations: clinic.locations.map((l) => ({
+      id: l.id,
+      name: l.name,
+      address: l.address,
+      active: l.active,
+    })),
   };
 }
 

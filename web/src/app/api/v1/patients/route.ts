@@ -16,8 +16,12 @@ export const GET = withAuth(async (req, ctx) => {
 
   // Practitioners: default to today's diary; with a search query, search own
   // diary history (any day) instead of forcing today.
+  // Fail closed without a profile — never fall through to clinic-wide lists.
   if (ctx.role === "PRACTITIONER") {
-    practitionerId = ctx.practitionerProfileId ?? practitionerId;
+    if (!ctx.practitionerProfileId) {
+      return jsonOk({ patients: [] });
+    }
+    practitionerId = ctx.practitionerProfileId;
     if (!q?.trim()) {
       const { prisma } = await import("@/server/db");
       const clinic = await prisma.clinic.findUniqueOrThrow({

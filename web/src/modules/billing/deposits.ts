@@ -381,6 +381,10 @@ export async function waiveDeposit(
       "Cannot waive a deposit on a cancelled, completed, or no-show appointment",
     );
   }
+  if (apt.depositStatus === DepositStatus.PAID) {
+    throw badRequest("Cannot waive a deposit that is already marked paid");
+  }
+  if (apt.depositStatus === DepositStatus.WAIVED) return apt;
   const updated = await withClinicTransaction(clinicId, async (tx) => {
     return tx.appointment.update({
       where: { id: apt.id },

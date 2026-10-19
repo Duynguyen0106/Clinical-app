@@ -177,6 +177,13 @@ export async function uploadRecordingAudio(
   if (!visit.recordingConsentAt) {
     throw badRequest("Recording consent required");
   }
+  if (visit.notes.some((n) => n.status === "SIGNED")) {
+    throw badRequest("Cannot replace audio after a note is signed");
+  }
+  // Soft size cap (~25 MB) — browser uploads should stay well under this
+  if (bytes.length > 25 * 1024 * 1024) {
+    throw badRequest("Recording is too large (max 25 MB)");
+  }
 
   const storageKey = await saveAudioUpload(ctx.clinicId, visit.id, bytes, {
     extension: opts.extension,

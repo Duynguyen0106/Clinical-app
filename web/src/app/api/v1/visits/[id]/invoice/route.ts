@@ -21,6 +21,7 @@ async function loadVisitDiary(clinicId: string, visitId: string) {
     },
     select: {
       id: true,
+      appointmentId: true,
       appointment: { select: { practitionerId: true } },
     },
   });
@@ -28,15 +29,27 @@ async function loadVisitDiary(clinicId: string, visitId: string) {
   return visit;
 }
 
+/** Read existing invoice only — never create on GET (practitioners hit this). */
 export const GET = withAuth(async (_req, ctx, params) => {
   requireStaff(ctx);
   const visit = await loadVisitDiary(ctx.clinicId, params.id);
   assertOwnsDiaryOrOwner(ctx, visit.appointment.practitionerId);
-  const invoice = await ensureInvoiceForVisit(ctx, params.id);
-  return jsonOk({ invoice });
+  const invoice = await prisma.invoice.findFirst({
+    where: {
+      clinicId: ctx.clinicId,
+      appointmentId: visit.appointmentId,
+      status: { not: "VOID" },
+    },
+    include: {
+      patient: { select: { id: true, firstName: true, lastName: true } },
+      payments: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  return jsonOk({ invoice: invoice ?? null });
 });
 
-/** End-of-visit mark paid — front desk / owner only */
+/** Create (if needed) and mark paid — front desk / owner only */
 export const POST = withAuth(async (req, ctx, params) => {
   requireOwnerOrReception(ctx);
   const visit = await loadVisitDiary(ctx.clinicId, params.id);
