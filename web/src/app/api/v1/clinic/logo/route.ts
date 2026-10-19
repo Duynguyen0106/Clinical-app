@@ -16,7 +16,7 @@ export const GET = withAuth(async (_req, ctx) => {
     status: 200,
     headers: {
       "Content-Type": mimeType,
-      "Cache-Control": "private, max-age=300",
+      "Cache-Control": "private, max-age=86400, stale-while-revalidate=604800",
     },
   });
 });

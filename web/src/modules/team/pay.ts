@@ -279,11 +279,15 @@ export async function listStaffPaySummary(ctx: AuthContext, month: string) {
       status: { in: BILLABLE },
       startsAt: { gte: from, lte: to },
     },
-    include: {
+    select: {
+      id: true,
+      practitionerId: true,
+      startsAt: true,
       appointmentType: { select: { defaultPriceCents: true, name: true } },
       invoices: { select: { amountCents: true, status: true } },
     },
     orderBy: { startsAt: "asc" },
+    take: 5000,
   });
 
   const byPractitioner = new Map<string, typeof appointments>();

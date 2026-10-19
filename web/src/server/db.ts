@@ -17,11 +17,10 @@ function createPrisma() {
     globalForPrisma.pgPool ??
     new pg.Pool({
       connectionString,
+      max: 10,
     });
-
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.pgPool = pool;
-  }
+  // Always reuse the pool across hot serverless isolates (dev + prod).
+  globalForPrisma.pgPool = pool;
 
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
@@ -30,13 +29,12 @@ function createPrisma() {
 /**
  * Lazy Prisma accessor so Next.js can collect page data during builds
  * without requiring DATABASE_URL at module import time.
+ * Cached on globalThis in all environments to avoid connection churn.
  */
 export const prisma = new Proxy({} as PrismaClient, {
   get(_target, prop, receiver) {
     const client = globalForPrisma.prisma ?? createPrisma();
-    if (process.env.NODE_ENV !== "production") {
-      globalForPrisma.prisma = client;
-    }
+    globalForPrisma.prisma = client;
     const value = Reflect.get(client, prop, receiver);
     return typeof value === "function" ? value.bind(client) : value;
   },

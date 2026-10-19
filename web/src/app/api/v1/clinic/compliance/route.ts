@@ -3,6 +3,7 @@ import { jsonOk } from "@/server/http";
 import { z } from "zod";
 import {
   exportNoteAudits,
+  exportPatientsDatabase,
   getClinicCompliance,
   updateClinicCompliance,
 } from "@/modules/compliance/service";
@@ -24,6 +25,11 @@ export const GET = withAuth(async (req, ctx) => {
       count: events.length,
       events,
     });
+  }
+
+  if (url.searchParams.get("patients") === "1") {
+    const dump = await exportPatientsDatabase(ctx);
+    return jsonOk(dump);
   }
 
   const clinic = await getClinicCompliance(ctx);

@@ -107,25 +107,21 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
     );
     if (pracs.length < 2) return;
     let cancelled = false;
-    void Promise.all(
-      pracs.map((p) =>
-        api<{ slots: string[] }>(
-          `/public/clinics/${slug}/slots?appointmentTypeId=${serviceId}&practitionerId=${p.id}`,
-          { auth: false },
-        ).then((d) =>
-          d.slots.map((startsAt) => ({
-            startsAt,
-            practitionerId: p.id,
-            practitionerName: p.displayName,
-          })),
-        ),
-      ),
+    void api<{
+      slots: {
+        startsAt: string;
+        practitionerId: string;
+        practitionerName: string;
+      }[];
+    }>(
+      `/public/clinics/${slug}/slots?appointmentTypeId=${serviceId}&practitionerId=any`,
+      { auth: false },
     )
-      .then((groups) => {
+      .then((d) => {
         if (cancelled) return;
-        const merged = groups
-          .flat()
-          .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+        const merged = [...d.slots].sort((a, b) =>
+          a.startsAt.localeCompare(b.startsAt),
+        );
         setAnySlots(merged);
         setSlots([]);
         const first = merged[0];
@@ -153,9 +149,13 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
     )
       .then((d) => {
         if (cancelled) return;
-        setSlots(d.slots);
+        // Multi-prac endpoint returns objects; single-prac returns ISO strings.
+        const starts = d.slots.map((s) =>
+          typeof s === "string" ? s : (s as { startsAt: string }).startsAt,
+        );
+        setSlots(starts);
         setAnySlots([]);
-        setSlot(d.slots[0] ?? "");
+        setSlot(starts[0] ?? "");
       })
       .catch((e: Error) => {
         if (!cancelled) setError(e.message);

@@ -16,18 +16,39 @@ export const createInvoiceSchema = z.object({
 
 export async function listInvoices(
   ctx: AuthContext,
-  opts: { status?: InvoiceStatus } = {},
+  opts: { status?: InvoiceStatus; take?: number } = {},
 ) {
+  const take = Math.min(Math.max(opts.take ?? 100, 1), 500);
   return prisma.invoice.findMany({
     where: {
       clinicId: ctx.clinicId,
       ...(opts.status ? { status: opts.status } : {}),
     },
-    include: {
+    select: {
+      id: true,
+      clinicId: true,
+      patientId: true,
+      appointmentId: true,
+      amountCents: true,
+      currency: true,
+      status: true,
+      issuedAt: true,
+      paidAt: true,
+      createdAt: true,
       patient: { select: { id: true, firstName: true, lastName: true } },
-      payments: true,
+      payments: {
+        select: {
+          id: true,
+          amountCents: true,
+          method: true,
+          paidAt: true,
+        },
+        orderBy: { paidAt: "desc" },
+        take: 20,
+      },
     },
     orderBy: { createdAt: "desc" },
+    take,
   });
 }
 

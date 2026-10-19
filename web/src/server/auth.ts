@@ -46,11 +46,22 @@ export async function resolveAuth(
 
   const session = await prisma.session.findUnique({
     where: { token: hashToken(raw) },
-    include: {
+    select: {
+      expiresAt: true,
       user: {
-        include: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
           memberships: {
-            include: { practitionerProfile: true },
+            select: {
+              id: true,
+              clinicId: true,
+              role: true,
+              practitionerProfile: {
+                select: { id: true, active: true },
+              },
+            },
           },
         },
       },

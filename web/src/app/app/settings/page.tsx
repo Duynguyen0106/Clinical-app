@@ -150,16 +150,9 @@ export default function SettingsPage() {
   }, []);
 
   async function loadLogoPreview() {
-    try {
-      const res = await fetch("/api/v1/clinic/logo", {
-        credentials: "same-origin",
-      });
-      if (!res.ok) return;
-      const blob = await res.blob();
-      setLogoPreview(URL.createObjectURL(blob));
-    } catch {
-      /* ignore */
-    }
+    // Use the authenticated URL directly so the browser can cache the image
+    // (avoid downloading a 640KB+ blob into memory on every Settings visit).
+    setLogoPreview(`/api/v1/clinic/logo?v=${Date.now()}`);
   }
 
   async function saveBrand() {
@@ -321,6 +314,33 @@ export default function SettingsPage() {
       );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Patient emails job failed");
+    }
+  }
+
+  async function exportPatientsDb() {
+    setError(null);
+    setMessage(null);
+    try {
+      const d = await api<{
+        exportedAt: string;
+        patientCount: number;
+        clinic: { slug: string; name: string };
+        patients: unknown[];
+      }>("/clinic/compliance?patients=1");
+      const blob = new Blob([JSON.stringify(d, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `treow-patients-${d.clinic.slug}-${d.exportedAt.slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage(
+        `Downloaded patient database (${d.patientCount} patients).`,
+      );
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Patient export failed");
     }
   }
 
@@ -1173,6 +1193,24 @@ export default function SettingsPage() {
               )}
             </section>
 
+            {isOwner ? (
+              <section className="panel">
+                <h2>Patient database</h2>
+                <p className="muted">
+                  Download this clinic’s patient records as JSON (demographics,
+                  consents, appointments, note metadata, invoices). Clinical note
+                  bodies are not included.
+                </p>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void exportPatientsDb()}
+                >
+                  Download patient database
+                </button>
+              </section>
+            ) : null}
+
             <section className="panel">
               <h2>Launch support</h2>
               <p className="muted">
@@ -1186,9 +1224,18 @@ export default function SettingsPage() {
                 </a>
               </p>
               <p className="muted">App URL: {support?.appBaseUrl ?? "…"}</p>
-              <Link href="/privacy" className="btn-ghost">
-                Privacy notice
-              </Link>
+              <div className="home-cta">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => void runReminders()}
+                >
+                  Send due reminders
+                </button>
+                <Link href="/privacy" className="btn-ghost">
+                  Privacy notice
+                </Link>
+              </div>
             </section>
           </>
         ) : null}

@@ -313,55 +313,114 @@ export async function getPatientPrep(
   id: string,
   opts: { source?: string } = {},
 ) {
-  const patient = await getPatient(ctx, id);
   const canViewNotes = canAccessClinicalRecord(ctx.role);
+  const diaryId =
+    ctx.role === "PRACTITIONER" ? ctx.practitionerProfileId : null;
+  if (ctx.role === "PRACTITIONER") {
+    await assertPractitionerDiaryPatient(ctx, id);
+  }
 
-  const notes = canViewNotes
-    ? patient.notes.map((n) => ({
-        id: n.id,
-        status: n.status,
-        source: n.source,
-        signedAt: n.signedAt,
-        createdAt: n.createdAt,
-        templateName: n.template?.name ?? null,
-        visitId: n.visitId,
-        appointmentStartsAt: n.visit?.appointment?.startsAt ?? null,
-        serviceName: n.visit?.appointment?.appointmentType?.name ?? null,
-        practitionerName: n.visit?.appointment?.practitioner?.displayName ?? null,
-        // Progressive disclosure: content loaded only on expand
-        summary: "",
-        sections: [] as { key: string; value: string }[],
-      }))
-    : [];
-
-  await withClinicTransaction(ctx.clinicId, async (tx) => {
-    await tx.patientAccessEvent.create({
-      data: {
-        clinicId: ctx.clinicId,
-        patientId: patient.id,
-        actorId: ctx.userId,
-        action: "prep_opened",
-        meta: {
-          source: opts.source ?? "unknown",
-          appointmentCount: patient.appointments.length,
-          noteCount: notes.length,
-          noteIds: notes.map((n) => n.id),
-          clinicalNotesIncluded: canViewNotes,
-          role: ctx.role,
-          invoiceCount: patient.invoices.length,
+  const patient = await prisma.patient.findFirst({
+    where: { id, clinicId: ctx.clinicId },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      dateOfBirth: true,
+      alerts: true,
+      appointments: {
+        where: diaryId ? { practitionerId: diaryId } : undefined,
+        orderBy: { startsAt: "desc" },
+        take: 25,
+        select: {
+          id: true,
+          startsAt: true,
+          endsAt: true,
+          status: true,
+          notes: true,
+          appointmentType: { select: { name: true } },
+          practitioner: { select: { displayName: true } },
+          visit: { select: { id: true } },
         },
       },
-    });
+      notes: {
+        where: diaryId
+          ? {
+              OR: [
+                { visit: { appointment: { practitionerId: diaryId } } },
+                { signedById: ctx.userId },
+              ],
+            }
+          : undefined,
+        orderBy: { createdAt: "desc" as const },
+        take: canViewNotes ? 15 : 0,
+        select: {
+          id: true,
+          status: true,
+          source: true,
+          signedAt: true,
+          createdAt: true,
+          visitId: true,
+          template: { select: { name: true } },
+          visit: {
+            select: {
+              appointment: {
+                select: {
+                  startsAt: true,
+                  appointmentType: { select: { name: true } },
+                  practitioner: { select: { displayName: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+      invoices: {
+        orderBy: { createdAt: "desc" as const },
+        take: ctx.role === "OWNER" || ctx.role === "RECEPTION" ? 20 : 0,
+        select: {
+          id: true,
+          amountCents: true,
+          currency: true,
+          status: true,
+          issuedAt: true,
+          paidAt: true,
+          createdAt: true,
+          appointmentId: true,
+        },
+      },
+    },
   });
+  if (!patient) throw notFound("Patient not found");
+
+  const notesRaw = canViewNotes ? patient.notes : [];
+  const invoices =
+    ctx.role === "OWNER" || ctx.role === "RECEPTION" ? patient.invoices : [];
+  const notes = notesRaw.map((n) => ({
+    id: n.id,
+    status: n.status,
+    source: n.source,
+    signedAt: n.signedAt,
+    createdAt: n.createdAt,
+    templateName: n.template?.name ?? null,
+    visitId: n.visitId,
+    appointmentStartsAt: n.visit?.appointment?.startsAt ?? null,
+    serviceName: n.visit?.appointment?.appointmentType?.name ?? null,
+    practitionerName: n.visit?.appointment?.practitioner?.displayName ?? null,
+    summary: "",
+    sections: [] as { key: string; value: string }[],
+  }));
 
   const timeline = buildPatientTimeline({
     appointments: patient.appointments,
-    notes: canViewNotes ? patient.notes : [],
-    invoices: patient.invoices,
+    notes: notesRaw,
+    invoices,
     includeNotes: canViewNotes,
   });
 
-  return {
+  const payload = {
     id: patient.id,
     firstName: patient.firstName,
     lastName: patient.lastName,
@@ -381,18 +440,32 @@ export async function getPatientPrep(
       visitId: a.visit?.id ?? null,
     })),
     notes,
-    invoices: patient.invoices.map((inv) => ({
-      id: inv.id,
-      amountCents: inv.amountCents,
-      currency: inv.currency,
-      status: inv.status,
-      issuedAt: inv.issuedAt,
-      paidAt: inv.paidAt,
-      createdAt: inv.createdAt,
-      appointmentId: inv.appointmentId,
-    })),
+    invoices,
     timeline,
   };
+
+  // Audit after payload is ready; do not block the response on a slow write.
+  void prisma.patientAccessEvent
+    .create({
+      data: {
+        clinicId: ctx.clinicId,
+        patientId: patient.id,
+        actorId: ctx.userId,
+        action: "prep_opened",
+        meta: {
+          source: opts.source ?? "unknown",
+          appointmentCount: patient.appointments.length,
+          noteCount: notes.length,
+          noteIds: notes.map((n) => n.id),
+          clinicalNotesIncluded: canViewNotes,
+          role: ctx.role,
+          invoiceCount: invoices.length,
+        },
+      },
+    })
+    .catch(() => undefined);
+
+  return payload;
 }
 
 /**

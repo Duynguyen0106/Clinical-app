@@ -41,35 +41,39 @@ async function enforceKey(
 export async function enforceLoginLimits(req: Request, email: string) {
   const ip = clientIp(req);
   const normalised = email.toLowerCase().trim();
-  await enforceKey(
-    `auth:login:ip:${ip}`,
-    AbuseLimits.loginIp,
-    "Too many sign-in attempts from this network. Try again shortly.",
-  );
-  if (normalised) {
-    await enforceKey(
-      `auth:login:email:${normalised}`,
-      AbuseLimits.loginEmail,
-      "Too many sign-in attempts for this account. Try again shortly.",
-    );
-  }
+  await Promise.all([
+    enforceKey(
+      `auth:login:ip:${ip}`,
+      AbuseLimits.loginIp,
+      "Too many sign-in attempts from this network. Try again shortly.",
+    ),
+    normalised
+      ? enforceKey(
+          `auth:login:email:${normalised}`,
+          AbuseLimits.loginEmail,
+          "Too many sign-in attempts for this account. Try again shortly.",
+        )
+      : Promise.resolve(),
+  ]);
 }
 
 export async function enforceForgotPasswordLimits(req: Request, email: string) {
   const ip = clientIp(req);
   const normalised = email.toLowerCase().trim();
-  await enforceKey(
-    `auth:forgot:ip:${ip}`,
-    AbuseLimits.forgotIp,
-    "Too many password reset requests. Try again later.",
-  );
-  if (normalised) {
-    await enforceKey(
-      `auth:forgot:email:${normalised}`,
-      AbuseLimits.forgotEmail,
-      "Too many password reset requests for this email. Try again later.",
-    );
-  }
+  await Promise.all([
+    enforceKey(
+      `auth:forgot:ip:${ip}`,
+      AbuseLimits.forgotIp,
+      "Too many password reset requests. Try again later.",
+    ),
+    normalised
+      ? enforceKey(
+          `auth:forgot:email:${normalised}`,
+          AbuseLimits.forgotEmail,
+          "Too many password reset requests for this email. Try again later.",
+        )
+      : Promise.resolve(),
+  ]);
 }
 
 export async function enforceResetPasswordLimits(req: Request) {
@@ -82,19 +86,21 @@ export async function enforceResetPasswordLimits(req: Request) {
 
 export async function enforcePublicBookLimits(req: Request, email?: string) {
   const ip = clientIp(req);
-  await enforceKey(
-    `public:book:ip:${ip}`,
-    AbuseLimits.publicBookIp,
-    "Too many booking attempts. Try again shortly.",
-  );
   const normalised = email?.toLowerCase().trim();
-  if (normalised) {
-    await enforceKey(
-      `public:book:email:${normalised}`,
-      AbuseLimits.publicBookEmail,
-      "Too many booking attempts for this email. Try again shortly.",
-    );
-  }
+  await Promise.all([
+    enforceKey(
+      `public:book:ip:${ip}`,
+      AbuseLimits.publicBookIp,
+      "Too many booking attempts. Try again shortly.",
+    ),
+    normalised
+      ? enforceKey(
+          `public:book:email:${normalised}`,
+          AbuseLimits.publicBookEmail,
+          "Too many booking attempts for this email. Try again shortly.",
+        )
+      : Promise.resolve(),
+  ]);
 }
 
 export async function enforcePublicManageLimits(req: Request) {

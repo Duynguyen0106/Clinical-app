@@ -8,7 +8,7 @@ export const GET = withPublic(async (_req, params) => {
     status: 200,
     headers: {
       "Content-Type": mimeType,
-      "Cache-Control": "public, max-age=300",
+      "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
     },
   });
 });
