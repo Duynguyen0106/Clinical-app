@@ -2459,6 +2459,12 @@ h3 {
   margin: 0 0 0.5rem;
 }
 
+.eyebrow.book-clinic-name {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 650;
+}
+
 .visit-panel h2 {
   margin: 0;
   font-size: 2rem;
