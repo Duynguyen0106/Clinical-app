@@ -88,6 +88,10 @@ export function VisitRecorder({ visitId }: Props) {
     null | "void" | "addendum"
   >(null);
   const [correctionBusy, setCorrectionBusy] = useState(false);
+  /** Signed screen: keep Payment / Correct collapsed so Done stays primary */
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [correctOpen, setCorrectOpen] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
   const [templateSections, setTemplateSections] = useState<NoteSection[] | null>(
     null,
   );
@@ -674,133 +678,73 @@ export function VisitRecorder({ visitId }: Props) {
 
               {noteId ? <NotePrintActions noteId={noteId} /> : null}
 
-              <div className="rebook-box">
-                <h4>Correct record</h4>
-                <p className="muted">
-                  Signed notes stay immutable. Void with a reason, or add a
-                  signed addendum.
-                </p>
-                <div className="apt-actions" style={{ marginTop: "0.5rem" }}>
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={() => setCorrectionOpen("addendum")}
-                  >
-                    Add addendum
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost btn-sm"
-                    onClick={() => setCorrectionOpen("void")}
-                  >
-                    Void note
-                  </button>
-                </div>
-                {correctionOpen === "void" ? (
-                  <div style={{ marginTop: "0.75rem" }}>
-                    <label className="note-field">
-                      <span>Reason for voiding</span>
-                      <textarea
-                        rows={3}
-                        value={voidReason}
-                        onChange={(e) => setVoidReason(e.target.value)}
-                        placeholder="e.g. Wrong patient / factual error — will re-document"
-                      />
-                    </label>
-                    <div className="apt-actions">
-                      <button
-                        type="button"
-                        className="btn-danger btn-sm"
-                        disabled={
-                          correctionBusy || voidReason.trim().length < 3
-                        }
-                        onClick={() => void voidNote()}
-                      >
-                        Confirm void
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-ghost btn-sm"
-                        onClick={() => setCorrectionOpen(null)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                {correctionOpen === "addendum" ? (
-                  <div style={{ marginTop: "0.75rem" }}>
-                    <label className="note-field">
-                      <span>Addendum text</span>
-                      <textarea
-                        rows={4}
-                        value={addendumText}
-                        onChange={(e) => setAddendumText(e.target.value)}
-                        placeholder="Additional clinical information…"
-                      />
-                    </label>
-                    <div className="apt-actions">
-                      <button
-                        type="button"
-                        className="btn-primary btn-sm"
-                        disabled={correctionBusy || !addendumText.trim()}
-                        onClick={() => void createAddendum()}
-                      >
-                        Create draft addendum
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-ghost btn-sm"
-                        onClick={() => setCorrectionOpen(null)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                {error && phase === "signed" ? (
-                  <p className="form-error">{error}</p>
-                ) : null}
+              <div className="apt-actions" style={{ marginTop: "0.75rem" }}>
+                <Link href="/app" className="btn-primary">
+                  Done — back to My day
+                </Link>
               </div>
 
               {showMoney && visit?.appointment.id ? (
-                <VisitInvoiceActions
-                  visitId={visitId}
-                  appointmentId={visit.appointment.id}
-                />
+                <div className="rebook-box">
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    aria-expanded={paymentOpen}
+                    onClick={() => setPaymentOpen((o) => !o)}
+                  >
+                    {paymentOpen ? "Hide payment" : "Payment…"}
+                  </button>
+                  {paymentOpen ? (
+                    <VisitInvoiceActions
+                      visitId={visitId}
+                      appointmentId={visit.appointment.id}
+                    />
+                  ) : null}
+                </div>
               ) : null}
 
               {rebook && !rebookDone ? (
                 <div className="rebook-box">
-                  <h4>Suggest follow-up</h4>
-                  <p className="muted">
-                    From the plan (~{rebook.suggestedWeeks} weeks) ·{" "}
-                    {rebook.appointmentTypeName}
-                  </p>
-                  {rebook.planExcerpt ? (
-                    <p className="plan-excerpt">{rebook.planExcerpt}</p>
-                  ) : null}
-                  <div className="slot-grid">
-                    {rebook.slots.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        className="slot"
-                        disabled={rebookBusy}
-                        onClick={() => void bookFollowUp(s)}
-                      >
-                        {new Date(s).toLocaleString("en-GB", {
-                          weekday: "short",
-                          day: "numeric",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </button>
-                    ))}
-                  </div>
-                  {rebook.slots.length === 0 ? (
-                    <p className="muted">No open slots in that window.</p>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    aria-expanded={followUpOpen}
+                    onClick={() => setFollowUpOpen((o) => !o)}
+                  >
+                    {followUpOpen ? "Hide follow-up" : "Suggest follow-up…"}
+                  </button>
+                  {followUpOpen ? (
+                    <>
+                      <p className="muted">
+                        From the plan (~{rebook.suggestedWeeks} weeks) ·{" "}
+                        {rebook.appointmentTypeName}
+                      </p>
+                      {rebook.planExcerpt ? (
+                        <p className="plan-excerpt">{rebook.planExcerpt}</p>
+                      ) : null}
+                      <div className="slot-grid">
+                        {rebook.slots.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            className="slot"
+                            disabled={rebookBusy}
+                            onClick={() => void bookFollowUp(s)}
+                          >
+                            {new Date(s).toLocaleString("en-GB", {
+                              weekday: "short",
+                              day: "numeric",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </button>
+                        ))}
+                      </div>
+                      {rebook.slots.length === 0 ? (
+                        <p className="muted">No open slots in that window.</p>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
               ) : null}
@@ -812,12 +756,109 @@ export function VisitRecorder({ visitId }: Props) {
                 </p>
               ) : null}
 
-              <Link href="/app" className="btn-primary">
-                Back to My day
-              </Link>
+              <div className="rebook-box">
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  aria-expanded={correctOpen}
+                  onClick={() => setCorrectOpen((o) => !o)}
+                >
+                  {correctOpen ? "Hide corrections" : "Correct record…"}
+                </button>
+                {correctOpen ? (
+                  <>
+                    <p className="muted">
+                      Signed notes stay immutable. Void with a reason, or add a
+                      signed addendum.
+                    </p>
+                    <div className="apt-actions" style={{ marginTop: "0.5rem" }}>
+                      <button
+                        type="button"
+                        className="btn-secondary btn-sm"
+                        onClick={() => setCorrectionOpen("addendum")}
+                      >
+                        Add addendum
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        onClick={() => setCorrectionOpen("void")}
+                      >
+                        Void note
+                      </button>
+                    </div>
+                    {correctionOpen === "void" ? (
+                      <div style={{ marginTop: "0.75rem" }}>
+                        <label className="note-field">
+                          <span>Reason for voiding</span>
+                          <textarea
+                            rows={3}
+                            value={voidReason}
+                            onChange={(e) => setVoidReason(e.target.value)}
+                            placeholder="e.g. Wrong patient / factual error — will re-document"
+                          />
+                        </label>
+                        <div className="apt-actions">
+                          <button
+                            type="button"
+                            className="btn-danger btn-sm"
+                            disabled={
+                              correctionBusy || voidReason.trim().length < 3
+                            }
+                            onClick={() => void voidNote()}
+                          >
+                            Confirm void
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm"
+                            onClick={() => setCorrectionOpen(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {correctionOpen === "addendum" ? (
+                      <div style={{ marginTop: "0.75rem" }}>
+                        <label className="note-field">
+                          <span>Addendum text</span>
+                          <textarea
+                            rows={4}
+                            value={addendumText}
+                            onChange={(e) => setAddendumText(e.target.value)}
+                            placeholder="Additional clinical information…"
+                          />
+                        </label>
+                        <div className="apt-actions">
+                          <button
+                            type="button"
+                            className="btn-primary btn-sm"
+                            disabled={correctionBusy || !addendumText.trim()}
+                            onClick={() => void createAddendum()}
+                          >
+                            Create draft addendum
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm"
+                            onClick={() => setCorrectionOpen(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {error && phase === "signed" ? (
+                      <p className="form-error">{error}</p>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+
               {showMoney ? (
-                <Link href="/app/money" className="btn-secondary">
-                  Money desk
+                <Link href="/app/money" className="btn-ghost btn-sm">
+                  Open Money desk
                 </Link>
               ) : null}
             </div>

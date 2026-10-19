@@ -30,6 +30,43 @@ type Subscription = {
   }[];
 };
 
+function planLabel(plan: string) {
+  switch (plan.toUpperCase()) {
+    case "STARTER":
+      return "Starter";
+    case "CLINIC":
+      return "Clinic";
+    case "GROUP":
+      return "Group";
+    case "PILOT":
+      return "Pilot";
+    default:
+      return plan.charAt(0) + plan.slice(1).toLowerCase();
+  }
+}
+
+function statusLabel(status: string) {
+  switch (status.toUpperCase()) {
+    case "ACTIVE":
+      return "Active";
+    case "TRIALING":
+      return "Trial";
+    case "PAST_DUE":
+      return "Past due";
+    case "CANCELLED":
+    case "CANCELED":
+      return "Cancelled";
+    case "INCOMPLETE":
+      return "Incomplete";
+    default:
+      return status
+        .toLowerCase()
+        .split("_")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+  }
+}
+
 export default function BillingPage() {
   const { me } = useAuth();
   const [sub, setSub] = useState<Subscription | null>(null);
@@ -101,15 +138,18 @@ export default function BillingPage() {
 
   if (me && me.role !== "OWNER") {
     return (
-      <AppShell title="Billing" subtitle="Only clinic owners manage the Treow subscription.">
-        <p className="muted">Ask your clinic owner to open Billing.</p>
+      <AppShell
+        title="Clinic plan"
+        subtitle="Only clinic owners manage the Treow subscription."
+      >
+        <p className="muted">Ask your clinic owner to open Clinic plan.</p>
       </AppShell>
     );
   }
 
   return (
     <AppShell
-      title="Billing"
+      title="Clinic plan"
       subtitle="Your Treow Clinic subscription — the full clinic system. Separate from patient invoices and deposits."
     >
       {error ? <p className="form-error">{error}</p> : null}
@@ -120,8 +160,10 @@ export default function BillingPage() {
         {sub ? (
           <>
             <p>
-              <strong>{sub.saasPlan}</strong> · status{" "}
-              <span className="status-pill status-booked">{sub.saasStatus}</span>
+              <strong>{planLabel(sub.saasPlan)}</strong> ·{" "}
+              <span className="status-pill status-booked">
+                {statusLabel(sub.saasStatus)}
+              </span>
             </p>
             {sub.saasTrialEndsAt ? (
               <p className="muted">

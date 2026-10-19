@@ -346,6 +346,19 @@ export default function CalendarPage() {
     setFeeNote("");
   }, [selected]);
 
+  useEffect(() => {
+    if (!selected && !bookOpen && !blockOpen && !feedOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (selected) setSelectedAppt(null);
+      else if (bookOpen) setBookOpen(false);
+      else if (blockOpen) setBlockOpen(false);
+      else if (feedOpen) setFeedOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected, bookOpen, blockOpen, feedOpen, setSelectedAppt]);
+
   function practitionerOpenAt(
     practitionerId: string,
     day: Date,
@@ -1261,7 +1274,24 @@ export default function CalendarPage() {
                   <strong>
                     £{((selected.depositCents ?? 0) / 100).toFixed(2)}
                   </strong>{" "}
-                  · {selected.depositStatus.toLowerCase().replaceAll("_", " ")}
+                  ·{" "}
+                  <span
+                    className={
+                      selected.depositStatus === "REQUIRED"
+                        ? "status status-deposit-due"
+                        : undefined
+                    }
+                  >
+                    {selected.depositStatus === "REQUIRED"
+                      ? "Due"
+                      : selected.depositStatus === "PAID"
+                        ? "Paid"
+                        : selected.depositStatus === "WAIVED"
+                          ? "Waived"
+                          : selected.depositStatus
+                              .toLowerCase()
+                              .replaceAll("_", " ")}
+                  </span>
                   {selected.depositPaidAt
                     ? ` · paid ${format(new Date(selected.depositPaidAt), "d MMM HH:mm")}`
                     : null}
@@ -1270,7 +1300,7 @@ export default function CalendarPage() {
                   <div className="sheet-actions">
                     <button
                       type="button"
-                      className="btn-primary btn-sm"
+                      className="btn-secondary btn-sm"
                       disabled={busy}
                       onClick={() =>
                         void (async () => {
@@ -1488,18 +1518,77 @@ export default function CalendarPage() {
             ) : null}
 
             {canEditSchedule &&
+            selected.recurrenceGroupId &&
+            !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(selected.status) ? (
+              <div className="sheet-actions" style={{ marginBottom: "0.75rem" }}>
+                <p className="muted" style={{ width: "100%", margin: 0 }}>
+                  Part of a repeating series
+                </p>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setSeriesMove(true);
+                    setDraggingId(selected.id);
+                    setSelectedAppt(null);
+                    setMessage(
+                      "Tap a diary slot to move this and later series appointments by the same amount.",
+                    );
+                  }}
+                >
+                  Move series from here
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary apt-cancel-btn"
+                  disabled={busy}
+                  onClick={() => {
+                    void (async () => {
+                      setBusy(true);
+                      setError(null);
+                      try {
+                        const d = await api<{
+                          cancelledCount: number;
+                        }>(`/appointments/${selected.id}/cancel-series`, {
+                          method: "POST",
+                        });
+                        setSelectedAppt(null);
+                        setMessage(
+                          `Cancelled ${d.cancelledCount} remaining series appointments.`,
+                        );
+                        load();
+                      } catch (e) {
+                        setError(
+                          e instanceof ApiError
+                            ? e.message
+                            : "Could not cancel series",
+                        );
+                      } finally {
+                        setBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  Cancel series from here
+                </button>
+              </div>
+            ) : null}
+
+            {canEditSchedule &&
             !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(selected.status) ? (
               <div className="sheet-more">
                 <button
                   type="button"
                   className="btn-ghost btn-sm sheet-more-toggle"
                   aria-expanded={sheetMoreOpen}
+                  aria-controls="cal-sheet-more-panel"
                   onClick={() => setSheetMoreOpen((o) => !o)}
                 >
                   {sheetMoreOpen ? "Hide more" : "More…"}
                 </button>
                 {sheetMoreOpen ? (
-                  <div className="sheet-more-body">
+                  <div id="cal-sheet-more-panel" className="sheet-more-body">
                     <div className="sheet-actions">
                       <button
                         type="button"
@@ -1534,59 +1623,6 @@ export default function CalendarPage() {
                       >
                         No-show
                       </button>
-                      {selected.recurrenceGroupId ? (
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          disabled={busy || selected.status === "CANCELLED"}
-                          onClick={() => {
-                            void (async () => {
-                              setBusy(true);
-                              setError(null);
-                              try {
-                                const d = await api<{
-                                  cancelledCount: number;
-                                }>(
-                                  `/appointments/${selected.id}/cancel-series`,
-                                  { method: "POST" },
-                                );
-                                setSelectedAppt(null);
-                                setMessage(
-                                  `Cancelled ${d.cancelledCount} remaining series appointments.`,
-                                );
-                                load();
-                              } catch (e) {
-                                setError(
-                                  e instanceof ApiError
-                                    ? e.message
-                                    : "Could not cancel series",
-                                );
-                              } finally {
-                                setBusy(false);
-                              }
-                            })();
-                          }}
-                        >
-                          Cancel series from here
-                        </button>
-                      ) : null}
-                      {selected.recurrenceGroupId ? (
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          disabled={busy || selected.status === "CANCELLED"}
-                          onClick={() => {
-                            setSeriesMove(true);
-                            setDraggingId(selected.id);
-                            setSelectedAppt(null);
-                            setMessage(
-                              "Tap a diary slot to move this and later series appointments by the same amount.",
-                            );
-                          }}
-                        >
-                          Move series from here
-                        </button>
-                      ) : null}
                     </div>
 
                     <label className="consent-label notify-patient-toggle">
@@ -1896,11 +1932,42 @@ export default function CalendarPage() {
                 </select>
               </label>
             ) : null}
+            {bookWeeklyCount > 1 ? (
+              <div className="sheet-actions" style={{ marginBottom: "0.5rem" }}>
+                <label className="field" style={{ flex: 1, minWidth: "8rem" }}>
+                  <span>Repeat</span>
+                  <select
+                    value={bookWeeklyCount}
+                    onChange={(e) => setBookWeeklyCount(Number(e.target.value))}
+                  >
+                    <option value={1}>No repeat — one appointment</option>
+                    {[2, 3, 4, 6, 8, 12].map((n) => (
+                      <option key={n} value={n}>
+                        {n} occurrences (same day/time)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field" style={{ flex: 1, minWidth: "8rem" }}>
+                  <span>Cadence</span>
+                  <select
+                    value={bookIntervalWeeks}
+                    onChange={(e) =>
+                      setBookIntervalWeeks(Number(e.target.value))
+                    }
+                  >
+                    <option value={1}>Every week</option>
+                    <option value={2}>Every fortnight</option>
+                  </select>
+                </label>
+              </div>
+            ) : null}
             <div className="sheet-more">
               <button
                 type="button"
                 className="btn-ghost btn-sm sheet-more-toggle"
                 aria-expanded={bookOptionsOpen}
+                aria-controls="cal-book-options-panel"
                 onClick={() => setBookOptionsOpen((o) => !o)}
               >
                 {bookOptionsOpen ? "Hide options" : "Options…"}
@@ -1912,7 +1979,7 @@ export default function CalendarPage() {
                 <p className="muted book-fineprint">
                   {bookWeeklyCount > 1
                     ? `${bookWeeklyCount}× ${
-                        bookIntervalWeeks > 1 ? "fortnightly" : "weekly"
+                        bookIntervalWeeks === 2 ? "fortnightly" : "weekly"
                       }`
                     : null}
                   {bookWeeklyCount > 1 &&
@@ -1931,34 +1998,26 @@ export default function CalendarPage() {
                 </p>
               ) : null}
               {bookOptionsOpen ? (
-                <div className="sheet-more-body">
-                  <label className="field">
-                    <span>Repeat</span>
-                    <select
-                      value={bookWeeklyCount}
-                      onChange={(e) => setBookWeeklyCount(Number(e.target.value))}
-                    >
-                      <option value={1}>No repeat — one appointment</option>
-                      {[2, 3, 4, 6, 8, 12].map((n) => (
-                        <option key={n} value={n}>
-                          {n} occurrences (same day/time)
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {bookWeeklyCount > 1 ? (
-                    <label className="field">
-                      <span>Cadence</span>
-                      <select
-                        value={bookIntervalWeeks}
-                        onChange={(e) =>
-                          setBookIntervalWeeks(Number(e.target.value))
-                        }
-                      >
-                        <option value={1}>Every week</option>
-                        <option value={2}>Every fortnight</option>
-                      </select>
-                    </label>
+                <div id="cal-book-options-panel" className="sheet-more-body">
+                  {bookWeeklyCount <= 1 ? (
+                    <>
+                      <label className="field">
+                        <span>Repeat</span>
+                        <select
+                          value={bookWeeklyCount}
+                          onChange={(e) =>
+                            setBookWeeklyCount(Number(e.target.value))
+                          }
+                        >
+                          <option value={1}>No repeat — one appointment</option>
+                          {[2, 3, 4, 6, 8, 12].map((n) => (
+                            <option key={n} value={n}>
+                              {n} occurrences (same day/time)
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
                   ) : null}
                   <label className="field">
                     <span>Fee (£) — optional invoice</span>
@@ -1990,7 +2049,9 @@ export default function CalendarPage() {
               {busy
                 ? "Booking…"
                 : bookWeeklyCount > 1
-                  ? `Confirm ${bookWeeklyCount}-week series`
+                  ? `Confirm ${bookWeeklyCount}× ${
+                      bookIntervalWeeks === 2 ? "fortnightly" : "weekly"
+                    } series`
                   : "Confirm booking"}
             </button>
           </div>

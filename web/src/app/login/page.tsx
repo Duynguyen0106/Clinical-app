@@ -92,7 +92,7 @@ export default function LoginPage() {
         </label>
         {error ? <p className="form-error">{error}</p> : null}
         <button type="submit" className="btn-primary" disabled={busy}>
-          {busy ? "Signing in…" : "Open clinic"}
+          {busy ? "Signing in…" : "Sign in"}
         </button>
         <Link href="/login/forgot" className="btn-ghost">
           Forgot password?

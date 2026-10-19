@@ -133,6 +133,7 @@ export default function StaffPayPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [hasExistingTerms, setHasExistingTerms] = useState(false);
+  const [editingTerms, setEditingTerms] = useState(false);
 
   const [employmentType, setEmploymentType] =
     useState<PayRate["employmentType"]>("SELF_EMPLOYED");
@@ -193,6 +194,7 @@ export default function StaffPayPage() {
       setLoadingDetail(true);
       setFormError(null);
       setMessage(null);
+      setEditingTerms(false);
       void api<{ current: PayRate | null; history: PayRate[] }>(
         `/team/${id}/pay`,
       )
@@ -200,6 +202,7 @@ export default function StaffPayPage() {
           setHistory(d.history);
           const cur = d.current;
           setHasExistingTerms(Boolean(cur));
+          setEditingTerms(!cur);
           if (cur) {
             setEmploymentType(cur.employmentType);
             setPayMode(cur.payMode);
@@ -261,6 +264,7 @@ export default function StaffPayPage() {
       });
       setMessage("Pay terms saved.");
       setHasExistingTerms(true);
+      setEditingTerms(false);
       loadSummary();
       loadDetail(selectedId);
     } catch (e) {
@@ -314,6 +318,11 @@ export default function StaffPayPage() {
       title="Staff pay"
       subtitle="Month due by practitioner — set rates, then export when you settle."
     >
+      <p className="muted" style={{ marginBottom: "0.75rem" }}>
+        <Link href="/app/team" className="btn-ghost btn-sm">
+          ← Back to Team
+        </Link>
+      </p>
       <section className="panel pay-hero">
         <div className="pay-hero-top">
           <div className="pay-month-nav">
@@ -459,6 +468,30 @@ export default function StaffPayPage() {
 
               {loadingDetail ? (
                 <p className="muted">Loading terms…</p>
+              ) : !editingTerms && hasExistingTerms ? (
+                <div className="pay-terms-summary">
+                  <p>
+                    <strong>{employmentLabel(employmentType)}</strong>
+                    {" · "}
+                    {rateSummary(selected.current)}
+                  </p>
+                  <p className="muted">
+                    Effective from{" "}
+                    {format(
+                      parse(effectiveFrom, "yyyy-MM-dd", new Date()),
+                      "d MMM yyyy",
+                    )}
+                    {notes ? ` · ${notes}` : ""}
+                  </p>
+                  {message ? <p className="alert-line">{message}</p> : null}
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setEditingTerms(true)}
+                  >
+                    Edit pay terms
+                  </button>
+                </div>
               ) : (
                 <fieldset className="pay-terms-form" disabled={busy}>
                   <label className="field">
@@ -553,14 +586,29 @@ export default function StaffPayPage() {
                   {formError ? <p className="form-error">{formError}</p> : null}
                   {message ? <p className="alert-line">{message}</p> : null}
 
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={busy}
-                    onClick={() => void saveRate()}
-                  >
-                    {busy ? "Saving…" : "Save pay terms"}
-                  </button>
+                  <div className="home-cta">
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={busy}
+                      onClick={() => void saveRate()}
+                    >
+                      {busy ? "Saving…" : "Save pay terms"}
+                    </button>
+                    {hasExistingTerms ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={busy}
+                        onClick={() => {
+                          setEditingTerms(false);
+                          loadDetail(selectedId);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
+                  </div>
                 </fieldset>
               )}
 

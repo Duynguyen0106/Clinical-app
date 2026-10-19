@@ -44,7 +44,7 @@ export function redactPatientForDiaryPrivacy<T extends PatientLike>(
     lastName: `${last}.`,
     email: null,
     phone: null,
-    alerts: null,
+    // Keep clinical alerts — open-desk privacy must not hide safety flags
     dateOfBirth: null,
     gpName: null,
     gpPractice: null,

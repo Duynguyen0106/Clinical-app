@@ -223,12 +223,15 @@ export function PatientPrepPanel({
         </p>
       </div>
 
-      {!hideContact && (prep.alerts || prep.phone || prep.email) ? (
+      {prep.alerts || (!hideContact && (prep.phone || prep.email)) ? (
         <div className="prep-meta">
           {prep.alerts ? <p className="alert-line">{prep.alerts}</p> : null}
-          <p className="muted">
-            {[prep.email, prep.phone].filter(Boolean).join(" · ") || "No contact on file"}
-          </p>
+          {!hideContact ? (
+            <p className="muted">
+              {[prep.email, prep.phone].filter(Boolean).join(" · ") ||
+                "No contact on file"}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

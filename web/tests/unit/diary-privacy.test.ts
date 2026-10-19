@@ -32,7 +32,8 @@ describe("diary privacy", () => {
     assert.equal(redacted.lastName, "P.");
     assert.equal(redacted.email, null);
     assert.equal(redacted.phone, null);
-    assert.equal(redacted.alerts, null);
+    // Clinical alerts stay visible on open desk
+    assert.equal(redacted.alerts, "Latex");
     assert.equal(redacted.dateOfBirth, null);
     assert.equal(redacted.nhsNumber, null);
     // Full mode unchanged

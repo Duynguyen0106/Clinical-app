@@ -17,9 +17,9 @@ type OpsTask = {
 };
 
 const kindLabel: Record<string, string> = {
-  UNSIGNED_NOTE: "Sign",
-  UNPAID_INVOICE: "Pay",
-  MISSING_INTAKE: "Intake",
+  UNSIGNED_NOTE: "Unsigned note",
+  UNPAID_INVOICE: "Unpaid invoice",
+  MISSING_INTAKE: "Missing intake",
 };
 
 export default function TasksPage() {
