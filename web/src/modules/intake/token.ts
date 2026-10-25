@@ -7,13 +7,13 @@ import {
   timingSafeEqual,
 } from "crypto";
 import { forbidden } from "@/server/errors";
-import { getAppBaseUrl } from "@/server/env";
+import { getAppBaseUrl, getAuthSecret } from "@/server/env";
 
 /** Default TTL for consent links — two weeks. */
 export const INTAKE_TOKEN_TTL_MS = 14 * 24 * 60 * 60_000;
 
 function intakeSecret() {
-  return process.env.AUTH_SECRET ?? "treow-dev-secret-change-me";
+  return getAuthSecret();
 }
 
 function sealKey() {

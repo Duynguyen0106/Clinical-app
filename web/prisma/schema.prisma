@@ -402,6 +402,7 @@ model PatientIntakeSubmission {
   @@index([clinicId, patientId, status])
   @@index([appointmentId])
   @@index([clinicId, status, completedAt])
+  /// One live DRAFT per clinic+patient+formKey — see migration partial unique index
 }
 
 /// Who opened a patient's prep / note history (UK access accountability)

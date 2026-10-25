@@ -30,6 +30,15 @@ const TERMINAL: AppointmentStatus[] = [
 /** Debounce staff intake_viewed noise (same actor + submission). */
 const INTAKE_VIEW_DEBOUNCE_MS = 60 * 60 * 1000;
 
+function isUniqueViolation(err: unknown) {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: string }).code === "P2002"
+  );
+}
+
 export async function patientHasCompletedIntake(
   clinicId: string,
   patientId: string,
@@ -71,50 +80,62 @@ export async function ensureIntakeForAppointment(opts: {
       return { submission: completed, alreadyComplete: true as const };
     }
 
+    // At most one live DRAFT per patient+form (partial unique index).
     const existingDraft = await tx.patientIntakeSubmission.findFirst({
       where: {
         clinicId: opts.clinicId,
         patientId: opts.patientId,
-        appointmentId: opts.appointmentId,
         status: "DRAFT",
         formKey: OSTEO_CONSENT_FORM_KEY,
       },
       orderBy: { startedAt: "desc" },
     });
     if (existingDraft) {
+      if (existingDraft.appointmentId !== opts.appointmentId) {
+        const attached = await tx.patientIntakeSubmission.update({
+          where: { id: existingDraft.id },
+          data: { appointmentId: opts.appointmentId },
+        });
+        return { submission: attached, alreadyComplete: false as const };
+      }
       return { submission: existingDraft, alreadyComplete: false as const };
     }
 
-    const orphanDraft = await tx.patientIntakeSubmission.findFirst({
-      where: {
-        clinicId: opts.clinicId,
-        patientId: opts.patientId,
-        appointmentId: null,
-        status: "DRAFT",
-        formKey: OSTEO_CONSENT_FORM_KEY,
-      },
-      orderBy: { startedAt: "desc" },
-    });
-    if (orphanDraft) {
-      const attached = await tx.patientIntakeSubmission.update({
-        where: { id: orphanDraft.id },
-        data: { appointmentId: opts.appointmentId },
+    try {
+      const created = await tx.patientIntakeSubmission.create({
+        data: {
+          clinicId: opts.clinicId,
+          patientId: opts.patientId,
+          appointmentId: opts.appointmentId,
+          formKey: OSTEO_CONSENT_FORM_KEY,
+          formVersion: OSTEO_CONSENT_FORM_VERSION,
+          status: "DRAFT",
+          answers: {},
+        },
       });
-      return { submission: attached, alreadyComplete: false as const };
+      return { submission: created, alreadyComplete: false as const };
+    } catch (err) {
+      // Concurrent create hit unique live-DRAFT index — reuse the winner.
+      if (!isUniqueViolation(err)) throw err;
+      const raced = await tx.patientIntakeSubmission.findFirst({
+        where: {
+          clinicId: opts.clinicId,
+          patientId: opts.patientId,
+          status: "DRAFT",
+          formKey: OSTEO_CONSENT_FORM_KEY,
+        },
+        orderBy: { startedAt: "desc" },
+      });
+      if (!raced) throw err;
+      if (raced.appointmentId !== opts.appointmentId) {
+        const attached = await tx.patientIntakeSubmission.update({
+          where: { id: raced.id },
+          data: { appointmentId: opts.appointmentId },
+        });
+        return { submission: attached, alreadyComplete: false as const };
+      }
+      return { submission: raced, alreadyComplete: false as const };
     }
-
-    const created = await tx.patientIntakeSubmission.create({
-      data: {
-        clinicId: opts.clinicId,
-        patientId: opts.patientId,
-        appointmentId: opts.appointmentId,
-        formKey: OSTEO_CONSENT_FORM_KEY,
-        formVersion: OSTEO_CONSENT_FORM_VERSION,
-        status: "DRAFT",
-        answers: {},
-      },
-    });
-    return { submission: created, alreadyComplete: false as const };
   });
 
   if (ensured.alreadyComplete) {
@@ -564,7 +585,7 @@ export async function staffPrepareIntakeSend(
   }
 
   // No upcoming appointment — reuse open DRAFT or create one without appointment.
-  const existingDraft = await prisma.patientIntakeSubmission.findFirst({
+  let submission = await prisma.patientIntakeSubmission.findFirst({
     where: {
       clinicId: ctx.clinicId,
       patientId: patient.id,
@@ -573,18 +594,32 @@ export async function staffPrepareIntakeSend(
     },
     orderBy: { startedAt: "desc" },
   });
-  const submission =
-    existingDraft ??
-    (await prisma.patientIntakeSubmission.create({
-      data: {
-        clinicId: ctx.clinicId,
-        patientId: patient.id,
-        formKey: OSTEO_CONSENT_FORM_KEY,
-        formVersion: OSTEO_CONSENT_FORM_VERSION,
-        status: "DRAFT",
-        answers: {},
-      },
-    }));
+  if (!submission) {
+    try {
+      submission = await prisma.patientIntakeSubmission.create({
+        data: {
+          clinicId: ctx.clinicId,
+          patientId: patient.id,
+          formKey: OSTEO_CONSENT_FORM_KEY,
+          formVersion: OSTEO_CONSENT_FORM_VERSION,
+          status: "DRAFT",
+          answers: {},
+        },
+      });
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      submission = await prisma.patientIntakeSubmission.findFirst({
+        where: {
+          clinicId: ctx.clinicId,
+          patientId: patient.id,
+          status: "DRAFT",
+          formKey: OSTEO_CONSENT_FORM_KEY,
+        },
+        orderBy: { startedAt: "desc" },
+      });
+      if (!submission) throw err;
+    }
+  }
   const token = createIntakeToken(submission.id);
   return {
     url: intakeUrlForToken(token),

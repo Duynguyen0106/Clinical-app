@@ -8,15 +8,27 @@ const DEMO_SECRETS = new Set([
   "secret",
 ]);
 
+const DEV_AUTH_FALLBACK = "treow-dev-secret-change-me";
+
+/** Sealing secret for intake/manage tokens — refuses demo value in production. */
+export function getAuthSecret() {
+  const auth = process.env.AUTH_SECRET?.trim();
+  if (process.env.NODE_ENV === "production") {
+    if (!auth || auth.length < 32 || DEMO_SECRETS.has(auth)) {
+      throw new Error(
+        "Production requires AUTH_SECRET (≥32 chars, not the demo value).",
+      );
+    }
+    return auth;
+  }
+  return auth || DEV_AUTH_FALLBACK;
+}
+
 export function assertProductionSecrets() {
   if (process.env.NODE_ENV !== "production") return;
 
-  const auth = process.env.AUTH_SECRET?.trim();
-  if (!auth || auth.length < 32 || DEMO_SECRETS.has(auth)) {
-    throw new Error(
-      "Production requires AUTH_SECRET (≥32 chars, not the demo value).",
-    );
-  }
+  // Same rules as getAuthSecret() — fail boot before serving traffic.
+  getAuthSecret();
 
   const audio = process.env.AUDIO_ENCRYPTION_KEY?.trim();
   if (!audio || audio.length < 32 || DEMO_SECRETS.has(audio)) {
