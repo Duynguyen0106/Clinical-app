@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Mic, Square, Check, AlertTriangle, RefreshCw } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
@@ -119,6 +119,15 @@ export function VisitRecorder({ visitId }: Props) {
   const streamRef = useRef<MediaStream | null>(null);
   const mimeRef = useRef({ mimeType: "audio/webm", extension: "webm" });
   const elapsedRef = useRef(0);
+  const contentRef = useRef(content);
+  contentRef.current = content;
+  const noteIdRef = useRef(noteId);
+  noteIdRef.current = noteId;
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  const chartAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chartSaveSeq = useRef(0);
+  const chartSaveAbort = useRef<AbortController | null>(null);
 
   function applyTemplateMeta(
     template?: { id: string; name: string; schema: unknown } | null,
@@ -129,11 +138,58 @@ export function VisitRecorder({ visitId }: Props) {
   }
 
   useEffect(() => {
-    void api<{ config: { customViews: BodyChartCustomView[] } }>(
-      "/clinic/body-chart",
-    )
-      .then((d) => setCustomViews(d.config.customViews ?? []))
+    void api<{
+      config: {
+        customViews: BodyChartCustomView[];
+        archivedViews?: BodyChartCustomView[];
+      };
+    }>("/clinic/body-chart")
+      .then((d) =>
+        setCustomViews([
+          ...(d.config.customViews ?? []),
+          ...(d.config.archivedViews ?? []),
+        ]),
+      )
       .catch(() => setCustomViews([]));
+  }, []);
+
+  const persistReviewContent = useCallback(
+    async (next: Record<string, unknown>) => {
+      const id = noteIdRef.current;
+      if (!id || phaseRef.current !== "review") return;
+      const seq = ++chartSaveSeq.current;
+      chartSaveAbort.current?.abort();
+      const ac = new AbortController();
+      chartSaveAbort.current = ac;
+      try {
+        await api(`/notes/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ content: next }),
+          signal: ac.signal,
+        });
+        void seq;
+      } catch {
+        /* autosave errors surface on explicit sign */
+      }
+    },
+    [],
+  );
+
+  function scheduleReviewAutosave(next: Record<string, unknown>) {
+    contentRef.current = next;
+    setContent(next);
+    if (phaseRef.current !== "review" || !noteIdRef.current) return;
+    if (chartAutosaveTimer.current) clearTimeout(chartAutosaveTimer.current);
+    chartAutosaveTimer.current = setTimeout(() => {
+      void persistReviewContent(contentRef.current);
+    }, 800);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (chartAutosaveTimer.current) clearTimeout(chartAutosaveTimer.current);
+      chartSaveAbort.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -479,9 +535,12 @@ export function VisitRecorder({ visitId }: Props) {
 
   async function signNote() {
     if (!noteId) return;
+    if (chartAutosaveTimer.current) clearTimeout(chartAutosaveTimer.current);
+    ++chartSaveSeq.current;
+    chartSaveAbort.current?.abort();
     await api(`/notes/${noteId}`, {
       method: "PATCH",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content: contentRef.current }),
     });
     await api(`/notes/${noteId}/sign`, { method: "POST" });
     setPhase("signed");
@@ -927,9 +986,14 @@ export function VisitRecorder({ visitId }: Props) {
                         ? (content[key] as string)
                         : ""
                     }
-                    onChange={(e) =>
-                      setContent((c) => ({ ...c, [key]: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      const next = {
+                        ...contentRef.current,
+                        [key]: e.target.value,
+                      };
+                      if (phase === "review") scheduleReviewAutosave(next);
+                      else setContent(next);
+                    }}
                     readOnly={phase === "signed"}
                     rows={4}
                   />
@@ -950,9 +1014,11 @@ export function VisitRecorder({ visitId }: Props) {
                   </div>
                   <BodyMapEditor
                     value={bodyMapValue}
-                    onChange={(map: BodyMapContent) =>
-                      setContent((c) => withBodyMap(c, map))
-                    }
+                    onChange={(map: BodyMapContent) => {
+                      const next = withBodyMap(contentRef.current, map);
+                      if (phase === "review") scheduleReviewAutosave(next);
+                      else setContent(next);
+                    }}
                     readOnly={phase === "signed"}
                     customViews={customViews}
                   />

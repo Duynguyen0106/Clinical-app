@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   BODY_MAP_CONTENT_KEY,
   BODY_MAP_VIEWS,
+  MAX_BODY_MAP_MARKS,
+  allCustomViews,
   bodyMapPrintLines,
   emptyBodyMap,
   isBodyMapContent,
@@ -144,7 +146,12 @@ describe("body map model", () => {
     assert.match(markSummary(pain), /NRS 7/);
     assert.match(markSummary(lesion), /bruise/);
     assert.match(markSummary(somatic), /L4-L5/);
-    assert.equal(bodyMapPrintLines(map).length, 3);
+    const printLines = bodyMapPrintLines(map);
+    // Per-view headers + one line per mark (matches figure callout numbering)
+    assert.equal(printLines.filter((l) => /^\s+\d+\./.test(l)).length, 3);
+    assert.ok(printLines.some((l) => l.startsWith("Anterior:")));
+    assert.ok(printLines.some((l) => l.startsWith("Posterior:")));
+    assert.ok(printLines.some((l) => /^\s+1\./.test(l)));
 
     const content = withBodyMap({ subjective: "ok" }, map);
     assert.equal(parseBodyMap(content).marks.length, 3);
@@ -277,6 +284,92 @@ describe("body map model", () => {
         assert.equal(line!.attrs.y2, "40");
       }
     }
+  });
+
+  it("React parser rejects non-allowlisted tags even if sanitize skipped", () => {
+    const dangerous = [
+      '<svg viewBox="0 0 1 1"><script/></svg>',
+      '<svg viewBox="0 0 1 1"><iframe/></svg>',
+      '<svg viewBox="0 0 1 1"><foreignObject/></svg>',
+      '<svg viewBox="0 0 1 1"><image href="x"/></svg>',
+      '<svg viewBox="0 0 1 1"><a href="javascript:x"><path d="M0 0"/></a></svg>',
+    ];
+    for (const svg of dangerous) {
+      assert.equal(sanitizeAnatomySvg(svg), null, svg.slice(0, 40));
+      assert.equal(parseSanitizedSvgInner(svg), null, svg.slice(0, 40));
+    }
+  });
+
+  it("rejects named HTML entities in SVG input", () => {
+    assert.equal(
+      sanitizeAnatomySvg(
+        '<svg viewBox="0 0 1 1"><path d="M0 0" fill="javascript&colon;alert(1)"/></svg>',
+      ),
+      null,
+    );
+    assert.equal(
+      sanitizeAnatomySvg(
+        '<svg viewBox="0 0 1 1"><path d="M0&nbsp;0"/></svg>',
+      ),
+      null,
+    );
+  });
+
+  it("truncates over-cap marks instead of wiping the map", () => {
+    const marks = Array.from({ length: MAX_BODY_MAP_MARKS + 5 }, (_, i) => ({
+      id: `m${i}`,
+      kind: "pain" as const,
+      view: "posterior",
+      x: 0.5,
+      y: 0.5,
+      intensity: 3,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    }));
+    const clean = sanitizeBodyMap({
+      version: 1,
+      activeView: "posterior",
+      marks,
+    });
+    assert.equal(clean.marks.length, MAX_BODY_MAP_MARKS);
+    assert.equal(clean.marks[0]!.id, "m0");
+  });
+
+  it("dedupes mark ids and archives soft-deleted custom views", () => {
+    const clean = sanitizeBodyMap({
+      version: 1,
+      activeView: "posterior",
+      marks: [
+        {
+          id: "dup",
+          kind: "pain",
+          view: "posterior",
+          x: 0.1,
+          y: 0.1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "dup",
+          kind: "lesion",
+          view: "anterior",
+          x: 0.2,
+          y: 0.2,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    assert.equal(clean.marks.length, 1);
+    assert.equal(clean.marks[0]!.kind, "pain");
+
+    const okSvg =
+      '<svg viewBox="0 0 200 360"><path d="M10 10 L20 20"/></svg>';
+    const safe = sanitizeAnatomySvg(okSvg)!;
+    const cfg = parseBodyChartConfig({
+      customViews: [{ id: "custom_live", label: "Live", svg: safe }],
+      archivedViews: [{ id: "custom_old", label: "Old", svg: safe }],
+    });
+    assert.equal(cfg.customViews.length, 1);
+    assert.equal(cfg.archivedViews?.length, 1);
+    assert.equal(allCustomViews(cfg).length, 2);
   });
 
   it("normalises template schemas: insert, dedupe, lock body_map id", () => {

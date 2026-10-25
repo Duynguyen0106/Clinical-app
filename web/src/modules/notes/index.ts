@@ -11,6 +11,7 @@ export {
   BODY_MAP_VIEWS,
   BODY_MAP_MARK_KINDS,
   BODY_MAP_SHAPES,
+  allCustomViews,
   emptyBodyMap,
   parseBodyMap,
   parseBodyChartConfig,

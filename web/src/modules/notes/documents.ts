@@ -7,6 +7,7 @@ import { clinicLogoDataUrl } from "@/modules/clinic/profile";
 import {
   BODY_MAP_CONTENT_KEY,
   bodyMapPrintLines,
+  allCustomViews,
   parseBodyChartConfig,
   parseBodyMap,
   type BodyChartCustomView,
@@ -332,9 +333,11 @@ export async function getClinicalDocument(
 ): Promise<ClinicalDocument> {
   const { note, clinic, signedByName, logoDataUrl } =
     await loadSignedNoteForDocuments(ctx, noteId);
-  const customViews = parseBodyChartConfig(
-    "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
-  ).customViews;
+  const customViews = allCustomViews(
+    parseBodyChartConfig(
+      "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
+    ),
+  );
   const sections = flattenNoteSections(note.content, customViews);
   const practitioner = mapPractitioner(note.visit?.appointment.practitioner);
 
@@ -394,9 +397,11 @@ export async function getGpLetterDocument(
 ): Promise<GpLetterDocument> {
   const { note, clinic, signedByName, logoDataUrl } =
     await loadSignedNoteForDocuments(ctx, noteId);
-  const customViews = parseBodyChartConfig(
-    "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
-  ).customViews;
+  const customViews = allCustomViews(
+    parseBodyChartConfig(
+      "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
+    ),
+  );
   const sections = flattenNoteSections(note.content, customViews);
   const practitioner =
     mapPractitioner(note.visit?.appointment.practitioner) ?? {

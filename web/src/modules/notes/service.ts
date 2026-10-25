@@ -12,6 +12,7 @@ import {
 } from "@/modules/notes/body-map";
 import { withClinicTransaction } from "@/server/clinic-rls";
 import { assertOwnsDiaryOrOwner } from "@/server/rbac";
+import { withSerializableRetry } from "@/server/serializable-retry";
 
 export { hashNoteContent } from "@/modules/notes/hash";
 export { assertNoteDiaryAccess } from "@/modules/notes/access";
@@ -30,20 +31,25 @@ export async function listNoteTemplates(ctx: AuthContext) {
  * Runs in a transaction to reduce duplicate-insert races from concurrent list calls.
  */
 export async function ensureBodyMapSectionsOnTemplates(clinicId: string) {
-  await prisma.$transaction(async (tx) => {
-    const templates = await tx.noteTemplate.findMany({
-      where: { clinicId },
-      select: { id: true, schema: true },
-    });
-    for (const tpl of templates) {
-      const nextSchema = normalizeTemplateSchemaWithBodyMap(tpl.schema);
-      if (!nextSchema) continue;
-      await tx.noteTemplate.update({
-        where: { id: tpl.id },
-        data: { schema: nextSchema as Prisma.InputJsonValue },
-      });
-    }
-  });
+  await withSerializableRetry(async () =>
+    prisma.$transaction(
+      async (tx) => {
+        const templates = await tx.noteTemplate.findMany({
+          where: { clinicId },
+          select: { id: true, schema: true },
+        });
+        for (const tpl of templates) {
+          const nextSchema = normalizeTemplateSchemaWithBodyMap(tpl.schema);
+          if (!nextSchema) continue;
+          await tx.noteTemplate.update({
+            where: { id: tpl.id },
+            data: { schema: nextSchema as Prisma.InputJsonValue },
+          });
+        }
+      },
+      { isolationLevel: "Serializable" },
+    ),
+  );
 }
 
 /** Returns updated schema object when a write is needed; null if unchanged. */
@@ -70,9 +76,8 @@ export function normalizeTemplateSchemaWithBodyMap(
       continue;
     }
     const row = s as Record<string, unknown>;
-    const isChart =
-      row.type === "body_map" || row.id === BODY_MAP_CONTENT_KEY;
-    if (isChart) {
+    // Only type===body_map is a chart — never coerce markdown with id body_map
+    if (row.type === "body_map") {
       if (sawChart) continue; // drop duplicates
       sawChart = true;
       normalized.push({
@@ -84,6 +89,10 @@ export function normalizeTemplateSchemaWithBodyMap(
             ? row.title
             : "Body chart",
       });
+      continue;
+    }
+    if (row.id === BODY_MAP_CONTENT_KEY) {
+      normalized.push({ ...row, id: `section_${BODY_MAP_CONTENT_KEY}` });
       continue;
     }
     normalized.push(s);
@@ -428,7 +437,14 @@ export async function updateDraftNote(
       throw badRequest("Only draft notes can be edited");
     }
 
-    const sanitized = sanitizeNoteContent(content);
+    // If the client omitted body_map entirely, keep existing clinician marks.
+    // An explicit empty/present body_map still replaces (intentional edit).
+    const sanitized = sanitizeNoteContent(
+      content,
+      Object.prototype.hasOwnProperty.call(content, BODY_MAP_CONTENT_KEY)
+        ? {}
+        : { preserveBodyMapFrom: note.content },
+    );
 
     return tx.clinicalNote.update({
       where: { id },

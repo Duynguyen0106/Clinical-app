@@ -5,11 +5,13 @@ import { requireRole } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { badRequest } from "@/server/errors";
 import {
+  MAX_ARCHIVED_CUSTOM_VIEWS,
   parseBodyChartConfig,
   sanitizeAnatomySvg,
   type BodyChartConfig,
   type BodyChartCustomView,
 } from "@/modules/notes/body-map";
+import { withSerializableRetry } from "@/server/serializable-retry";
 
 export async function getClinicBodyChartConfig(
   ctx: AuthContext,
@@ -64,8 +66,13 @@ export async function upsertClinicCustomAnatomyView(
         if (others.length >= 12 && !current.customViews.some((v) => v.id === id)) {
           throw badRequest("Maximum of 12 custom anatomy views");
         }
+        // Restoring an archived id pulls it back into the active list
+        const archivedViews = (current.archivedViews ?? []).filter(
+          (v) => v.id !== id,
+        );
         const next: BodyChartConfig = {
           customViews: [...others, view],
+          ...(archivedViews.length ? { archivedViews } : {}),
         };
         await tx.clinic.update({
           where: { id: ctx.clinicId },
@@ -91,8 +98,21 @@ export async function deleteClinicCustomAnatomyView(
           select: { bodyChartConfig: true },
         });
         const current = parseBodyChartConfig(clinic.bodyChartConfig);
+        const removed = current.customViews.find((v) => v.id === viewId);
+        const customViews = current.customViews.filter((v) => v.id !== viewId);
+        // Soft-delete: keep SVG so historical marks still render
+        let archivedViews = (current.archivedViews ?? []).filter(
+          (v) => v.id !== viewId,
+        );
+        if (removed) {
+          archivedViews = [removed, ...archivedViews].slice(
+            0,
+            MAX_ARCHIVED_CUSTOM_VIEWS,
+          );
+        }
         const next: BodyChartConfig = {
-          customViews: current.customViews.filter((v) => v.id !== viewId),
+          customViews,
+          ...(archivedViews.length ? { archivedViews } : {}),
         };
         await tx.clinic.update({
           where: { id: ctx.clinicId },
@@ -103,25 +123,4 @@ export async function deleteClinicCustomAnatomyView(
       { isolationLevel: "Serializable" },
     ),
   );
-}
-
-/** Retry Serializable conflicts (Prisma P2034) a few times. */
-async function withSerializableRetry<T>(
-  run: () => Promise<T>,
-  attempts = 4,
-): Promise<T> {
-  let last: unknown;
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      return await run();
-    } catch (err) {
-      last = err;
-      const code =
-        err && typeof err === "object" && "code" in err
-          ? String((err as { code?: unknown }).code)
-          : "";
-      if (code !== "P2034" || i === attempts - 1) throw err;
-    }
-  }
-  throw last;
 }

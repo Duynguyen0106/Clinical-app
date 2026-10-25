@@ -99,7 +99,11 @@ export type BodyChartCustomView = {
 
 export type BodyChartConfig = {
   customViews: BodyChartCustomView[];
+  /** Soft-deleted overlays kept so historical marks can still render. */
+  archivedViews?: BodyChartCustomView[];
 };
+
+export const MAX_ARCHIVED_CUSTOM_VIEWS = 24;
 
 export function isBuiltinView(view: string): view is BuiltinBodyMapViewId {
   return (BODY_MAP_VIEWS as readonly string[]).includes(view);
@@ -173,7 +177,8 @@ const markSchema = z
       x,
       y,
       shape,
-      createdAt: m.createdAt || new Date().toISOString(),
+      // Stable default — regenerating Date.now() on each sanitize churns sign hash
+      createdAt: m.createdAt || "1970-01-01T00:00:00.000Z",
     };
     if (points?.length) out.points = points;
     if (m.kind === "pain") {
@@ -199,15 +204,22 @@ export const bodyMapContentSchema = z
   .object({
     version: z.literal(1),
     activeView: z.string().trim().min(1).max(64).default("posterior"),
-    marks: z.array(z.unknown()).max(MAX_BODY_MAP_MARKS).default([]),
+    // No .max() here — over-cap must truncate, not failParse→empty (data loss)
+    marks: z.array(z.unknown()).default([]),
   })
   .transform((raw): BodyMapContent => {
     const marks: BodyMapMark[] = [];
+    const seenIds = new Set<string>();
     for (const item of raw.marks) {
       const parsed = markSchema.safeParse(item);
-      if (parsed.success && parsed.data) marks.push(parsed.data);
+      if (!parsed.success || !parsed.data) continue;
+      const mark = parsed.data;
+      // Dedupe ids so removeMark / React keys stay deterministic
+      if (seenIds.has(mark.id)) continue;
+      seenIds.add(mark.id);
+      marks.push(mark);
       if (marks.length >= MAX_BODY_MAP_MARKS) break;
-    } // null transforms are dropped via && parsed.data
+    }
     const activeView = isBodyMapViewId(raw.activeView)
       ? raw.activeView
       : "posterior";
@@ -361,12 +373,35 @@ export function markSummary(
   return bits.join(" · ");
 }
 
+/**
+ * Print/GP text lines numbered per-view to match BodyMapPrintFigure callouts.
+ */
 export function bodyMapPrintLines(
   map: BodyMapContent,
   customViews?: BodyChartCustomView[],
 ): string[] {
   if (map.marks.length === 0) return [];
-  return map.marks.map((m, i) => `${i + 1}. ${markSummary(m, customViews)}`);
+  const views: BodyMapViewId[] = [];
+  for (const m of map.marks) {
+    if (!views.includes(m.view)) views.push(m.view);
+  }
+  views.sort((a, b) => {
+    const ai = BODY_MAP_VIEWS.indexOf(a as (typeof BODY_MAP_VIEWS)[number]);
+    const bi = BODY_MAP_VIEWS.indexOf(b as (typeof BODY_MAP_VIEWS)[number]);
+    if (ai >= 0 && bi >= 0) return ai - bi;
+    if (ai >= 0) return -1;
+    if (bi >= 0) return 1;
+    return String(a).localeCompare(String(b));
+  });
+  const lines: string[] = [];
+  for (const view of views) {
+    const marks = map.marks.filter((m) => m.view === view);
+    lines.push(`${viewLabel(view, customViews)}:`);
+    marks.forEach((m, i) => {
+      lines.push(`  ${i + 1}. ${markSummary(m, customViews)}`);
+    });
+  }
+  return lines;
 }
 
 export function centroid(points: BodyMapPoint[]): BodyMapPoint {
@@ -409,31 +444,57 @@ export function sanitizeAnatomySvg(raw: string): string | null {
   return sanitizeAnatomySvgAllowlist(raw);
 }
 
+function parseCustomViewRow(row: unknown): BodyChartCustomView | null {
+  if (!row || typeof row !== "object") return null;
+  const r = row as Record<string, unknown>;
+  if (typeof r.id !== "string" || !isBodyMapViewId(r.id) || isBuiltinView(r.id)) {
+    return null;
+  }
+  if (typeof r.label !== "string" || !r.label.trim()) return null;
+  if (typeof r.svg !== "string") return null;
+  const svg = sanitizeAnatomySvg(r.svg);
+  if (!svg) return null;
+  return {
+    id: r.id,
+    label: r.label.trim().slice(0, 80),
+    svg,
+  };
+}
+
 export function parseBodyChartConfig(value: unknown): BodyChartConfig {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { customViews: [] };
   }
-  const views = (value as { customViews?: unknown }).customViews;
-  if (!Array.isArray(views)) return { customViews: [] };
+  const raw = value as { customViews?: unknown; archivedViews?: unknown };
   const customViews: BodyChartCustomView[] = [];
-  for (const row of views) {
-    if (!row || typeof row !== "object") continue;
-    const r = row as Record<string, unknown>;
-    if (typeof r.id !== "string" || !isBodyMapViewId(r.id) || isBuiltinView(r.id)) {
-      continue;
+  const seen = new Set<string>();
+  if (Array.isArray(raw.customViews)) {
+    for (const row of raw.customViews) {
+      const view = parseCustomViewRow(row);
+      if (!view || seen.has(view.id)) continue;
+      seen.add(view.id);
+      customViews.push(view);
+      if (customViews.length >= 12) break;
     }
-    if (typeof r.label !== "string" || !r.label.trim()) continue;
-    if (typeof r.svg !== "string") continue;
-    const svg = sanitizeAnatomySvg(r.svg);
-    if (!svg) continue;
-    customViews.push({
-      id: r.id,
-      label: r.label.trim().slice(0, 80),
-      svg,
-    });
-    if (customViews.length >= 12) break;
   }
-  return { customViews };
+  const archivedViews: BodyChartCustomView[] = [];
+  if (Array.isArray(raw.archivedViews)) {
+    for (const row of raw.archivedViews) {
+      const view = parseCustomViewRow(row);
+      if (!view || seen.has(view.id)) continue;
+      seen.add(view.id);
+      archivedViews.push(view);
+      if (archivedViews.length >= MAX_ARCHIVED_CUSTOM_VIEWS) break;
+    }
+  }
+  return archivedViews.length
+    ? { customViews, archivedViews }
+    : { customViews };
+}
+
+/** Active + archived custom views (archived last) for mark rendering / print. */
+export function allCustomViews(config: BodyChartConfig): BodyChartCustomView[] {
+  return [...config.customViews, ...(config.archivedViews ?? [])];
 }
 
 function clamp01(n: number) {

@@ -78,7 +78,10 @@ export function sanitizeAnatomySvgAllowlist(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed || trimmed.length > MAX_SVG_CHARS) return null;
   // Force plain text SVG — entity / unicode escapes are a common bypass class
-  if (/&#|&lt;|&gt;|&quot;|&apos;|\\u00|\\x[0-9a-f]/i.test(trimmed)) {
+  // Named entities (&colon; etc.) can reconstruct schemes if ever HTML-parsed
+  if (
+    /&#|&[a-zA-Z]+;|\\u00|\\x[0-9a-f]/i.test(trimmed)
+  ) {
     return null;
   }
   if (!/^<svg(\s|>)/i.test(trimmed)) return null;
@@ -189,6 +192,11 @@ export function parseSanitizedSvgInner(svg: string): SanitizedSvgNode[] | null {
     );
     if (close) {
       const tag = close[1]!.toLowerCase();
+      if (VOID_SHAPE_TAGS.has(tag)) {
+        i += close[0].length;
+        continue;
+      }
+      if (!ALLOWED_TAGS.has(tag) || tag === "svg") return null;
       if (stack.length <= 1) return null;
       const frame = stack.pop()!;
       if (frame.tag !== tag) return null;
@@ -198,12 +206,16 @@ export function parseSanitizedSvgInner(svg: string): SanitizedSvgNode[] | null {
     }
     if (open) {
       const tag = open[1]!.toLowerCase();
+      // Defense in depth: same tag allowlist as sanitize (never mount script/iframe/…)
+      if (!ALLOWED_TAGS.has(tag) || tag === "svg") return null;
       const attrs = parseAttrsStrict(open[2] ?? "");
       if (attrs === null) return null;
       const selfClosing = Boolean(open[3]) || VOID_SHAPE_TAGS.has(tag);
       if (selfClosing) {
+        if (tag === "title" || tag === "desc") return null;
         stack[stack.length - 1]!.children.push({ tag, attrs, children: [] });
       } else {
+        if (tag !== "g" && tag !== "title" && tag !== "desc") return null;
         stack.push({ tag, attrs, children: [] });
       }
       i += open[0].length;

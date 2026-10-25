@@ -43,6 +43,9 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = useRef(content);
   contentRef.current = content;
+  /** Monotonic save generation — stale in-flight PATCHes must not clobber UI. */
+  const saveSeq = useRef(0);
+  const saveAbort = useRef<AbortController | null>(null);
 
   const sections = useMemo(
     () => parseTemplateSections(note?.template?.schema),
@@ -78,30 +81,47 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   }, [load]);
 
   useEffect(() => {
-    void api<{ config: { customViews: BodyChartCustomView[] } }>(
-      "/clinic/body-chart",
-    )
-      .then((d) => setCustomViews(d.config.customViews ?? []))
+    void api<{
+      config: {
+        customViews: BodyChartCustomView[];
+        archivedViews?: BodyChartCustomView[];
+      };
+    }>("/clinic/body-chart")
+      .then((d) =>
+        setCustomViews([
+          ...(d.config.customViews ?? []),
+          ...(d.config.archivedViews ?? []),
+        ]),
+      )
       .catch(() => setCustomViews([]));
   }, []);
 
   const save = useCallback(
     async (nextContent: Record<string, unknown>) => {
       if (readOnly) return;
+      const seq = ++saveSeq.current;
+      saveAbort.current?.abort();
+      const ac = new AbortController();
+      saveAbort.current = ac;
       setSaving(true);
       setError(null);
       try {
         await api(`/notes/${noteId}`, {
           method: "PATCH",
           body: JSON.stringify({ content: nextContent }),
+          signal: ac.signal,
         });
-        setContent(nextContent);
+        if (seq !== saveSeq.current) return;
+        // Never setContent from the request payload — newer local edits win.
         setSavedAt(new Date().toISOString());
-        setDirty(false);
+        if (contentRef.current === nextContent) {
+          setDirty(false);
+        }
       } catch (e) {
+        if (ac.signal.aborted || seq !== saveSeq.current) return;
         setError(e instanceof Error ? e.message : "Save failed");
       } finally {
-        setSaving(false);
+        if (seq === saveSeq.current) setSaving(false);
       }
     },
     [noteId, readOnly],
@@ -121,6 +141,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   useEffect(() => {
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+      saveAbort.current?.abort();
     };
   }, []);
 
@@ -136,19 +157,31 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   async function sign() {
     if (readOnly) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    // Invalidate any in-flight autosave so it cannot race the sign PATCH
+    const seq = ++saveSeq.current;
+    saveAbort.current?.abort();
+    const ac = new AbortController();
+    saveAbort.current = ac;
     setSaving(true);
     setError(null);
     try {
       await api(`/notes/${noteId}`, {
         method: "PATCH",
         body: JSON.stringify({ content: contentRef.current }),
+        signal: ac.signal,
       });
-      await api(`/notes/${noteId}/sign`, { method: "POST", body: "{}" });
+      await api(`/notes/${noteId}/sign`, {
+        method: "POST",
+        body: "{}",
+        signal: ac.signal,
+      });
+      if (seq !== saveSeq.current) return;
       await load();
     } catch (e) {
+      if (ac.signal.aborted || seq !== saveSeq.current) return;
       setError(e instanceof Error ? e.message : "Sign failed");
     } finally {
-      setSaving(false);
+      if (seq === saveSeq.current) setSaving(false);
     }
   }
 
@@ -203,7 +236,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
                 type="button"
                 className="btn-secondary btn-sm"
                 disabled={saving}
-                onClick={() => void save(content)}
+                onClick={() => void save(contentRef.current)}
               >
                 {saving ? "Saving…" : "Save now"}
               </button>
