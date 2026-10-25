@@ -57,24 +57,20 @@ export async function ensureIntakeForAppointment(opts: {
   patientId: string;
   appointmentId: string;
 }) {
-  const completed = await prisma.patientIntakeSubmission.findFirst({
-    where: {
-      clinicId: opts.clinicId,
-      patientId: opts.patientId,
-      status: "COMPLETED",
-      formKey: OSTEO_CONSENT_FORM_KEY,
-    },
-    orderBy: { completedAt: "desc" },
-  });
-  if (completed) {
-    return {
-      submission: completed,
-      url: null as string | null,
-      alreadyComplete: true,
-    };
-  }
+  const ensured = await withClinicTransaction(opts.clinicId, async (tx) => {
+    const completed = await tx.patientIntakeSubmission.findFirst({
+      where: {
+        clinicId: opts.clinicId,
+        patientId: opts.patientId,
+        status: "COMPLETED",
+        formKey: OSTEO_CONSENT_FORM_KEY,
+      },
+      orderBy: { completedAt: "desc" },
+    });
+    if (completed) {
+      return { submission: completed, alreadyComplete: true as const };
+    }
 
-  const submission = await withClinicTransaction(opts.clinicId, async (tx) => {
     const existingDraft = await tx.patientIntakeSubmission.findFirst({
       where: {
         clinicId: opts.clinicId,
@@ -85,7 +81,9 @@ export async function ensureIntakeForAppointment(opts: {
       },
       orderBy: { startedAt: "desc" },
     });
-    if (existingDraft) return existingDraft;
+    if (existingDraft) {
+      return { submission: existingDraft, alreadyComplete: false as const };
+    }
 
     const orphanDraft = await tx.patientIntakeSubmission.findFirst({
       where: {
@@ -98,13 +96,14 @@ export async function ensureIntakeForAppointment(opts: {
       orderBy: { startedAt: "desc" },
     });
     if (orphanDraft) {
-      return tx.patientIntakeSubmission.update({
+      const attached = await tx.patientIntakeSubmission.update({
         where: { id: orphanDraft.id },
         data: { appointmentId: opts.appointmentId },
       });
+      return { submission: attached, alreadyComplete: false as const };
     }
 
-    return tx.patientIntakeSubmission.create({
+    const created = await tx.patientIntakeSubmission.create({
       data: {
         clinicId: opts.clinicId,
         patientId: opts.patientId,
@@ -115,14 +114,23 @@ export async function ensureIntakeForAppointment(opts: {
         answers: {},
       },
     });
+    return { submission: created, alreadyComplete: false as const };
   });
 
+  if (ensured.alreadyComplete) {
+    return {
+      submission: ensured.submission,
+      url: null as string | null,
+      alreadyComplete: true,
+    };
+  }
+
   const token = createIntakeToken(
-    submission.id,
+    ensured.submission.id,
     Date.now() + INTAKE_TOKEN_TTL_MS,
   );
   return {
-    submission,
+    submission: ensured.submission,
     url: intakeUrlForToken(token),
     token,
     alreadyComplete: false,

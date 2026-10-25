@@ -16,14 +16,25 @@ I confirm the information I provide is accurate to the best of my knowledge.`;
 
 function isPastDateOfBirth(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const d = new Date(`${value}T12:00:00.000Z`);
-  if (Number.isNaN(d.getTime())) return false;
-  const min = new Date("1900-01-01T12:00:00.000Z");
+  const [yStr, mStr, dStr] = value.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const d = Number(dStr);
+  // Reject JS Date rollover (e.g. 1990-02-31 → March)
+  const utc = new Date(Date.UTC(y, m - 1, d, 12));
+  if (
+    utc.getUTCFullYear() !== y ||
+    utc.getUTCMonth() !== m - 1 ||
+    utc.getUTCDate() !== d
+  ) {
+    return false;
+  }
+  const min = new Date(Date.UTC(1900, 0, 1, 12));
   const today = new Date();
   const todayUtc = new Date(
     Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 12),
   );
-  return d >= min && d <= todayUtc;
+  return utc >= min && utc <= todayUtc;
 }
 
 export const intakeAnswersSchema = z.object({

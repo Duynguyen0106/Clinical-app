@@ -221,19 +221,25 @@ export async function sendBookingConfirmation(
   }
 
   if (apt.patient.phone) {
+    // Omit long consent URL from SMS when email already carried the CTA.
+    const smsConsentLink =
+      intakeLink && !intakeEmailSent ? intakeLink : null;
     const smsBody = [
       `${apt.clinic.name}: booking confirmed`,
       when,
       `with ${apt.practitioner.displayName}`,
       apt.room ? `Room ${apt.room.name}` : null,
       `Manage: ${manageLink}`,
-      intakeLink ? `Consent forms: ${intakeLink}` : null,
+      smsConsentLink ? `Consent forms: ${smsConsentLink}` : null,
     ]
       .filter(Boolean)
       .join(" · ");
     const smsResult = await sendSms({ to: apt.patient.phone, body: smsBody });
     smsSent = smsResult.delivered;
-    if (intakeLink && (smsResult.delivered || smsResult.provider === "console")) {
+    if (
+      smsConsentLink &&
+      (smsResult.delivered || smsResult.provider === "console")
+    ) {
       intakeEmailSent = true;
     }
   }

@@ -78,9 +78,12 @@ describe("intake consent schema", () => {
     assert.equal(normalizePersonName("José  O'Neil"), "jose o neil");
   });
 
-  it("rejects future dates of birth", () => {
+  it("rejects future and invalid calendar dates of birth", () => {
     assert.throws(() =>
       intakeAnswersSchema.parse({ dateOfBirth: "2999-01-01" }),
+    );
+    assert.throws(() =>
+      intakeAnswersSchema.parse({ dateOfBirth: "1990-02-31" }),
     );
     const ok = intakeAnswersSchema.parse({ dateOfBirth: "1990-05-01" });
     assert.equal(ok.dateOfBirth, "1990-05-01");

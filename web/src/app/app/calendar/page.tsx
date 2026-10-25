@@ -1595,7 +1595,7 @@ export default function CalendarPage() {
                   })()
                 }
               >
-                Email consent forms
+                Send consent forms
               </button>
             ) : null}
 
