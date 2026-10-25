@@ -11,9 +11,11 @@ import {
   parseBodyChartConfig,
   parseBodyMap,
   resolveCustomViewsForMap,
+  sanitizeNoteContent,
   type BodyChartCustomView,
   type BodyMapContent,
 } from "@/modules/notes/body-map";
+import { hashNoteContent } from "@/modules/notes/hash";
 
 
 export type DocumentSection = { key: string; label: string; value: string };
@@ -296,6 +298,18 @@ async function loadSignedNoteForDocuments(ctx: AuthContext, noteId: string) {
   if (!note) throw notFound("Note not found");
   if (note.status !== NoteStatus.SIGNED) {
     throw badRequest("Only signed notes can be printed or used for GP letters");
+  }
+  if (note.contentHash) {
+    const raw =
+      note.content && typeof note.content === "object" && !Array.isArray(note.content)
+        ? (note.content as Record<string, unknown>)
+        : {};
+    const expected = hashNoteContent(sanitizeNoteContent(raw));
+    if (expected !== note.contentHash) {
+      throw badRequest(
+        "Signed note content hash mismatch — record may be corrupted; contact support",
+      );
+    }
   }
 
   const clinic =

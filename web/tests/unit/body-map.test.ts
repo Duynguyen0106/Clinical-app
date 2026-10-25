@@ -454,6 +454,86 @@ describe("body map model", () => {
     assert.equal(clean.viewSnapshots![0]!.id, "custom_v0");
   });
 
+  it("keeps needed snapshot when extras precede it in the array", () => {
+    const safe = sanitizeAnatomySvg(
+      '<svg viewBox="0 0 200 360"><path d="M10 10 L20 20"/></svg>',
+    )!;
+    const extras = Array.from({ length: 48 }, (_, i) => ({
+      id: `custom_x${i}`,
+      label: `X${i}`,
+      svg: safe,
+    }));
+    const clean = sanitizeBodyMap({
+      version: 1,
+      activeView: "custom_needed",
+      marks: [
+        {
+          id: "1",
+          kind: "pain",
+          view: "custom_needed",
+          x: 0.5,
+          y: 0.5,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      viewSnapshots: [
+        ...extras,
+        { id: "custom_needed", label: "Needed", svg: safe },
+      ],
+    });
+    assert.equal(clean.marks.length, 1);
+    assert.ok(clean.viewSnapshots?.some((v) => v.id === "custom_needed"));
+  });
+
+  it("prefers canonical body_map over a misplaced key with more marks", () => {
+    const safe = sanitizeAnatomySvg(
+      '<svg viewBox="0 0 200 360"><path d="M10 10 L20 20"/></svg>',
+    )!;
+    const content = {
+      [BODY_MAP_CONTENT_KEY]: {
+        version: 1,
+        activeView: "custom_tmj",
+        marks: [
+          {
+            id: "a",
+            kind: "pain",
+            view: "custom_tmj",
+            x: 0.4,
+            y: 0.4,
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        viewSnapshots: [{ id: "custom_tmj", label: "TMJ", svg: safe }],
+      },
+      chart: {
+        version: 1,
+        activeView: "posterior",
+        marks: [
+          {
+            id: "b",
+            kind: "pain",
+            view: "posterior",
+            x: 0.1,
+            y: 0.1,
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+          {
+            id: "c",
+            kind: "lesion",
+            view: "anterior",
+            x: 0.2,
+            y: 0.2,
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      },
+    };
+    const map = parseBodyMap(content);
+    assert.equal(map.marks.length, 1);
+    assert.equal(map.marks[0]!.id, "a");
+    assert.equal(map.viewSnapshots?.[0]?.id, "custom_tmj");
+  });
+
   it("rejects reserved body_map id on non-chart template sections", () => {
     assert.throws(() =>
       noteTemplateUpsertSchema.parse({

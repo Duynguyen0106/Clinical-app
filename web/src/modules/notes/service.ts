@@ -2,7 +2,7 @@ import { z } from "zod";
 import { NoteStatus, Prisma } from "@/generated/prisma/client";
 import type { AuthContext } from "@/server/auth";
 import { prisma } from "@/server/db";
-import { badRequest, notFound } from "@/server/errors";
+import { badRequest, conflict, notFound } from "@/server/errors";
 import type { NoteContent } from "@/modules/ai/providers";
 import { hashNoteContent } from "@/modules/notes/hash";
 import { assertNoteDiaryAccess } from "@/modules/notes/access";
@@ -36,19 +36,36 @@ export async function listNoteTemplates(ctx: AuthContext) {
  * Runs in a transaction to reduce duplicate-insert races from concurrent list calls.
  */
 export async function ensureBodyMapSectionsOnTemplates(clinicId: string) {
+  // Cheap read first — skip Serializable write txn when nothing to heal
+  const templates = await prisma.noteTemplate.findMany({
+    where: { clinicId },
+    select: { id: true, schema: true },
+  });
+  const pending = templates
+    .map((tpl) => ({
+      id: tpl.id,
+      schema: normalizeTemplateSchemaWithBodyMap(tpl.schema),
+    }))
+    .filter((row): row is { id: string; schema: { sections: unknown[] } } =>
+      Boolean(row.schema),
+    );
+  if (pending.length === 0) return;
+
   await withSerializableRetry(async () =>
     withClinicTransaction(
       clinicId,
       async (tx) => {
-        const templates = await tx.noteTemplate.findMany({
-          where: { clinicId },
-          select: { id: true, schema: true },
-        });
-        for (const tpl of templates) {
-          const nextSchema = normalizeTemplateSchemaWithBodyMap(tpl.schema);
+        for (const row of pending) {
+          // Re-read inside txn in case OWNER edited mid-flight
+          const live = await tx.noteTemplate.findFirst({
+            where: { id: row.id, clinicId },
+            select: { schema: true },
+          });
+          if (!live) continue;
+          const nextSchema = normalizeTemplateSchemaWithBodyMap(live.schema);
           if (!nextSchema) continue;
           await tx.noteTemplate.update({
-            where: { id: tpl.id },
+            where: { id: row.id },
             data: { schema: nextSchema as Prisma.InputJsonValue },
           });
         }
@@ -443,8 +460,11 @@ export async function createDraftFromAi(
 
 export const updateNoteSchema = z.object({
   content: z.record(z.string(), z.unknown()),
-  /** Optional optimistic concurrency token (ISO updatedAt from last load/save). */
-  baseUpdatedAt: z.string().datetime().optional(),
+  /** Optimistic concurrency token (ISO updatedAt from last load/save). */
+  baseUpdatedAt: z
+    .string()
+    .refine((s) => !Number.isNaN(Date.parse(s)), "Invalid baseUpdatedAt")
+    .optional(),
 });
 
 async function clinicCustomViewsForSnapshots(
@@ -484,14 +504,6 @@ export async function updateDraftNote(
     if (note.status !== NoteStatus.DRAFT) {
       throw badRequest("Only draft notes can be edited");
     }
-    if (
-      opts.baseUpdatedAt &&
-      note.updatedAt.toISOString() !== opts.baseUpdatedAt
-    ) {
-      throw badRequest(
-        "Note was modified elsewhere — reload before saving",
-      );
-    }
 
     // If the client omitted body_map entirely, keep existing clinician marks.
     // An explicit empty/present body_map still replaces (intentional edit).
@@ -506,12 +518,29 @@ export async function updateDraftNote(
     sanitized = contentWithSnapshots(sanitized, clinicViews, note.content);
     const hasBodyMap = parseBodyMap(sanitized).marks.length > 0;
 
-    // Status predicate closes the race where a stale PATCH lands after sign
+    // Atomic CAS: status + optional updatedAt in the same updateMany predicate
+    const where: Prisma.ClinicalNoteWhereInput = {
+      id,
+      status: NoteStatus.DRAFT,
+      ...(opts.baseUpdatedAt
+        ? { updatedAt: new Date(opts.baseUpdatedAt) }
+        : {}),
+    };
     const updated = await tx.clinicalNote.updateMany({
-      where: { id, status: NoteStatus.DRAFT },
+      where,
       data: { content: sanitized as Prisma.InputJsonValue },
     });
     if (updated.count !== 1) {
+      const current = await tx.clinicalNote.findFirst({
+        where: { id, patient: { clinicId: ctx.clinicId } },
+        select: { status: true },
+      });
+      if (!current || current.status !== NoteStatus.DRAFT) {
+        throw badRequest("Only draft notes can be edited");
+      }
+      if (opts.baseUpdatedAt) {
+        throw conflict("Note was modified elsewhere — reload before saving");
+      }
       throw badRequest("Only draft notes can be edited");
     }
     await tx.noteAuditEvent.create({

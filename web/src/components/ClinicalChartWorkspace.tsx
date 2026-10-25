@@ -49,6 +49,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   /** Monotonic save generation — stale in-flight PATCHes must not clobber UI. */
   const saveSeq = useRef(0);
   const saveAbort = useRef<AbortController | null>(null);
+  const savePromiseRef = useRef<Promise<void> | null>(null);
   const signingRef = useRef(false);
   const baseUpdatedAtRef = useRef<string | null>(null);
 
@@ -110,6 +111,18 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
       });
   }, []);
 
+  const mergeServerSnapshots = useCallback((serverContent: unknown) => {
+    const serverMap = parseBodyMap(serverContent);
+    if (!serverMap.viewSnapshots?.length) return;
+    const local = parseBodyMap(contentRef.current);
+    const merged = withBodyMap(contentRef.current, {
+      ...local,
+      viewSnapshots: serverMap.viewSnapshots,
+    });
+    contentRef.current = merged;
+    setContent(merged);
+  }, []);
+
   const save = useCallback(
     async (nextContent: Record<string, unknown>) => {
       if (statusLocked || signingRef.current) return;
@@ -119,10 +132,11 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
       saveAbort.current = ac;
       setSaving(true);
       setError(null);
-      try {
-        const data = await api<{ note: { updatedAt?: string; content?: unknown } }>(
-          `/notes/${noteId}`,
-          {
+      const run = (async () => {
+        try {
+          const data = await api<{
+            note: { updatedAt?: string; content?: unknown };
+          }>(`/notes/${noteId}`, {
             method: "PATCH",
             body: JSON.stringify({
               content: nextContent,
@@ -131,38 +145,35 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
                 : {}),
             }),
             signal: ac.signal,
-          },
-        );
-        if (seq !== saveSeq.current || signingRef.current) return;
-        if (typeof data.note.updatedAt === "string") {
-          baseUpdatedAtRef.current = data.note.updatedAt;
-        }
-        // Merge server-frozen snapshots into local state without clobbering newer edits
-        if (
-          data.note.content &&
-          typeof data.note.content === "object" &&
-          contentRef.current === nextContent
-        ) {
-          const serverMap = parseBodyMap(data.note.content);
-          if (serverMap.viewSnapshots?.length) {
-            const merged = withBodyMap(contentRef.current, {
-              ...parseBodyMap(contentRef.current),
-              viewSnapshots: serverMap.viewSnapshots,
-            });
-            contentRef.current = merged;
-            setContent(merged);
+          });
+          if (seq !== saveSeq.current) return;
+          if (typeof data.note.updatedAt === "string") {
+            baseUpdatedAtRef.current = data.note.updatedAt;
           }
-          setDirty(false);
+          if (data.note.content && typeof data.note.content === "object") {
+            mergeServerSnapshots(data.note.content);
+          }
+          if (contentRef.current === nextContent || !signingRef.current) {
+            // Clear dirty when we saved the latest local payload
+            if (
+              JSON.stringify(parseBodyMap(contentRef.current).marks) ===
+              JSON.stringify(parseBodyMap(nextContent).marks)
+            ) {
+              setDirty(false);
+            }
+          }
+          setSavedAt(new Date().toISOString());
+        } catch (e) {
+          if (ac.signal.aborted || seq !== saveSeq.current) return;
+          setError(e instanceof Error ? e.message : "Save failed");
+        } finally {
+          if (seq === saveSeq.current) setSaving(false);
         }
-        setSavedAt(new Date().toISOString());
-      } catch (e) {
-        if (ac.signal.aborted || seq !== saveSeq.current) return;
-        setError(e instanceof Error ? e.message : "Save failed");
-      } finally {
-        if (seq === saveSeq.current) setSaving(false);
-      }
+      })();
+      savePromiseRef.current = run;
+      await run;
     },
-    [noteId, statusLocked],
+    [noteId, statusLocked, mergeServerSnapshots],
   );
 
   function scheduleAutosave(next: Record<string, unknown>) {
@@ -185,52 +196,75 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   }, []);
 
   function updateMarkdown(id: string, value: string) {
-    if (signingRef.current) return;
+    // Always apply locally so marksRef / text stay consistent; skip autosave while signing
     const next = { ...contentRef.current, [id]: value };
+    if (signingRef.current) {
+      contentRef.current = next;
+      setContent(next);
+      return;
+    }
     scheduleAutosave(next);
   }
 
   function updateBodyMap(map: BodyMapContent) {
-    if (signingRef.current) return;
-    scheduleAutosave(withBodyMap(contentRef.current, map));
+    const next = withBodyMap(contentRef.current, map);
+    if (signingRef.current) {
+      contentRef.current = next;
+      setContent(next);
+      return;
+    }
+    scheduleAutosave(next);
   }
 
   async function sign() {
     if (statusLocked || signingRef.current) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    // Abort in-flight autosave only — sign uses its own controller
-    saveAbort.current?.abort();
-    ++saveSeq.current;
+    // Wait for in-flight autosave to finish (don't abort — server may still commit)
+    if (savePromiseRef.current) {
+      await savePromiseRef.current.catch(() => {});
+    }
     signingRef.current = true;
     setSigning(true);
     setSaving(true);
     setError(null);
-    const ac = new AbortController();
     try {
-      const patched = await api<{ note: { updatedAt?: string } }>(
-        `/notes/${noteId}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            content: contentRef.current,
-            ...(baseUpdatedAtRef.current
-              ? { baseUpdatedAt: baseUpdatedAtRef.current }
-              : {}),
-          }),
-          signal: ac.signal,
-        },
-      );
+      const patchOnce = () =>
+        api<{ note: { updatedAt?: string; content?: unknown } }>(
+          `/notes/${noteId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              content: contentRef.current,
+              ...(baseUpdatedAtRef.current
+                ? { baseUpdatedAt: baseUpdatedAtRef.current }
+                : {}),
+            }),
+          },
+        );
+      let patched;
+      try {
+        patched = await patchOnce();
+      } catch (e) {
+        // OCC conflict after a late autosave — refresh token and retry once
+        const msg = e instanceof Error ? e.message : "";
+        if (!/modified elsewhere/i.test(msg)) throw e;
+        const fresh = await api<NotePayload>(`/notes/${noteId}`);
+        baseUpdatedAtRef.current =
+          typeof fresh.note.updatedAt === "string"
+            ? fresh.note.updatedAt
+            : null;
+        patched = await patchOnce();
+      }
       if (typeof patched.note.updatedAt === "string") {
         baseUpdatedAtRef.current = patched.note.updatedAt;
       }
+      if (patched.note.content) mergeServerSnapshots(patched.note.content);
       await api(`/notes/${noteId}/sign`, {
         method: "POST",
         body: "{}",
-        signal: ac.signal,
       });
       await load();
     } catch (e) {
-      if (ac.signal.aborted) return;
       setError(e instanceof Error ? e.message : "Sign failed");
     } finally {
       signingRef.current = false;

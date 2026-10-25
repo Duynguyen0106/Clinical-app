@@ -253,12 +253,22 @@ function sanitizeViewSnapshots(
   const neededOut: BodyChartCustomView[] = [];
   const extraOut: BodyChartCustomView[] = [];
   const seen = new Set<string>();
+  // Pass 1: needed ids first so extras cannot starve anatomy snapshots
+  for (const row of raw) {
+    const view = parseCustomViewRow(row);
+    if (!view || seen.has(view.id) || !needed.has(view.id)) continue;
+    seen.add(view.id);
+    neededOut.push(view);
+    if (neededOut.length >= MAX_ARCHIVED_CUSTOM_VIEWS) {
+      return neededOut;
+    }
+  }
+  if (!keepExtra) return neededOut;
   for (const row of raw) {
     const view = parseCustomViewRow(row);
     if (!view || seen.has(view.id)) continue;
     seen.add(view.id);
-    if (needed.has(view.id)) neededOut.push(view);
-    else if (keepExtra) extraOut.push(view);
+    extraOut.push(view);
     if (neededOut.length + extraOut.length >= MAX_ARCHIVED_CUSTOM_VIEWS) break;
   }
   return [...neededOut, ...extraOut].slice(0, MAX_ARCHIVED_CUSTOM_VIEWS);
@@ -349,12 +359,27 @@ export function parseBodyMap(content: unknown): BodyMapContent {
     return emptyBodyMap();
   }
   const raw = content as Record<string, unknown>;
-  let best = sanitizeBodyMap(raw[BODY_MAP_CONTENT_KEY]);
+  const canonical = sanitizeBodyMap(raw[BODY_MAP_CONTENT_KEY]);
+  // Prefer canonical whenever it has marks — never lose its viewSnapshots to a
+  // misplaced key that merely has a longer marks array.
+  if (canonical.marks.length > 0) return canonical;
+
+  let best = canonical;
   for (const [key, val] of Object.entries(raw)) {
     if (key === BODY_MAP_CONTENT_KEY) continue;
     if (!isBodyMapContent(val) && !looksLikeBodyMap(val)) continue;
     const alt = sanitizeBodyMap(val);
-    if (alt.marks.length > best.marks.length) best = alt;
+    if (alt.marks.length > best.marks.length) {
+      best = {
+        ...alt,
+        // Keep any snapshots already on the canonical key
+        ...(canonical.viewSnapshots?.length
+          ? { viewSnapshots: canonical.viewSnapshots }
+          : alt.viewSnapshots?.length
+            ? { viewSnapshots: alt.viewSnapshots }
+            : {}),
+      };
+    }
   }
   return best;
 }

@@ -63,6 +63,7 @@ type VisitPayload = {
     id: string;
     status: string;
     content: Record<string, unknown>;
+    updatedAt?: string;
     parentNoteId?: string | null;
     voidReason?: string | null;
     template?: { id: string; name: string; schema: unknown } | null;
@@ -131,6 +132,27 @@ export function VisitRecorder({ visitId }: Props) {
   const chartSaveAbort = useRef<AbortController | null>(null);
   const signBusyRef = useRef(false);
   const baseUpdatedAtRef = useRef<string | null>(null);
+  const chartSavePromiseRef = useRef<Promise<void> | null>(null);
+
+  function adoptNote(note: {
+    id: string;
+    updatedAt?: string | Date | null;
+  }) {
+    setNoteId(note.id);
+    noteIdRef.current = note.id;
+    baseUpdatedAtRef.current =
+      typeof note.updatedAt === "string"
+        ? note.updatedAt
+        : note.updatedAt instanceof Date
+          ? note.updatedAt.toISOString()
+          : null;
+  }
+
+  function clearAdoptedNote() {
+    setNoteId(null);
+    noteIdRef.current = null;
+    baseUpdatedAtRef.current = null;
+  }
 
   function applyTemplateMeta(
     template?: { id: string; name: string; schema: unknown } | null,
@@ -165,41 +187,42 @@ export function VisitRecorder({ visitId }: Props) {
       chartSaveAbort.current?.abort();
       const ac = new AbortController();
       chartSaveAbort.current = ac;
-      try {
-        const data = await api<{
-          note: { updatedAt?: string; content?: unknown };
-        }>(`/notes/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            content: next,
-            ...(baseUpdatedAtRef.current
-              ? { baseUpdatedAt: baseUpdatedAtRef.current }
-              : {}),
-          }),
-          signal: ac.signal,
-        });
-        if (seq !== chartSaveSeq.current || signBusyRef.current) return;
-        if (typeof data.note.updatedAt === "string") {
-          baseUpdatedAtRef.current = data.note.updatedAt;
-        }
-        if (
-          data.note.content &&
-          typeof data.note.content === "object" &&
-          contentRef.current === next
-        ) {
-          const serverMap = parseBodyMap(data.note.content);
-          if (serverMap.viewSnapshots?.length) {
-            const merged = withBodyMap(contentRef.current, {
-              ...parseBodyMap(contentRef.current),
-              viewSnapshots: serverMap.viewSnapshots,
-            });
-            contentRef.current = merged;
-            setContent(merged);
+      const run = (async () => {
+        try {
+          const data = await api<{
+            note: { updatedAt?: string; content?: unknown };
+          }>(`/notes/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              content: next,
+              ...(baseUpdatedAtRef.current
+                ? { baseUpdatedAt: baseUpdatedAtRef.current }
+                : {}),
+            }),
+            signal: ac.signal,
+          });
+          if (seq !== chartSaveSeq.current) return;
+          if (typeof data.note.updatedAt === "string") {
+            baseUpdatedAtRef.current = data.note.updatedAt;
           }
+          if (data.note.content && typeof data.note.content === "object") {
+            const serverMap = parseBodyMap(data.note.content);
+            if (serverMap.viewSnapshots?.length) {
+              const local = parseBodyMap(contentRef.current);
+              const merged = withBodyMap(contentRef.current, {
+                ...local,
+                viewSnapshots: serverMap.viewSnapshots,
+              });
+              contentRef.current = merged;
+              setContent(merged);
+            }
+          }
+        } catch {
+          /* autosave errors surface on explicit sign */
         }
-      } catch {
-        /* autosave errors surface on explicit sign */
-      }
+      })();
+      chartSavePromiseRef.current = run;
+      await run;
     },
     [],
   );
@@ -241,14 +264,14 @@ export function VisitRecorder({ visitId }: Props) {
         const draft = v.notes.find((n) => n.status === "DRAFT");
         const signed = v.notes.find((n) => n.status === "SIGNED");
         if (signed) {
-          setNoteId(signed.id);
+          adoptNote(signed);
           setContent(stringifyContent(signed.content));
           applyTemplateMeta(signed.template);
           setPhase("signed");
           return;
         }
         if (draft) {
-          setNoteId(draft.id);
+          adoptNote(draft);
           setContent(stringifyContent(draft.content));
           setFlags(asFlags(draft.content));
           applyTemplateMeta(draft.template);
@@ -405,7 +428,7 @@ export function VisitRecorder({ visitId }: Props) {
       if (draft) {
         await clearVisitAudioBuffer(visitId);
         setVisit(v);
-        setNoteId(draft.id);
+        adoptNote(draft);
         setContent(stringifyContent(draft.content));
         setFlags(asFlags(draft.content));
         applyTemplateMeta(draft.template);
@@ -470,18 +493,16 @@ export function VisitRecorder({ visitId }: Props) {
 
     if (result.note) {
       await clearVisitAudioBuffer(visitId);
-      setNoteId(result.note.id);
+      const { visit: v } = await api<{ visit: VisitPayload }>(
+        `/visits/${visitId}`,
+      );
+      setVisit(v);
+      const draft = v.notes.find((n) => n.id === result.note!.id);
+      adoptNote(draft ?? result.note);
       setContent(stringifyContent(result.note.content));
       setFlags(asFlags(result.note.content));
       if (result.template) applyTemplateMeta(result.template);
-      else {
-        const { visit: v } = await api<{ visit: VisitPayload }>(
-          `/visits/${visitId}`,
-        );
-        setVisit(v);
-        const draft = v.notes.find((n) => n.id === result.note!.id);
-        applyTemplateMeta(draft?.template);
-      }
+      else applyTemplateMeta(draft?.template);
       setPhase("review");
       return;
     }
@@ -538,14 +559,15 @@ export function VisitRecorder({ visitId }: Props) {
         { attempts: 2, delayMs: 1200 },
       );
       if (result.note) {
-        setNoteId(result.note.id);
         setContent(stringifyContent(result.note.content));
         setFlags(asFlags(result.note.content));
         const { visit: v } = await api<{ visit: VisitPayload }>(
           `/visits/${visitId}`,
         );
         setVisit(v);
-        applyTemplateMeta(v.notes.find((n) => n.id === result.note!.id)?.template);
+        const draft = v.notes.find((n) => n.id === result.note!.id);
+        adoptNote(draft ?? result.note);
+        applyTemplateMeta(draft?.template);
         setPhase("review");
         return;
       }
@@ -574,24 +596,42 @@ export function VisitRecorder({ visitId }: Props) {
   async function signNote() {
     if (!noteId || signBusyRef.current) return;
     if (chartAutosaveTimer.current) clearTimeout(chartAutosaveTimer.current);
-    chartSaveAbort.current?.abort();
-    ++chartSaveSeq.current;
+    // Wait for in-flight autosave rather than aborting (server may still commit)
+    if (chartSavePromiseRef.current) {
+      await chartSavePromiseRef.current.catch(() => {});
+    }
     signBusyRef.current = true;
     setSignBusy(true);
     setError(null);
     try {
-      const patched = await api<{ note: { updatedAt?: string } }>(
-        `/notes/${noteId}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            content: contentRef.current,
-            ...(baseUpdatedAtRef.current
-              ? { baseUpdatedAt: baseUpdatedAtRef.current }
-              : {}),
-          }),
-        },
-      );
+      const patchOnce = () =>
+        api<{ note: { updatedAt?: string; content?: unknown } }>(
+          `/notes/${noteId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              content: contentRef.current,
+              ...(baseUpdatedAtRef.current
+                ? { baseUpdatedAt: baseUpdatedAtRef.current }
+                : {}),
+            }),
+          },
+        );
+      let patched;
+      try {
+        patched = await patchOnce();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "";
+        if (!/modified elsewhere/i.test(msg)) throw e;
+        const fresh = await api<{ note: { updatedAt?: string } }>(
+          `/notes/${noteId}`,
+        );
+        baseUpdatedAtRef.current =
+          typeof fresh.note.updatedAt === "string"
+            ? fresh.note.updatedAt
+            : null;
+        patched = await patchOnce();
+      }
       if (typeof patched.note.updatedAt === "string") {
         baseUpdatedAtRef.current = patched.note.updatedAt;
       }
@@ -629,7 +669,7 @@ export function VisitRecorder({ visitId }: Props) {
       });
       setCorrectionOpen(null);
       setVoidReason("");
-      setNoteId(null);
+      clearAdoptedNote();
       setContent({});
       setFlags([]);
       setPhase("ready");
@@ -648,12 +688,12 @@ export function VisitRecorder({ visitId }: Props) {
     setError(null);
     try {
       const { note } = await api<{
-        note: { id: string; content: Record<string, unknown> };
+        note: { id: string; content: Record<string, unknown>; updatedAt?: string };
       }>(`/notes/${noteId}/addendum`, {
         method: "POST",
         body: JSON.stringify({ text: addendumText.trim() }),
       });
-      setNoteId(note.id);
+      adoptNote(note);
       setContent(stringifyContent(note.content));
       setFlags(asFlags(note.content));
       setCorrectionOpen(null);
