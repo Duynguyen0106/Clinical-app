@@ -10,8 +10,11 @@ export {
   BODY_MAP_CONTENT_KEY,
   BODY_MAP_VIEWS,
   BODY_MAP_MARK_KINDS,
+  BODY_MAP_SHAPES,
   emptyBodyMap,
   parseBodyMap,
+  parseBodyChartConfig,
+  sanitizeAnatomySvg,
   markSummary,
   bodyMapPrintLines,
 } from "./body-map";
@@ -19,5 +22,8 @@ export type {
   BodyMapContent,
   BodyMapMark,
   BodyMapMarkKind,
+  BodyMapShape,
   BodyMapViewId,
+  BodyChartConfig,
+  BodyChartCustomView,
 } from "./body-map";
