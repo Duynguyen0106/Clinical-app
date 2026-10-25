@@ -209,7 +209,7 @@ export async function createDepositCheckout(opts: {
     }
     const params = new URLSearchParams();
     params.set("mode", "payment");
-    params.set("success_url", `${successUrl}&session_id={CHECKOUT_SESSION_ID}`);
+    params.set("success_url", `${successUrl}?session_id={CHECKOUT_SESSION_ID}`);
     params.set("cancel_url", cancelUrl);
     params.set("customer_email", apt.patient.email ?? "");
     params.set("line_items[0][price_data][currency]", "gbp");
@@ -435,12 +435,20 @@ export async function waiveDeposit(
 /**
  * Staff confirm bank transfer (or cash) deposit received.
  * Reception / owner only — not a public endpoint.
+ * When PAYMENT_PROVIDER=stripe, staff must not mark card deposits paid without
+ * a verified Stripe session (webhook / deposit-success handles that).
  */
 export async function staffConfirmDepositPaid(
   clinicId: string,
   appointmentId: string,
   actorId?: string | null,
 ) {
+  const provider = getPaymentProvider();
+  if (provider === "stripe") {
+    throw badRequest(
+      "Card deposits are confirmed by Stripe. Wait for payment to complete, or waive the deposit if appropriate.",
+    );
+  }
   const apt = await prisma.appointment.findFirst({
     where: { id: appointmentId, clinicId },
     select: {
@@ -463,7 +471,7 @@ export async function staffConfirmDepositPaid(
     throw badRequest("No outstanding deposit on this appointment");
   }
   console.info(
-    `[payments:staff] deposit marked PAID apt=${appointmentId} clinic=${clinicId}`,
+    `[payments:staff] deposit marked PAID apt=${appointmentId} clinic=${clinicId} provider=${provider}`,
   );
   const updated = await markDepositPaid(appointmentId);
   const { recordScheduleAudit } = await import("@/modules/scheduling/audit");

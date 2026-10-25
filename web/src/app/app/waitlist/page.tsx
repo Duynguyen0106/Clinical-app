@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
@@ -24,7 +24,13 @@ type Catalog = {
   practitioners: { id: string; displayName: string }[];
 };
 
-type Patient = { id: string; firstName: string; lastName: string };
+type Patient = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email?: string | null;
+  phone?: string | null;
+};
 
 export default function WaitlistPage() {
   const router = useRouter();
@@ -35,6 +41,8 @@ export default function WaitlistPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [patientId, setPatientId] = useState("");
+  const [patientQuery, setPatientQuery] = useState("");
+  const [patientMenuOpen, setPatientMenuOpen] = useState(false);
   const [typeId, setTypeId] = useState("");
   const [practitionerId, setPractitionerId] = useState("");
 
@@ -42,17 +50,16 @@ export default function WaitlistPage() {
     void Promise.all([
       api<{ entries: WaitlistEntry[] }>("/waitlist"),
       api<Catalog>("/clinic/catalog"),
-      api<{ patients: Patient[] }>("/patients?take=50"),
+      api<{ patients: Patient[] }>("/patients?take=200"),
     ])
       .then(([w, c, p]) => {
         setEntries(w.entries);
         setCatalog(c);
         setPatients(p.patients);
         if (!typeId && c.appointmentTypes[0]) setTypeId(c.appointmentTypes[0].id);
-        if (!patientId && p.patients[0]) setPatientId(p.patients[0].id);
       })
       .catch((e: Error) => setError(e.message));
-  }, [patientId, typeId]);
+  }, [typeId]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -64,9 +71,36 @@ export default function WaitlistPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount
   }, [authLoading, me?.role, router]);
 
+  const selectedPatient = useMemo(
+    () => patients.find((p) => p.id === patientId) ?? null,
+    [patients, patientId],
+  );
+
+  const filteredPatients = useMemo(() => {
+    const q = patientQuery.trim().toLowerCase();
+    if (!q) return patients.slice(0, 12);
+    return patients
+      .filter((p) => {
+        const hay = `${p.firstName} ${p.lastName} ${p.email ?? ""} ${p.phone ?? ""}`
+          .toLowerCase();
+        return hay.includes(q);
+      })
+      .slice(0, 12);
+  }, [patients, patientQuery]);
+
+  function pickPatient(p: Patient) {
+    setPatientId(p.id);
+    setPatientQuery(`${p.firstName} ${p.lastName}`);
+    setPatientMenuOpen(false);
+  }
+
   async function addEntry() {
     setError(null);
     setMessage(null);
+    if (!patientId) {
+      setError("Choose a patient");
+      return;
+    }
     try {
       await api("/waitlist", {
         method: "POST",
@@ -77,6 +111,8 @@ export default function WaitlistPage() {
         }),
       });
       setMessage("Added to waitlist.");
+      setPatientId("");
+      setPatientQuery("");
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not add");
@@ -157,13 +193,71 @@ export default function WaitlistPage() {
           {message ? <p className="alert-line">{message}</p> : null}
           <label className="field">
             <span>Patient</span>
-            <select value={patientId} onChange={(e) => setPatientId(e.target.value)}>
-              {patients.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.firstName} {p.lastName}
-                </option>
-              ))}
-            </select>
+            <input
+              className="search-input"
+              type="search"
+              autoComplete="off"
+              placeholder="Type a name to find a patient"
+              value={patientQuery}
+              onChange={(e) => {
+                setPatientQuery(e.target.value);
+                setPatientMenuOpen(true);
+                if (selectedPatient) {
+                  const label = `${selectedPatient.firstName} ${selectedPatient.lastName}`;
+                  if (e.target.value !== label) setPatientId("");
+                }
+              }}
+              onFocus={() => setPatientMenuOpen(true)}
+              onBlur={() => {
+                // Allow click on suggestion before closing
+                window.setTimeout(() => setPatientMenuOpen(false), 120);
+              }}
+            />
+            {patientMenuOpen && !selectedPatient ? (
+              <ul className="patient-lookup-results" role="listbox">
+                {filteredPatients.length === 0 ? (
+                  <li className="muted" style={{ padding: "0.65rem 0.75rem" }}>
+                    No patients match that search.
+                  </li>
+                ) : (
+                  filteredPatients.map((p) => (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        className="patient-lookup-option"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pickPatient(p)}
+                      >
+                        <span className="apt-name">
+                          {p.firstName} {p.lastName}
+                        </span>
+                        <span className="muted">
+                          {[p.email, p.phone].filter(Boolean).join(" · ")}
+                        </span>
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            ) : null}
+            {selectedPatient ? (
+              <div className="patient-lookup-selected">
+                <p className="apt-name">
+                  {selectedPatient.firstName} {selectedPatient.lastName}
+                </p>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => {
+                    setPatientId("");
+                    setPatientQuery("");
+                    setPatientMenuOpen(true);
+                  }}
+                >
+                  Change patient
+                </button>
+              </div>
+            ) : null}
           </label>
           <label className="field">
             <span>Service</span>

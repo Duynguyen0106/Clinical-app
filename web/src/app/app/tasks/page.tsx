@@ -20,6 +20,7 @@ const kindLabel: Record<string, string> = {
   UNSIGNED_NOTE: "Unsigned note",
   UNPAID_INVOICE: "Unpaid invoice",
   MISSING_INTAKE: "Missing intake",
+  DEPOSIT_DUE: "Deposit due",
 };
 
 export default function TasksPage() {
@@ -44,7 +45,7 @@ export default function TasksPage() {
   return (
     <AppShell
       title="Tasks"
-      subtitle="Unsigned notes, unpaid invoices, and missing intake — one inbox."
+      subtitle="Unsigned notes, unpaid invoices, deposits due, and missing intake — one inbox."
     >
       <section className="panel">
         <div className="panel-head">

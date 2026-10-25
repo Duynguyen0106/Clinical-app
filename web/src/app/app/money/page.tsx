@@ -80,6 +80,9 @@ function MoneyPageInner() {
   const searchParams = useSearchParams();
   const unpaidOnly = searchParams.get("status") === "unpaid";
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [depositsDue, setDepositsDue] = useState<
+    Array<{ id: string; title: string; detail: string; href: string }>
+  >([]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptDoc | null>(null);
@@ -112,6 +115,28 @@ function MoneyPageInner() {
     void api<{ invoices: Invoice[] }>("/invoices")
       .then((d) => setInvoices(d.invoices))
       .catch((e: Error) => setError(e.message));
+    void api<{
+      tasks: Array<{
+        id: string;
+        kind: string;
+        title: string;
+        detail: string;
+        href: string;
+      }>;
+    }>("/ops/tasks")
+      .then((d) =>
+        setDepositsDue(
+          d.tasks
+            .filter((t) => t.kind === "DEPOSIT_DUE")
+            .map((t) => ({
+              id: t.id,
+              title: t.title,
+              detail: t.detail,
+              href: t.href,
+            })),
+        ),
+      )
+      .catch(() => setDepositsDue([]));
   }, []);
 
   useEffect(() => {
@@ -193,6 +218,29 @@ function MoneyPageInner() {
       title="Money"
       subtitle="GBP invoices — mark paid when cash, card terminal, or transfer settles."
     >
+      {depositsDue.length > 0 ? (
+        <section className="panel" style={{ marginBottom: "1rem" }}>
+          <div className="panel-head">
+            <h2>Deposits due</h2>
+            <span className="count">{depositsDue.length}</span>
+          </div>
+          <ul className="apt-list">
+            {depositsDue.map((d) => (
+              <li key={d.id} className="apt-row">
+                <div className="apt-body">
+                  <p className="apt-name">{d.title}</p>
+                  <p className="muted">{d.detail}</p>
+                </div>
+                <div className="apt-actions">
+                  <Link href={d.href} className="btn-secondary btn-sm">
+                    Calendar →
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <div className="panel">
         <div className="panel-head">
           <h2>{unpaidOnly ? "Unpaid invoices" : "Invoices"}</h2>

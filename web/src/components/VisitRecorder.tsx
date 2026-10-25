@@ -63,6 +63,10 @@ type Props = { visitId: string };
 export function VisitRecorder({ visitId }: Props) {
   const { me } = useAuth();
   const showMoney = me?.role === "OWNER" || me?.role === "RECEPTION";
+  const doneCtaLabel =
+    me?.role === "PRACTITIONER"
+      ? "Done — back to My day"
+      : "Done — back to Today";
   const [phase, setPhase] = useState<Phase>("loading");
   const [consentChecked, setConsentChecked] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -680,7 +684,7 @@ export function VisitRecorder({ visitId }: Props) {
 
               <div className="apt-actions" style={{ marginTop: "0.75rem" }}>
                 <Link href="/app" className="btn-primary">
-                  Done — back to My day
+                  {doneCtaLabel}
                 </Link>
               </div>
 

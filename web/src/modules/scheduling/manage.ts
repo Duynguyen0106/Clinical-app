@@ -39,7 +39,7 @@ export function manageTokenTtlMs(cancelMinNoticeHours: number) {
 /**
  * Opaque manage token (v2): sealed appointment id + expiry.
  * HMAC binds the id; raw appointmentId is not a plaintext URL segment.
- * Legacy v1 `id.exp.sig` tokens still verify until they expire.
+ * Legacy v1 `id.exp.sig` tokens are rejected (appointment id was in the clear).
  */
 export function createManageToken(
   appointmentId: string,
@@ -68,7 +68,8 @@ export function verifyManageToken(token: string): { appointmentId: string } {
   if (token.startsWith("v2.")) {
     return verifySealedManageToken(token.slice(3));
   }
-  return verifyLegacyManageToken(token);
+  // Legacy id.exp.sig tokens exposed the appointment id in the clear — reject.
+  throw forbidden("This manage link is no longer valid. Request a new link from the clinic.");
 }
 
 function verifySealedManageToken(sealed: string): { appointmentId: string } {

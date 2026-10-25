@@ -111,7 +111,6 @@ const ALLOWED_LOGO = new Set([
   "image/png",
   "image/jpeg",
   "image/webp",
-  "image/svg+xml",
 ]);
 
 /** Marker in logoStorageKey when bytes live in Clinic.logoBytes (serverless-safe). */
@@ -124,7 +123,7 @@ export async function uploadClinicLogo(
 ) {
   requireRole(ctx, ["OWNER"]);
   if (!ALLOWED_LOGO.has(mimeType)) {
-    throw badRequest("Logo must be PNG, JPEG, WebP, or SVG");
+    throw badRequest("Logo must be PNG, JPEG, or WebP (SVG is not allowed)");
   }
   if (bytes.length === 0) throw badRequest("Empty logo file");
   if (bytes.length > 2 * 1024 * 1024) {

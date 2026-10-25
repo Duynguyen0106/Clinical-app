@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { api, ApiError } from "@/lib/api";
 import { PatientPrepPanel } from "@/components/PatientPrepPanel";
+import { humanStatusLabel } from "@/modules/scheduling/calendar-ui";
 
 type TodayAppointment = {
   id: string;
@@ -353,9 +354,7 @@ function PatientsPageInner() {
                       </span>
                       <span className="muted">
                         {apt
-                          ? `${apt.appointmentType.name} · ${apt.status
-                              .replaceAll("_", " ")
-                              .toLowerCase()}`
+                          ? `${apt.appointmentType.name} · ${humanStatusLabel(apt.status)}`
                           : [p.email, p.phone, p.nhsNumber]
                               .filter(Boolean)
                               .join(" · ")}
@@ -587,7 +586,7 @@ function PatientsPageInner() {
                 <span className="muted">
                   {" "}
                   · {nextApt.appointmentType.name} ·{" "}
-                  {nextApt.status.replaceAll("_", " ").toLowerCase()}
+                  {humanStatusLabel(nextApt.status)}
                 </span>
               </p>
             ) : null}

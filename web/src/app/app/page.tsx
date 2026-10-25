@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { api, ApiError } from "@/lib/api";
 import { pulseHrefForRole } from "@/modules/ops/pulse-links";
+import { humanStatusLabel } from "@/modules/scheduling/calendar-ui";
 import { patientDiaryLabel } from "@/modules/scheduling/diary-privacy";
 
 type Appointment = {
@@ -363,7 +364,7 @@ export default function TodayPage() {
                     <span
                       className={`status status-${apt.status.toLowerCase()}`}
                     >
-                      {apt.status.replaceAll("_", " ").toLowerCase()}
+                      {humanStatusLabel(apt.status)}
                     </span>
                     {apt.depositStatus === "REQUIRED" &&
                     (apt.depositCents ?? 0) > 0 ? (

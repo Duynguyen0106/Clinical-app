@@ -56,12 +56,7 @@ export function withCronOrStaff(
   };
 }
 
+/** @deprecated Prefer assertProductionSecrets — kept for instrumentation callers. */
 export function assertCronConfiguredInProduction() {
-  if (process.env.NODE_ENV !== "production") return;
-  const secret = getCronSecret();
-  if (!secret || secret.length < 24) {
-    console.warn(
-      "[treow] CRON_SECRET missing or short — unattended reminder/retention/organise jobs will fail until set.",
-    );
-  }
+  // Enforced in assertProductionSecrets() at boot.
 }

@@ -29,6 +29,13 @@ export function assertProductionSecrets() {
     throw new Error("Production requires DATABASE_URL.");
   }
 
+  const cron = process.env.CRON_SECRET?.trim();
+  if (!cron || cron.length < 24 || DEMO_SECRETS.has(cron)) {
+    throw new Error(
+      "Production requires CRON_SECRET (≥24 chars, not a demo value) for reminder/retention jobs.",
+    );
+  }
+
   if (!process.env.APP_BASE_URL?.startsWith("https://")) {
     console.warn(
       "[treow] APP_BASE_URL should be an https:// URL in production.",

@@ -34,6 +34,7 @@ const emptyForm = {
   name: "",
   durationMinutes: "30",
   pricePounds: "55.00",
+  depositPounds: "",
   onlineBookable: true,
 };
 
@@ -72,6 +73,10 @@ export default function ServicesPage() {
       name: s.name,
       durationMinutes: String(s.durationMinutes),
       pricePounds: (s.defaultPriceCents / 100).toFixed(2),
+      depositPounds:
+        s.depositCents != null && s.depositCents > 0
+          ? (s.depositCents / 100).toFixed(2)
+          : "",
       onlineBookable: s.onlineBookable,
     });
     setMessage(null);
@@ -91,6 +96,9 @@ export default function ServicesPage() {
     setMessage(null);
     const durationMinutes = Number.parseInt(form.durationMinutes, 10);
     const defaultPriceCents = poundsToCents(form.pricePounds);
+    const depositRaw = form.depositPounds.trim();
+    const depositCents =
+      depositRaw === "" ? null : poundsToCents(depositRaw);
     if (!form.name.trim()) {
       setError("Name is required");
       setBusy(false);
@@ -106,6 +114,7 @@ export default function ServicesPage() {
         name: form.name.trim(),
         durationMinutes,
         defaultPriceCents,
+        depositCents,
         onlineBookable: form.onlineBookable,
       };
       if (editingId) {
@@ -178,6 +187,9 @@ export default function ServicesPage() {
                   <p className="apt-name">{s.name}</p>
                   <p className="muted">
                     {s.durationMinutes} min · {formatGbp(s.defaultPriceCents)}
+                    {s.depositCents != null && s.depositCents > 0
+                      ? ` · deposit ${formatGbp(s.depositCents)}`
+                      : ""}
                     {s.onlineBookable ? " · online" : " · staff only"}
                     {!s.active ? " · inactive" : ""}
                   </p>
@@ -280,6 +292,19 @@ export default function ServicesPage() {
                     setForm((f) => ({ ...f, pricePounds: e.target.value }))
                   }
                   required
+                />
+              </label>
+              <label className="field">
+                <span>Deposit (£) — optional</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={form.depositPounds}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, depositPounds: e.target.value }))
+                  }
+                  placeholder="Leave blank for clinic default"
                 />
               </label>
               <label className="field field-check">

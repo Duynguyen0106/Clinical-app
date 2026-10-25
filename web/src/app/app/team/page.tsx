@@ -521,31 +521,40 @@ function TeamPageInner() {
           document.getElementById(`team-tab-${next.id}`)?.focus();
         }}
       >
-        {teamTabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            id={`team-tab-${t.id}`}
-            aria-selected={t.id === "pay" ? false : teamTab === t.id}
-            aria-controls={t.id === "pay" ? undefined : `team-panel-${t.id}`}
-            tabIndex={
-              t.id === "pay" ? -1 : teamTab === t.id ? 0 : -1
-            }
-            className={`btn-sm ${
-              t.id !== "pay" && teamTab === t.id ? "btn-secondary" : "btn-ghost"
-            }`}
-            onClick={() => {
-              if (t.id === "pay") {
-                router.push("/app/team/pay");
-                return;
-              }
-              setTeamTab(t.id);
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+        {teamTabs.map((t) =>
+          t.id === "pay" ? (
+            <Link
+              key={t.id}
+              href="/app/team/pay"
+              role="tab"
+              id={`team-tab-${t.id}`}
+              aria-selected={false}
+              tabIndex={-1}
+              className="btn-sm btn-ghost"
+            >
+              {t.label}
+            </Link>
+          ) : (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              id={`team-tab-${t.id}`}
+              aria-selected={teamTab === t.id}
+              aria-controls={`team-panel-${t.id}`}
+              tabIndex={teamTab === t.id ? 0 : -1}
+              className={`btn-sm ${
+                teamTab === t.id ? "btn-secondary" : "btn-ghost"
+              }`}
+              onClick={() => {
+                if (t.id === "pay") return;
+                setTeamTab(t.id);
+              }}
+            >
+              {t.label}
+            </button>
+          ),
+        )}
       </div>
 
       {error ? <p className="form-error">{error}</p> : null}

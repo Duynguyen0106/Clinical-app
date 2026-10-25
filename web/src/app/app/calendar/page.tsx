@@ -64,6 +64,12 @@ type CatalogPractitioner = {
   appointmentTypeIds?: string[] | null;
 };
 
+type CatalogRoom = {
+  id: string;
+  name: string;
+  active?: boolean;
+};
+
 type Catalog = {
   appointmentTypes: {
     id: string;
@@ -72,6 +78,7 @@ type Catalog = {
     defaultPriceCents: number;
   }[];
   practitioners: CatalogPractitioner[];
+  rooms?: CatalogRoom[];
 };
 
 function minutesLabel(m: number) {
@@ -152,6 +159,8 @@ export default function CalendarPage() {
   const [bookSlots, setBookSlots] = useState<string[]>([]);
   const [bookSlot, setBookSlot] = useState("");
   const [bookNotes, setBookNotes] = useState("");
+  /** Optional room when clinic has active rooms */
+  const [bookRoomId, setBookRoomId] = useState("");
   /** 1 = single; 2–26 = series including first slot */
   const [bookWeeklyCount, setBookWeeklyCount] = useState(1);
   /** 1 = weekly; 2 = fortnightly */
@@ -210,6 +219,11 @@ export default function CalendarPage() {
     const allowed = new Set(prac.appointmentTypeIds);
     return types.filter((t) => allowed.has(t.id));
   }, [catalog, bookPractitionerId]);
+
+  const activeRooms = useMemo(
+    () => (catalog?.rooms ?? []).filter((r) => r.active !== false),
+    [catalog],
+  );
 
   const load = useCallback(() => {
     const from = viewMode === "day" ? dayFocus : weekStart;
@@ -428,6 +442,7 @@ export default function CalendarPage() {
     setBookPatientId("");
     setBookIntakeNote(null);
     setBookNotes("");
+    setBookRoomId("");
     setBookOptionsOpen(false);
     if (opts?.day != null && opts.hour != null) {
       const startsAt = clinicLocalDateTime(
@@ -574,6 +589,7 @@ export default function CalendarPage() {
           durationMinutes: bookDuration,
           notes: notes || null,
           feeCents: feeCents > 0 ? feeCents : undefined,
+          roomId: bookRoomId || null,
           weeklyCount: bookWeeklyCount > 1 ? bookWeeklyCount : undefined,
           intervalWeeks:
             bookWeeklyCount > 1 && bookIntervalWeeks > 1
@@ -586,6 +602,7 @@ export default function CalendarPage() {
       setBookOpen(false);
       setBookSlotFixed(false);
       setBookIntakeNote(null);
+      setBookRoomId("");
       setBookWeeklyCount(1);
       setBookIntervalWeeks(1);
       const c = res.confirmation;
@@ -1902,6 +1919,22 @@ export default function CalendarPage() {
                 })}
               </select>
             </label>
+            {activeRooms.length > 0 ? (
+              <label className="field">
+                <span>Room (optional)</span>
+                <select
+                  value={bookRoomId}
+                  onChange={(e) => setBookRoomId(e.target.value)}
+                >
+                  <option value="">Auto-assign / none</option>
+                  {activeRooms.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="field">
               <span>Length (minutes)</span>
               <input

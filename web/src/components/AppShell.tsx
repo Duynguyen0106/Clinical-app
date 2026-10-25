@@ -68,14 +68,20 @@ const navGroups: NavGroup[] = [
         icon: CalendarDays,
         mobileTab: true,
       },
-      { href: "/app/patients", label: "Patients", icon: Users, mobileTab: true },
+      {
+        href: "/app/patients",
+        label: "Patients",
+        icon: Users,
+        /** Reception: mobile tab; clinicians swap this for Notes */
+        mobileTab: true,
+      },
       {
         href: "/app/notes",
         label: "Notes",
         icon: ClipboardList,
         clinicianOnly: true,
-        /** Phone: Notes lives under More so the tab bar stays at 4 slots */
-        mobileTab: false,
+        /** Clinicians: Notes is a phone tab (Patients moves under More) */
+        mobileTab: true,
       },
     ],
   },
@@ -260,13 +266,20 @@ export function AppShell({
     .filter((group) => group.items.length > 0);
 
   const flatItems = visibleGroups.flatMap((g) => g.items);
+  /** Role-aware: clinicians get Notes on phone; reception keeps Patients. */
+  function isMobileTabItem(item: NavItem) {
+    if (!item.mobileTab) return false;
+    if (item.href === "/app/notes") return isClinician;
+    if (item.href === "/app/patients") return !isClinician;
+    return true;
+  }
   /** Cap at 3 destinations + More (= 4) so the bar never wraps */
-  const mobileTabs = flatItems.filter((item) => item.mobileTab).slice(0, 3);
+  const mobileTabs = flatItems.filter(isMobileTabItem).slice(0, 3);
   const labelOpts = { hasDiary, isPractitioner };
   const moreActive =
     menuOpen ||
     flatItems.some(
-      (item) => !item.mobileTab && isNavActive(pathname, item.href),
+      (item) => !isMobileTabItem(item) && isNavActive(pathname, item.href),
     );
 
   function renderNavLinks(onNavigate?: () => void) {

@@ -168,7 +168,7 @@ cron does not email historic visits.
 | Every 5 min (Pro or external) | `GET /api/v1/jobs/organise` (drain AI note jobs) |
 | Daily 03:15 UTC (in `vercel.json`) | `GET /api/v1/jobs/retention` |
 
-Production boots warn if `CRON_SECRET` is missing or shorter than 24 characters.
+Production boots **fail** if `CRON_SECRET` is missing or shorter than 24 characters.
 Do not set `NEXT_PUBLIC_DEMO_LOGIN=true` on live clinic deployments — that advertises
 demo emails and the `treow-demo` password on marketing/login surfaces.
 

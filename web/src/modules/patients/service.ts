@@ -16,9 +16,31 @@ import {
   clinicLocalDateTime,
 } from "@/modules/scheduling/clinic-time";
 import { withClinicTransaction } from "@/server/clinic-rls";
+import {
+  redactPatientForDiaryPrivacy,
+  type CalendarPrivacyMode,
+} from "@/modules/scheduling/diary-privacy";
 
 export type { TimelineItem };
 export { buildPatientTimeline } from "@/modules/patients/timeline";
+
+async function clinicPrivacyMode(
+  clinicId: string,
+): Promise<CalendarPrivacyMode> {
+  const clinic = await prisma.clinic.findUnique({
+    where: { id: clinicId },
+    select: { calendarPrivacyMode: true },
+  });
+  return clinic?.calendarPrivacyMode === "INITIALS" ? "INITIALS" : "FULL_NAME";
+}
+
+function maybeRedactPatient<T extends { firstName: string; lastName: string }>(
+  patient: T,
+  mode: CalendarPrivacyMode,
+): T {
+  if (mode !== "INITIALS") return patient;
+  return redactPatientForDiaryPrivacy(patient, mode);
+}
 
 /** Treat blank strings as null so empty form fields validate. */
 const optionalEmail = z.preprocess(
@@ -187,12 +209,15 @@ export async function listPatients(
       }
     }
 
-    return Array.from(byPatient.values());
+    const mode = await clinicPrivacyMode(ctx.clinicId);
+    return Array.from(byPatient.values()).map((p) =>
+      maybeRedactPatient(p, mode),
+    );
   }
 
   // Practitioner diary search (no day filter): anyone this practitioner has seen
   if (opts.practitionerId) {
-    return prisma.patient.findMany({
+    const rows = await prisma.patient.findMany({
       where: {
         clinicId: ctx.clinicId,
         archivedAt: null,
@@ -208,9 +233,11 @@ export async function listPatients(
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
       take,
     });
+    const mode = await clinicPrivacyMode(ctx.clinicId);
+    return rows.map((p) => maybeRedactPatient(p, mode));
   }
 
-  return prisma.patient.findMany({
+  const rows = await prisma.patient.findMany({
     where: {
       clinicId: ctx.clinicId,
       archivedAt: null,
@@ -229,6 +256,8 @@ export async function listPatients(
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     take,
   });
+  const mode = await clinicPrivacyMode(ctx.clinicId);
+  return rows.map((p) => maybeRedactPatient(p, mode));
 }
 
 const noteMetaSelect = {
@@ -420,14 +449,27 @@ export async function getPatientPrep(
     includeNotes: canViewNotes,
   });
 
+  const mode = await clinicPrivacyMode(ctx.clinicId);
+  const identity = maybeRedactPatient(
+    {
+      firstName: patient.firstName,
+      lastName: patient.lastName,
+      email: patient.email,
+      phone: patient.phone,
+      dateOfBirth: patient.dateOfBirth,
+      alerts: patient.alerts,
+    },
+    mode,
+  );
+
   const payload = {
     id: patient.id,
-    firstName: patient.firstName,
-    lastName: patient.lastName,
-    email: patient.email,
-    phone: patient.phone,
-    dateOfBirth: patient.dateOfBirth,
-    alerts: patient.alerts,
+    firstName: identity.firstName,
+    lastName: identity.lastName,
+    email: identity.email,
+    phone: identity.phone,
+    dateOfBirth: identity.dateOfBirth,
+    alerts: identity.alerts,
     canViewClinicalNotes: canViewNotes,
     appointments: patient.appointments.map((a) => ({
       id: a.id,

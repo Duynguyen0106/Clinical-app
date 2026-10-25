@@ -318,11 +318,34 @@ export default function StaffPayPage() {
       title="Staff pay"
       subtitle="Month due by practitioner — set rates, then export when you settle."
     >
-      <p className="muted" style={{ marginBottom: "0.75rem" }}>
-        <Link href="/app/team" className="btn-ghost btn-sm">
-          ← Back to Team
-        </Link>
-      </p>
+      <div
+        className="view-toggle settings-section-nav"
+        role="tablist"
+        aria-label="Team sections"
+      >
+        {(
+          [
+            { id: "people", label: "People", href: "/app/team?tab=people" },
+            { id: "hours", label: "Hours", href: "/app/team?tab=hours" },
+            { id: "leave", label: "Leave", href: "/app/team?tab=leave" },
+            { id: "pay", label: "Pay", href: "/app/team/pay" },
+          ] as const
+        ).map((t) => (
+          <Link
+            key={t.id}
+            href={t.href}
+            role="tab"
+            id={`team-tab-${t.id}`}
+            aria-selected={t.id === "pay"}
+            tabIndex={t.id === "pay" ? 0 : -1}
+            className={`btn-sm ${
+              t.id === "pay" ? "btn-secondary" : "btn-ghost"
+            }`}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </div>
       <section className="panel pay-hero">
         <div className="pay-hero-top">
           <div className="pay-month-nav">

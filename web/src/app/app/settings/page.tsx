@@ -453,10 +453,10 @@ export default function SettingsPage() {
             {isOwner ? (
               <div className="side-stack">
                 <label className="field">
-                  <span>Upload logo (PNG, JPEG, WebP, SVG · max 2MB)</span>
+                  <span>Upload logo (PNG, JPEG, WebP · max 2MB)</span>
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    accept="image/png,image/jpeg,image/webp"
                     onChange={(e) =>
                       void onLogoSelected(e.target.files?.[0] ?? null)
                     }
@@ -574,7 +574,7 @@ export default function SettingsPage() {
           role="tabpanel"
           aria-labelledby="settings-tab-compliance"
         >
-          <h2>Retention</h2>
+          <h2>Compliance</h2>
           <p className="muted">
             Notice version: {clinic?.privacyNoticeVersion ?? "…"} · Region:{" "}
             {clinic?.dataRegion ?? "uk-eu"}
@@ -583,7 +583,8 @@ export default function SettingsPage() {
             View privacy notice →
           </Link>
 
-          <label className="field" style={{ marginTop: "1rem" }}>
+          <h3 style={{ marginTop: "1.25rem" }}>Retention</h3>
+          <label className="field">
             <span>Audio retention (days)</span>
             <input
               type="number"
@@ -618,6 +619,59 @@ export default function SettingsPage() {
           ) : (
             <p className="muted">Only clinic owners can change retention.</p>
           )}
+
+          <h3 style={{ marginTop: "1.5rem" }}>Exports</h3>
+          <p className="muted">
+            Download note access / edit / sign events for this clinic (JSON).
+          </p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void exportAudits()}
+          >
+            Export access audits
+          </button>
+          {auditCount !== null ? (
+            <p className="muted">{auditCount} events in last export</p>
+          ) : (
+            <p className="muted">
+              Includes note views and who opened patient prep / note history.
+            </p>
+          )}
+          {isOwner ? (
+            <>
+              <p className="muted" style={{ marginTop: "1rem" }}>
+                Download this clinic’s patient records as JSON (demographics,
+                consents, appointments, note metadata, invoices). Clinical note
+                bodies are not included.
+              </p>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => void exportPatientsDb()}
+              >
+                Download patient database
+              </button>
+            </>
+          ) : null}
+
+          <h3 style={{ marginTop: "1.5rem" }}>Support</h3>
+          <p className="muted">
+            For pilot incidents and privacy assistance. The clinic remains the
+            data controller; Treow assists as processor.
+          </p>
+          <p>
+            <strong>Support:</strong>{" "}
+            <a href={`mailto:${support?.email ?? "support@treow.example"}`}>
+              {support?.email ?? "…"}
+            </a>
+          </p>
+          <p className="muted">App URL: {support?.appBaseUrl ?? "…"}</p>
+          <div className="home-cta">
+            <Link href="/privacy" className="btn-ghost">
+              Privacy notice
+            </Link>
+          </div>
         </section>
         ) : null}
 
@@ -1185,67 +1239,6 @@ export default function SettingsPage() {
           </>
         ) : null}
 
-        {section === "compliance" ? (
-          <>
-            <section className="panel">
-              <h2>Exports</h2>
-              <p className="muted">
-                Download note access / edit / sign events for this clinic (JSON).
-              </p>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => void exportAudits()}
-              >
-                Export access audits
-              </button>
-              {auditCount !== null ? (
-                <p className="muted">{auditCount} events in last export</p>
-              ) : (
-                <p className="muted">
-                  Includes note views and who opened patient prep / note history.
-                </p>
-              )}
-              {isOwner ? (
-                <>
-                  <h3 style={{ marginTop: "1.25rem" }}>Patient database</h3>
-                  <p className="muted">
-                    Download this clinic’s patient records as JSON (demographics,
-                    consents, appointments, note metadata, invoices). Clinical
-                    note bodies are not included.
-                  </p>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={() => void exportPatientsDb()}
-                  >
-                    Download patient database
-                  </button>
-                </>
-              ) : null}
-            </section>
-
-            <section className="panel">
-              <h2>Support</h2>
-              <p className="muted">
-                For pilot incidents and privacy assistance. The clinic remains
-                the data controller; Treow assists as processor.
-              </p>
-              <p>
-                <strong>Support:</strong>{" "}
-                <a href={`mailto:${support?.email ?? "support@treow.example"}`}>
-                  {support?.email ?? "…"}
-                </a>
-              </p>
-              <p className="muted">App URL: {support?.appBaseUrl ?? "…"}</p>
-              <div className="home-cta">
-                <Link href="/privacy" className="btn-ghost">
-                  Privacy notice
-                </Link>
-              </div>
-            </section>
-          </>
-        ) : null}
       </div>
     </AppShell>
   );

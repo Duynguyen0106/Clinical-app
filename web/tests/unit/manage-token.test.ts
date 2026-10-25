@@ -16,7 +16,7 @@ describe("manage tokens", () => {
     assert.equal(verifyManageToken(token).appointmentId, id);
   });
 
-  it("still verifies legacy id.exp.sig tokens", () => {
+  it("rejects legacy id.exp.sig tokens", () => {
     const id = "apt_legacy_01";
     const exp = String(Date.now() + 60_000);
     const secret = process.env.AUTH_SECRET ?? "treow-dev-secret-change-me";
@@ -24,7 +24,7 @@ describe("manage tokens", () => {
       .update(`${id}.${exp}`)
       .digest("base64url");
     const legacy = `${id}.${exp}.${sig}`;
-    assert.equal(verifyManageToken(legacy).appointmentId, id);
+    assert.throws(() => verifyManageToken(legacy), /no longer valid|Invalid/);
   });
 
   it("TTL is at least 7d and grows with cancel notice", () => {

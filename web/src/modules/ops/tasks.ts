@@ -1,5 +1,6 @@
 import {
   AppointmentStatus,
+  DepositStatus,
   InvoiceStatus,
   NoteStatus,
 } from "@/generated/prisma/client";
@@ -8,13 +9,23 @@ import type { AuthContext } from "@/server/auth";
 
 export type OpsTask = {
   id: string;
-  kind: "UNSIGNED_NOTE" | "UNPAID_INVOICE" | "MISSING_INTAKE";
+  kind:
+    | "UNSIGNED_NOTE"
+    | "UNPAID_INVOICE"
+    | "MISSING_INTAKE"
+    | "DEPOSIT_DUE";
   title: string;
   detail: string;
   href: string;
   priority: number;
   createdAt: string;
 };
+
+const TERMINAL_APPOINTMENT: AppointmentStatus[] = [
+  AppointmentStatus.CANCELLED,
+  AppointmentStatus.COMPLETED,
+  AppointmentStatus.NO_SHOW,
+];
 
 export async function listOpsTasks(ctx: AuthContext): Promise<OpsTask[]> {
   const now = new Date();
@@ -37,7 +48,7 @@ export async function listOpsTasks(ctx: AuthContext): Promise<OpsTask[]> {
       }
     : {};
 
-  const [draftNotes, unpaidInvoices, upcoming] = await Promise.all([
+  const [draftNotes, unpaidInvoices, upcoming, depositsDue] = await Promise.all([
     prisma.clinicalNote.findMany({
       where: {
         status: NoteStatus.DRAFT,
@@ -90,6 +101,23 @@ export async function listOpsTasks(ctx: AuthContext): Promise<OpsTask[]> {
       orderBy: { startsAt: "asc" },
       take: 80,
     }),
+    includeMoneyTasks
+      ? prisma.appointment.findMany({
+          where: {
+            clinicId: ctx.clinicId,
+            depositStatus: DepositStatus.REQUIRED,
+            depositCents: { gt: 0 },
+            status: { notIn: TERMINAL_APPOINTMENT },
+            startsAt: { gte: now, lte: horizon },
+          },
+          include: {
+            patient: { select: { firstName: true, lastName: true } },
+            appointmentType: { select: { name: true } },
+          },
+          orderBy: { startsAt: "asc" },
+          take: 50,
+        })
+      : Promise.resolve([]),
   ]);
 
   const tasks: OpsTask[] = [];
@@ -139,6 +167,26 @@ export async function listOpsTasks(ctx: AuthContext): Promise<OpsTask[]> {
       detail: `${apt.appointmentType.name} · no privacy consent on file`,
       href: `/app/patients`,
       priority: 3,
+      createdAt: apt.createdAt.toISOString(),
+    });
+  }
+
+  for (const apt of depositsDue) {
+    const pounds = (apt.depositCents / 100).toFixed(2);
+    const when = apt.startsAt.toLocaleString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    tasks.push({
+      id: `deposit-${apt.id}`,
+      kind: "DEPOSIT_DUE",
+      title: `Deposit due £${pounds} — ${apt.patient.firstName} ${apt.patient.lastName}`,
+      detail: `${apt.appointmentType.name} · ${when}`,
+      href: `/app/calendar`,
+      priority: 2,
       createdAt: apt.createdAt.toISOString(),
     });
   }
