@@ -40,6 +40,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [customViews, setCustomViews] = useState<BodyChartCustomView[]>([]);
+  const [archivedViews, setArchivedViews] = useState<BodyChartCustomView[]>([]);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = useRef(content);
   contentRef.current = content;
@@ -87,13 +88,14 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
         archivedViews?: BodyChartCustomView[];
       };
     }>("/clinic/body-chart")
-      .then((d) =>
-        setCustomViews([
-          ...(d.config.customViews ?? []),
-          ...(d.config.archivedViews ?? []),
-        ]),
-      )
-      .catch(() => setCustomViews([]));
+      .then((d) => {
+        setCustomViews(d.config.customViews ?? []);
+        setArchivedViews(d.config.archivedViews ?? []);
+      })
+      .catch(() => {
+        setCustomViews([]);
+        setArchivedViews([]);
+      });
   }, []);
 
   const save = useCallback(
@@ -304,6 +306,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
             onChange={updateBodyMap}
             readOnly={readOnly}
             customViews={customViews}
+            archivedViews={archivedViews}
           />
         </section>
       </div>

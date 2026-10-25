@@ -26,7 +26,9 @@ export const POST = withAuth(async (req, ctx) => {
 export const DELETE = withAuth(async (req, ctx) => {
   requireRole(ctx, ["OWNER"]);
   const id = new URL(req.url).searchParams.get("id");
-  if (!id) throw badRequest("id required");
+  if (!id || !/^custom_[a-z0-9_-]{1,40}$/i.test(id)) {
+    throw badRequest("Valid custom view id required");
+  }
   const config = await deleteClinicCustomAnatomyView(ctx, id);
   return jsonOk({ config });
 });

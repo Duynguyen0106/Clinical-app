@@ -38,6 +38,7 @@ export default function NoteTemplatesSettingsPage() {
   const [sections, setSections] = useState<NoteSection[]>([EMPTY_SECTION]);
   const [saving, setSaving] = useState(false);
   const [customViews, setCustomViews] = useState<BodyChartCustomView[]>([]);
+  const [archivedViews, setArchivedViews] = useState<BodyChartCustomView[]>([]);
   const [customLabel, setCustomLabel] = useState("");
   const [customSvg, setCustomSvg] = useState("");
   const [customBusy, setCustomBusy] = useState(false);
@@ -61,12 +62,17 @@ export default function NoteTemplatesSettingsPage() {
 
   async function loadCustomViews() {
     try {
-      const data = await api<{ config: { customViews: BodyChartCustomView[] } }>(
-        "/clinic/body-chart",
-      );
+      const data = await api<{
+        config: {
+          customViews: BodyChartCustomView[];
+          archivedViews?: BodyChartCustomView[];
+        };
+      }>("/clinic/body-chart");
       setCustomViews(data.config.customViews ?? []);
+      setArchivedViews(data.config.archivedViews ?? []);
     } catch {
       setCustomViews([]);
+      setArchivedViews([]);
     }
   }
 
@@ -348,7 +354,8 @@ export default function NoteTemplatesSettingsPage() {
         </div>
         <p className="muted">
           Upload plain SVG overlays (viewBox 0 0 200 360 works best). Scripts and
-          images are rejected. These appear as extra tabs on the body chart.
+          images are rejected. Remove soft-archives the overlay so signed charts
+          keep their anatomy; restore from the list below.
         </p>
         <ul className="apt-list">
           {customViews.map((v) => (
@@ -361,18 +368,68 @@ export default function NoteTemplatesSettingsPage() {
                 type="button"
                 className="btn-ghost btn-sm"
                 onClick={() => {
+                  if (
+                    !window.confirm(
+                      `Archive “${v.label}”? It leaves the chart picker but stays available for historical marks.`,
+                    )
+                  ) {
+                    return;
+                  }
                   void api(`/clinic/body-chart?id=${encodeURIComponent(v.id)}`, {
                     method: "DELETE",
                   })
-                    .then(() => loadCustomViews())
+                    .then(() => {
+                      setMessage(`Archived “${v.label}”.`);
+                      return loadCustomViews();
+                    })
                     .catch((e: Error) => setError(e.message));
                 }}
               >
-                Remove
+                Archive
               </button>
             </li>
           ))}
         </ul>
+        {archivedViews.length > 0 ? (
+          <>
+            <h3 className="mt-4">Archived anatomy</h3>
+            <ul className="apt-list">
+              {archivedViews.map((v) => (
+                <li key={v.id} className="patient-row">
+                  <div>
+                    <p className="apt-name">{v.label}</p>
+                    <p className="muted">{v.id}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    disabled={customBusy}
+                    onClick={() => {
+                      setCustomBusy(true);
+                      setError(null);
+                      void api("/clinic/body-chart", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          id: v.id,
+                          label: v.label,
+                          svg: v.svg,
+                        }),
+                      })
+                        .then(() => {
+                          setMessage(`Restored “${v.label}”.`);
+                          return loadCustomViews();
+                        })
+                        .catch((e: Error) => setError(e.message))
+                        .finally(() => setCustomBusy(false));
+                    }}
+                  >
+                    Restore
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
         <div className="form-grid">
           <label>
             Label

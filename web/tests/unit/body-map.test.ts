@@ -5,12 +5,14 @@ import {
   BODY_MAP_VIEWS,
   MAX_BODY_MAP_MARKS,
   allCustomViews,
+  attachViewSnapshots,
   bodyMapPrintLines,
   emptyBodyMap,
   isBodyMapContent,
   markSummary,
   parseBodyChartConfig,
   parseBodyMap,
+  resolveCustomViewsForMap,
   sanitizeAnatomySvg,
   sanitizeBodyMap,
   sanitizeNoteContent,
@@ -370,6 +372,56 @@ describe("body map model", () => {
     assert.equal(cfg.customViews.length, 1);
     assert.equal(cfg.archivedViews?.length, 1);
     assert.equal(allCustomViews(cfg).length, 2);
+  });
+
+  it("freezes custom SVG snapshots onto the body map", () => {
+    const safe = sanitizeAnatomySvg(
+      '<svg viewBox="0 0 200 360"><path d="M10 10 L20 20"/></svg>',
+    )!;
+    const other = sanitizeAnatomySvg(
+      '<svg viewBox="0 0 200 360"><circle cx="10" cy="10" r="5"/></svg>',
+    )!;
+    const map = sanitizeBodyMap({
+      version: 1,
+      activeView: "custom_tmj",
+      marks: [
+        {
+          id: "1",
+          kind: "pain",
+          view: "custom_tmj",
+          x: 0.5,
+          y: 0.5,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      viewSnapshots: [{ id: "custom_tmj", label: "TMJ", svg: safe }],
+    });
+    assert.equal(map.viewSnapshots?.length, 1);
+    assert.match(map.viewSnapshots![0]!.svg, /path/);
+
+    // Existing snapshot wins over a newer clinic SVG
+    const attached = attachViewSnapshots(map, [
+      { id: "custom_tmj", label: "TMJ v2", svg: other },
+    ]);
+    assert.match(attached.viewSnapshots![0]!.svg, /path/);
+    assert.equal(
+      resolveCustomViewsForMap(attached, [
+        { id: "custom_tmj", label: "TMJ v2", svg: other },
+      ])[0]!.svg,
+      attached.viewSnapshots![0]!.svg,
+    );
+  });
+
+  it("rejects reserved body_map id on non-chart template sections", () => {
+    assert.throws(() =>
+      noteTemplateUpsertSchema.parse({
+        name: "Collision",
+        sections: [
+          { id: "body_map", title: "Notes", type: "markdown" },
+          { id: "chart", title: "Chart", type: "body_map" },
+        ],
+      }),
+    );
   });
 
   it("normalises template schemas: insert, dedupe, lock body_map id", () => {

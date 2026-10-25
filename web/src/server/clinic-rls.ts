@@ -25,11 +25,16 @@ export async function withClinicTransaction<T>(
   clinicId: string,
   fn: (tx: Tx) => Promise<T>,
   client: PrismaClient = prisma,
+  options?: {
+    isolationLevel?: Prisma.TransactionIsolationLevel;
+    maxWait?: number;
+    timeout?: number;
+  },
 ): Promise<T> {
   return client.$transaction(async (tx) => {
     await setClinicRlsLocal(tx, clinicId);
     return fn(tx);
-  });
+  }, options);
 }
 
 export async function withRlsBypassTransaction<T>(

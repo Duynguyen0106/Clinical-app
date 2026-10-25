@@ -8,7 +8,12 @@ import { hashNoteContent } from "@/modules/notes/hash";
 import { assertNoteDiaryAccess } from "@/modules/notes/access";
 import {
   BODY_MAP_CONTENT_KEY,
+  allCustomViews,
+  attachViewSnapshots,
+  parseBodyChartConfig,
+  parseBodyMap,
   sanitizeNoteContent,
+  withBodyMap,
 } from "@/modules/notes/body-map";
 import { withClinicTransaction } from "@/server/clinic-rls";
 import { assertOwnsDiaryOrOwner } from "@/server/rbac";
@@ -32,7 +37,8 @@ export async function listNoteTemplates(ctx: AuthContext) {
  */
 export async function ensureBodyMapSectionsOnTemplates(clinicId: string) {
   await withSerializableRetry(async () =>
-    prisma.$transaction(
+    withClinicTransaction(
+      clinicId,
       async (tx) => {
         const templates = await tx.noteTemplate.findMany({
           where: { clinicId },
@@ -47,6 +53,7 @@ export async function ensureBodyMapSectionsOnTemplates(clinicId: string) {
           });
         }
       },
+      prisma,
       { isolationLevel: "Serializable" },
     ),
   );
@@ -146,13 +153,28 @@ export const noteTemplateUpsertSchema = z
     sections: z.array(noteSectionSchema).min(1).max(24),
   })
   .superRefine((val, ctx) => {
-    const ids = val.sections.map((s) => s.id.toLowerCase());
-    if (new Set(ids).size !== ids.length) {
+    // Effective ids after chart id lock — catch markdown id=body_map + chart collisions
+    const effectiveIds = val.sections.map((s) =>
+      s.type === "body_map" ? BODY_MAP_CONTENT_KEY : s.id.toLowerCase(),
+    );
+    if (new Set(effectiveIds).size !== effectiveIds.length) {
       ctx.addIssue({
         code: "custom",
         message: "Section ids must be unique",
         path: ["sections"],
       });
+    }
+    for (const [i, s] of val.sections.entries()) {
+      if (
+        s.type !== "body_map" &&
+        s.id.toLowerCase() === BODY_MAP_CONTENT_KEY
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Reserved id "${BODY_MAP_CONTENT_KEY}" is only valid on the body chart section`,
+          path: ["sections", i, "id"],
+        });
+      }
     }
     const charts = val.sections.filter((s) => s.type === "body_map");
     if (charts.length > 1) {
@@ -297,6 +319,8 @@ export async function listNotes(
 
 export async function getNote(ctx: AuthContext, id: string) {
   await assertNoteDiaryAccess(ctx, id);
+  // Heal older templates so chart workspace always sees a body_map section
+  await ensureBodyMapSectionsOnTemplates(ctx.clinicId);
 
   const note = await prisma.clinicalNote.findFirst({
     where: { id, patient: { clinicId: ctx.clinicId } },
@@ -421,6 +445,25 @@ export const updateNoteSchema = z.object({
   content: z.record(z.string(), z.unknown()),
 });
 
+async function clinicCustomViewsForSnapshots(
+  tx: Prisma.TransactionClient,
+  clinicId: string,
+) {
+  const clinic = await tx.clinic.findUnique({
+    where: { id: clinicId },
+    select: { bodyChartConfig: true },
+  });
+  return allCustomViews(parseBodyChartConfig(clinic?.bodyChartConfig ?? null));
+}
+
+function contentWithSnapshots(
+  content: Record<string, unknown>,
+  clinicViews: ReturnType<typeof allCustomViews>,
+): Record<string, unknown> {
+  const map = attachViewSnapshots(parseBodyMap(content), clinicViews);
+  return withBodyMap(content, map);
+}
+
 export async function updateDraftNote(
   ctx: AuthContext,
   id: string,
@@ -439,25 +482,34 @@ export async function updateDraftNote(
 
     // If the client omitted body_map entirely, keep existing clinician marks.
     // An explicit empty/present body_map still replaces (intentional edit).
-    const sanitized = sanitizeNoteContent(
+    let sanitized = sanitizeNoteContent(
       content,
       Object.prototype.hasOwnProperty.call(content, BODY_MAP_CONTENT_KEY)
         ? {}
         : { preserveBodyMapFrom: note.content },
     );
+    const clinicViews = await clinicCustomViewsForSnapshots(tx, ctx.clinicId);
+    sanitized = contentWithSnapshots(sanitized, clinicViews);
+    const hasBodyMap = parseBodyMap(sanitized).marks.length > 0;
 
-    return tx.clinicalNote.update({
-      where: { id },
+    // Status predicate closes the race where a stale PATCH lands after sign
+    const updated = await tx.clinicalNote.updateMany({
+      where: { id, status: NoteStatus.DRAFT },
+      data: { content: sanitized as Prisma.InputJsonValue },
+    });
+    if (updated.count !== 1) {
+      throw badRequest("Only draft notes can be edited");
+    }
+    await tx.noteAuditEvent.create({
       data: {
-        content: sanitized as Prisma.InputJsonValue,
-        audits: {
-          create: {
-            actorId: ctx.userId,
-            action: "updated",
-            meta: { hasBodyMap: true },
-          },
-        },
+        noteId: id,
+        actorId: ctx.userId,
+        action: "updated",
+        meta: { hasBodyMap },
       },
+    });
+    return tx.clinicalNote.findFirstOrThrow({
+      where: { id, patient: { clinicId: ctx.clinicId } },
     });
   });
 }
@@ -478,25 +530,34 @@ export async function signNote(ctx: AuthContext, id: string) {
       note.content && typeof note.content === "object" && !Array.isArray(note.content)
         ? (note.content as Record<string, unknown>)
         : {};
-    const sanitized = sanitizeNoteContent(raw);
+    const clinicViews = await clinicCustomViewsForSnapshots(tx, ctx.clinicId);
+    const sanitized = contentWithSnapshots(sanitizeNoteContent(raw), clinicViews);
     const contentHash = hashNoteContent(sanitized);
+    const signedAt = new Date();
 
-    return tx.clinicalNote.update({
-      where: { id },
+    const updated = await tx.clinicalNote.updateMany({
+      where: { id, status: NoteStatus.DRAFT },
       data: {
         content: sanitized as Prisma.InputJsonValue,
         status: NoteStatus.SIGNED,
-        signedAt: new Date(),
+        signedAt,
         signedById: ctx.userId,
         contentHash,
-        audits: {
-          create: {
-            actorId: ctx.userId,
-            action: "signed",
-            meta: { contentHash },
-          },
-        },
       },
+    });
+    if (updated.count !== 1) {
+      throw badRequest("Only draft notes can be signed");
+    }
+    await tx.noteAuditEvent.create({
+      data: {
+        noteId: id,
+        actorId: ctx.userId,
+        action: "signed",
+        meta: { contentHash },
+      },
+    });
+    return tx.clinicalNote.findFirstOrThrow({
+      where: { id, patient: { clinicId: ctx.clinicId } },
     });
   });
 }
@@ -522,20 +583,27 @@ export async function voidSignedNote(
       throw badRequest("Only signed notes can be voided");
     }
 
-    return tx.clinicalNote.update({
-      where: { id },
+    const updated = await tx.clinicalNote.updateMany({
+      where: { id, status: NoteStatus.SIGNED },
       data: {
         status: NoteStatus.VOIDED,
         voidedAt: new Date(),
         voidReason: input.reason,
-        audits: {
-          create: {
-            actorId: ctx.userId,
-            action: "voided",
-            meta: { reason: input.reason },
-          },
-        },
       },
+    });
+    if (updated.count !== 1) {
+      throw badRequest("Only signed notes can be voided");
+    }
+    await tx.noteAuditEvent.create({
+      data: {
+        noteId: id,
+        actorId: ctx.userId,
+        action: "voided",
+        meta: { reason: input.reason },
+      },
+    });
+    return tx.clinicalNote.findFirstOrThrow({
+      where: { id, patient: { clinicId: ctx.clinicId } },
     });
   });
 }

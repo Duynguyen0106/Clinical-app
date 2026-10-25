@@ -10,6 +10,7 @@ import {
   allCustomViews,
   parseBodyChartConfig,
   parseBodyMap,
+  resolveCustomViewsForMap,
   type BodyChartCustomView,
   type BodyMapContent,
 } from "@/modules/notes/body-map";
@@ -333,11 +334,13 @@ export async function getClinicalDocument(
 ): Promise<ClinicalDocument> {
   const { note, clinic, signedByName, logoDataUrl } =
     await loadSignedNoteForDocuments(ctx, noteId);
-  const customViews = allCustomViews(
+  const clinicViews = allCustomViews(
     parseBodyChartConfig(
       "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
     ),
   );
+  const bodyMap = parseBodyMap(note.content);
+  const customViews = resolveCustomViewsForMap(bodyMap, clinicViews);
   const sections = flattenNoteSections(note.content, customViews);
   const practitioner = mapPractitioner(note.visit?.appointment.practitioner);
 
@@ -382,10 +385,7 @@ export async function getClinicalDocument(
       note.visit?.appointment.startsAt.toISOString() ?? null,
     templateName: note.template?.name ?? null,
     sections,
-    bodyMap: (() => {
-      const map = parseBodyMap(note.content);
-      return map.marks.length > 0 ? map : null;
-    })(),
+    bodyMap: bodyMap.marks.length > 0 ? bodyMap : null,
     bodyChartCustomViews: customViews,
     printedAt: new Date().toISOString(),
   };
@@ -397,10 +397,14 @@ export async function getGpLetterDocument(
 ): Promise<GpLetterDocument> {
   const { note, clinic, signedByName, logoDataUrl } =
     await loadSignedNoteForDocuments(ctx, noteId);
-  const customViews = allCustomViews(
+  const clinicViews = allCustomViews(
     parseBodyChartConfig(
       "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
     ),
+  );
+  const customViews = resolveCustomViewsForMap(
+    parseBodyMap(note.content),
+    clinicViews,
   );
   const sections = flattenNoteSections(note.content, customViews);
   const practitioner =

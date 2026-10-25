@@ -108,6 +108,7 @@ export function VisitRecorder({ visitId }: Props) {
   const [correctOpen, setCorrectOpen] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [customViews, setCustomViews] = useState<BodyChartCustomView[]>([]);
+  const [archivedViews, setArchivedViews] = useState<BodyChartCustomView[]>([]);
   const [templateSections, setTemplateSections] = useState<NoteSection[] | null>(
     null,
   );
@@ -144,13 +145,14 @@ export function VisitRecorder({ visitId }: Props) {
         archivedViews?: BodyChartCustomView[];
       };
     }>("/clinic/body-chart")
-      .then((d) =>
-        setCustomViews([
-          ...(d.config.customViews ?? []),
-          ...(d.config.archivedViews ?? []),
-        ]),
-      )
-      .catch(() => setCustomViews([]));
+      .then((d) => {
+        setCustomViews(d.config.customViews ?? []);
+        setArchivedViews(d.config.archivedViews ?? []);
+      })
+      .catch(() => {
+        setCustomViews([]);
+        setArchivedViews([]);
+      });
   }, []);
 
   const persistReviewContent = useCallback(
@@ -533,29 +535,39 @@ export function VisitRecorder({ visitId }: Props) {
     setPhase("ready");
   }
 
+  const [signBusy, setSignBusy] = useState(false);
+
   async function signNote() {
-    if (!noteId) return;
+    if (!noteId || signBusy) return;
     if (chartAutosaveTimer.current) clearTimeout(chartAutosaveTimer.current);
     ++chartSaveSeq.current;
     chartSaveAbort.current?.abort();
-    await api(`/notes/${noteId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ content: contentRef.current }),
-    });
-    await api(`/notes/${noteId}/sign`, { method: "POST" });
-    setPhase("signed");
+    setSignBusy(true);
+    setError(null);
     try {
-      const { suggestion } = await api<{
-        suggestion: {
-          suggestedWeeks: number;
-          appointmentTypeName: string;
-          planExcerpt: string;
-          slots: string[];
-        };
-      }>(`/visits/${visitId}/rebook`);
-      setRebook(suggestion);
-    } catch {
-      setRebook(null);
+      await api(`/notes/${noteId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ content: contentRef.current }),
+      });
+      await api(`/notes/${noteId}/sign`, { method: "POST" });
+      setPhase("signed");
+      try {
+        const { suggestion } = await api<{
+          suggestion: {
+            suggestedWeeks: number;
+            appointmentTypeName: string;
+            planExcerpt: string;
+            slots: string[];
+          };
+        }>(`/visits/${visitId}/rebook`);
+        setRebook(suggestion);
+      } catch {
+        setRebook(null);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not sign note");
+    } finally {
+      setSignBusy(false);
     }
   }
 
@@ -1021,6 +1033,7 @@ export function VisitRecorder({ visitId }: Props) {
                     }}
                     readOnly={phase === "signed"}
                     customViews={customViews}
+                    archivedViews={archivedViews}
                   />
                 </div>
               ) : null}
@@ -1028,9 +1041,10 @@ export function VisitRecorder({ visitId }: Props) {
                 <button
                   type="button"
                   className="btn-primary"
+                  disabled={signBusy}
                   onClick={() => void signNote()}
                 >
-                  Sign note
+                  {signBusy ? "Signing…" : "Sign note"}
                 </button>
               )}
             </div>

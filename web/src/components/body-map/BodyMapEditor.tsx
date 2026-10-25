@@ -36,7 +36,10 @@ type Props = {
   value: BodyMapContent;
   onChange: (next: BodyMapContent) => void;
   readOnly?: boolean;
+  /** Active clinic overlays — shown in the view picker. */
   customViews?: BodyChartCustomView[];
+  /** Soft-deleted overlays — render-only; tab appears only if marks use them. */
+  archivedViews?: BodyChartCustomView[];
 };
 
 const MARK_COLOUR: Record<BodyMapMarkKind, string> = {
@@ -50,6 +53,7 @@ export function BodyMapEditor({
   onChange,
   readOnly,
   customViews = [],
+  archivedViews = [],
 }: Props) {
   const uid = useId();
   const map = value?.version === 1 ? value : emptyBodyMap();
@@ -72,34 +76,64 @@ export function BodyMapEditor({
   const [draftPoints, setDraftPoints] = useState<BodyMapPoint[]>([]);
   const draftPointsRef = useRef<BodyMapPoint[]>([]);
   const drawingRef = useRef(false);
+  /** Capture attrs at stroke start so mid-draw tool changes don't mutate the mark. */
+  const strokeToolRef = useRef<{
+    kind: BodyMapMarkKind;
+    intensity: number;
+    lesionType: LesionType;
+    dysfunction: SomaticFinding;
+    region: string;
+    side: BodySide;
+    note: string;
+  } | null>(null);
 
   function setDraft(next: BodyMapPoint[]) {
     draftPointsRef.current = next;
     setDraftPoints(next);
   }
 
+  const renderViews = useMemo(() => {
+    const byId = new Map<string, BodyChartCustomView>();
+    for (const v of archivedViews) byId.set(v.id, v);
+    for (const v of customViews) byId.set(v.id, v);
+    for (const v of map.viewSnapshots ?? []) byId.set(v.id, v); // frozen wins
+    return [...byId.values()];
+  }, [archivedViews, customViews, map.viewSnapshots]);
+
+  const archivedIds = useMemo(
+    () => new Set(archivedViews.map((v) => v.id)),
+    [archivedViews],
+  );
+
   const orphanViewIds = useMemo(() => {
     const known = new Set<string>([
       ...BODY_MAP_VIEWS,
-      ...customViews.map((v) => v.id),
+      ...renderViews.map((v) => v.id),
     ]);
     const orphans = new Set<string>();
     for (const m of map.marks) {
       if (!isBuiltinView(m.view) && !known.has(m.view)) orphans.add(m.view);
     }
     return orphans;
-  }, [map.marks, customViews]);
+  }, [map.marks, renderViews]);
 
   const allViews: BodyMapViewId[] = useMemo(() => {
+    // Picker: builtins + active customs only. Archived/orphan tabs only if marks use them.
     const base: BodyMapViewId[] = [
       ...BODY_MAP_VIEWS,
       ...customViews.map((v) => v.id),
     ];
+    const markedCustom = new Set(
+      map.marks.map((m) => m.view).filter((v) => !isBuiltinView(v)),
+    );
+    for (const v of archivedViews) {
+      if (markedCustom.has(v.id) && !base.includes(v.id)) base.push(v.id);
+    }
     for (const id of orphanViewIds) {
       if (!base.includes(id)) base.push(id);
     }
     return base;
-  }, [customViews, orphanViewIds]);
+  }, [customViews, archivedViews, map.marks, orphanViewIds]);
 
   const viewMarks = useMemo(
     () => map.marks.filter((m) => m.view === map.activeView),
@@ -107,48 +141,79 @@ export function BodyMapEditor({
   );
 
   const activeIsOrphan = orphanViewIds.has(map.activeView);
+  const drawLocked =
+    readOnly ||
+    activeIsOrphan ||
+    (archivedIds.has(map.activeView) &&
+      !customViews.some((v) => v.id === map.activeView));
+
+  function emit(next: BodyMapContent) {
+    onChange({
+      ...next,
+      ...(map.viewSnapshots?.length
+        ? { viewSnapshots: map.viewSnapshots }
+        : {}),
+    });
+  }
 
   function setView(activeView: BodyMapViewId) {
     setDraft([]);
     drawingRef.current = false;
-    onChange({
+    strokeToolRef.current = null;
+    emit({
       version: 1,
       activeView,
       marks: marksRef.current,
     });
   }
 
-  function attrsForNewMark(): Partial<BodyMapMark> {
-    const base: Partial<BodyMapMark> = {
+  function captureStrokeTool() {
+    strokeToolRef.current = {
+      kind: tool,
+      intensity,
+      lesionType,
+      dysfunction,
+      region,
       side,
-      note: note.trim() || undefined,
+      note,
     };
-    if (tool === "pain") base.intensity = intensity;
-    if (tool === "lesion") base.lesionType = lesionType;
-    if (tool === "somatic_dysfunction") {
-      base.dysfunction = dysfunction;
-      base.region = region.trim() || undefined;
+  }
+
+  function attrsForStroke(): Partial<BodyMapMark> {
+    const t = strokeToolRef.current;
+    if (!t) return {};
+    const base: Partial<BodyMapMark> = {
+      side: t.side,
+      note: t.note.trim() || undefined,
+    };
+    if (t.kind === "pain") base.intensity = t.intensity;
+    if (t.kind === "lesion") base.lesionType = t.lesionType;
+    if (t.kind === "somatic_dysfunction") {
+      base.dysfunction = t.dysfunction;
+      base.region = t.region.trim() || undefined;
     }
     return base;
   }
 
   function commitMark(shape: BodyMapShape, points: BodyMapPoint[], x: number, y: number) {
-    if (readOnly) return;
+    if (drawLocked) return;
     if (marksRef.current.length >= MAX_BODY_MAP_MARKS) return;
+    if (!strokeToolRef.current) captureStrokeTool();
+    const kind = strokeToolRef.current?.kind ?? tool;
     const mark: BodyMapMark = {
       id: newMarkId(),
-      kind: tool,
+      kind,
       view: activeViewRef.current,
       x,
       y,
       shape,
       createdAt: new Date().toISOString(),
-      ...attrsForNewMark(),
+      ...attrsForStroke(),
     };
     if (points.length) mark.points = points;
     const nextMarks = [...marksRef.current, mark];
     marksRef.current = nextMarks;
-    onChange({
+    emit({
       version: 1,
       activeView: activeViewRef.current,
       marks: nextMarks,
@@ -157,6 +222,7 @@ export function BodyMapEditor({
     setNote("");
     setDraft([]);
     drawingRef.current = false;
+    strokeToolRef.current = null;
   }
 
   function svgPoint(e: React.PointerEvent<SVGSVGElement>): BodyMapPoint | null {
@@ -174,17 +240,19 @@ export function BodyMapEditor({
   }
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
-    if (readOnly) return;
+    if (drawLocked) return;
     if (e.button != null && e.button !== 0) return;
     const p = svgPoint(e);
     if (!p) return;
 
     if (drawMode === "point") {
+      captureStrokeTool();
       commitMark("point", [], p.x, p.y);
       return;
     }
 
     if (drawMode === "path") {
+      captureStrokeTool();
       drawingRef.current = true;
       setDraft([p]);
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -198,6 +266,7 @@ export function BodyMapEditor({
       commitMark("polygon", pts, c.x, c.y);
       return;
     }
+    if (draftPointsRef.current.length === 0) captureStrokeTool();
     const next =
       draftPointsRef.current.length >= MAX_MARK_POINTS
         ? draftPointsRef.current
@@ -239,7 +308,7 @@ export function BodyMapEditor({
     if (readOnly) return;
     const nextMarks = marksRef.current.filter((m) => m.id !== id);
     marksRef.current = nextMarks;
-    onChange({
+    emit({
       version: 1,
       activeView: activeViewRef.current,
       marks: nextMarks,
@@ -256,18 +325,22 @@ export function BodyMapEditor({
       return;
     }
     setDraft([]);
+    strokeToolRef.current = null;
     const nextMarks = marksRef.current.filter(
       (m) => m.view !== activeViewRef.current,
     );
     marksRef.current = nextMarks;
-    onChange({
+    emit({
       version: 1,
       activeView: activeViewRef.current,
       marks: nextMarks,
     });
   }
 
-  const customSvg = customViews.find((v) => v.id === map.activeView)?.svg;
+  const customSvg = renderViews.find((v) => v.id === map.activeView)?.svg;
+  const activeIsArchived =
+    archivedIds.has(map.activeView) &&
+    !customViews.some((v) => v.id === map.activeView);
 
   return (
     <div className="body-map">
@@ -284,13 +357,17 @@ export function BodyMapEditor({
               }
               onClick={() => setView(v)}
             >
-              {viewLabel(v, customViews)}
-              {orphanViewIds.has(v) ? " (removed)" : ""}
+              {viewLabel(v, renderViews)}
+              {orphanViewIds.has(v)
+                ? " (removed)"
+                : archivedIds.has(v) && !customViews.some((c) => c.id === v)
+                  ? " (archived)"
+                  : ""}
             </button>
           ))}
         </div>
 
-        {!readOnly ? (
+        {!drawLocked ? (
           <>
             <div className="body-map-tools">
               {BODY_MAP_MARK_KINDS.map((k) => (
@@ -435,7 +512,7 @@ export function BodyMapEditor({
             </label>
           </div>
         ) : null}
-        {!readOnly && drawMode !== "point" ? (
+        {!drawLocked && drawMode !== "point" ? (
           <p className="muted body-map-hint">
             {drawMode === "path"
               ? "Press and drag to draw freehand."
@@ -454,10 +531,10 @@ export function BodyMapEditor({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
-          style={{ cursor: readOnly ? "default" : "crosshair" }}
+          style={{ cursor: drawLocked ? "default" : "crosshair" }}
         >
           <title id={`${uid}-title`}>
-            {viewLabel(map.activeView, customViews)} body chart
+            {viewLabel(map.activeView, renderViews)} body chart
           </title>
           <rect width="200" height="360" fill="var(--body-map-bg, #f6f3ee)" rx="12" />
           <AnatomySilhouette
@@ -505,16 +582,19 @@ export function BodyMapEditor({
 
         <aside className="body-map-legend" aria-label="Marks on this view">
           <div className="body-map-legend-head">
-            <h4>{viewLabel(map.activeView, customViews)} marks</h4>
+            <h4>{viewLabel(map.activeView, renderViews)} marks</h4>
             {!readOnly && viewMarks.length > 0 ? (
               <button type="button" className="btn-ghost btn-sm" onClick={clearView}>
                 Clear view
               </button>
             ) : null}
           </div>
+          {activeIsArchived ? (
+            <p className="muted">Archived anatomy — view-only; restore in Settings to chart again.</p>
+          ) : null}
           {viewMarks.length === 0 ? (
             <p className="muted">
-              {readOnly
+              {drawLocked
                 ? "No marks on this view."
                 : "Place a point, freehand stroke, or region."}
             </p>
@@ -544,7 +624,7 @@ export function BodyMapEditor({
                         {i + 1}. {kindLabel(m.kind)}
                       </strong>
                       <span className="muted">
-                        {markSummary(m, customViews)}
+                        {markSummary(m, renderViews)}
                       </span>
                     </span>
                   </button>

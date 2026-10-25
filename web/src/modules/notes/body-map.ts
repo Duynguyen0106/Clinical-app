@@ -84,17 +84,22 @@ export type BodyMapMark = {
   createdAt: string;
 };
 
-export type BodyMapContent = {
-  version: 1;
-  activeView: BodyMapViewId;
-  marks: BodyMapMark[];
-};
-
 export type BodyChartCustomView = {
   id: string;
   label: string;
   /** Sanitised SVG markup (viewBox preferably 0 0 200 360) */
   svg: string;
+};
+
+export type BodyMapContent = {
+  version: 1;
+  activeView: BodyMapViewId;
+  marks: BodyMapMark[];
+  /**
+   * Frozen custom anatomy overlays referenced by marks.
+   * Prefer these over live clinic config when rendering/printing signed notes.
+   */
+  viewSnapshots?: BodyChartCustomView[];
 };
 
 export type BodyChartConfig = {
@@ -103,7 +108,7 @@ export type BodyChartConfig = {
   archivedViews?: BodyChartCustomView[];
 };
 
-export const MAX_ARCHIVED_CUSTOM_VIEWS = 24;
+export const MAX_ARCHIVED_CUSTOM_VIEWS = 48;
 
 export function isBuiltinView(view: string): view is BuiltinBodyMapViewId {
   return (BODY_MAP_VIEWS as readonly string[]).includes(view);
@@ -206,6 +211,7 @@ export const bodyMapContentSchema = z
     activeView: z.string().trim().min(1).max(64).default("posterior"),
     // No .max() here — over-cap must truncate, not failParse→empty (data loss)
     marks: z.array(z.unknown()).default([]),
+    viewSnapshots: z.array(z.unknown()).max(MAX_ARCHIVED_CUSTOM_VIEWS).optional(),
   })
   .transform((raw): BodyMapContent => {
     const marks: BodyMapMark[] = [];
@@ -223,12 +229,76 @@ export const bodyMapContentSchema = z
     const activeView = isBodyMapViewId(raw.activeView)
       ? raw.activeView
       : "posterior";
+    const needed = new Set<string>();
+    for (const m of marks) {
+      if (!isBuiltinView(m.view)) needed.add(m.view);
+    }
+    if (!isBuiltinView(activeView)) needed.add(activeView);
+    const viewSnapshots = sanitizeViewSnapshots(raw.viewSnapshots, needed);
     return {
       version: 1,
       activeView,
       marks,
+      ...(viewSnapshots.length ? { viewSnapshots } : {}),
     };
   });
+
+function sanitizeViewSnapshots(
+  raw: unknown,
+  needed: Set<string>,
+): BodyChartCustomView[] {
+  if (!Array.isArray(raw) || needed.size === 0) return [];
+  const out: BodyChartCustomView[] = [];
+  const seen = new Set<string>();
+  for (const row of raw) {
+    const view = parseCustomViewRow(row);
+    if (!view || !needed.has(view.id) || seen.has(view.id)) continue;
+    seen.add(view.id);
+    out.push(view);
+    if (out.length >= MAX_ARCHIVED_CUSTOM_VIEWS) break;
+  }
+  return out;
+}
+
+/**
+ * Ensure custom views used by marks are snapshotted onto the map.
+ * Existing snapshots win (frozen); clinic views fill gaps only.
+ */
+export function attachViewSnapshots(
+  map: BodyMapContent,
+  clinicViews: BodyChartCustomView[],
+): BodyMapContent {
+  const needed = new Set<string>();
+  for (const m of map.marks) {
+    if (!isBuiltinView(m.view)) needed.add(m.view);
+  }
+  if (!isBuiltinView(map.activeView)) needed.add(map.activeView);
+  if (needed.size === 0) {
+    const { viewSnapshots: _drop, ...rest } = map;
+    void _drop;
+    return rest;
+  }
+  const byId = new Map<string, BodyChartCustomView>();
+  for (const v of map.viewSnapshots ?? []) {
+    if (needed.has(v.id)) byId.set(v.id, v);
+  }
+  for (const v of clinicViews) {
+    if (needed.has(v.id) && !byId.has(v.id)) byId.set(v.id, v);
+  }
+  const viewSnapshots = [...byId.values()];
+  return viewSnapshots.length ? { ...map, viewSnapshots } : { ...map };
+}
+
+/** Prefer note snapshots over live clinic views when resolving SVG for print/editor. */
+export function resolveCustomViewsForMap(
+  map: BodyMapContent,
+  clinicViews: BodyChartCustomView[] = [],
+): BodyChartCustomView[] {
+  const byId = new Map<string, BodyChartCustomView>();
+  for (const v of clinicViews) byId.set(v.id, v);
+  for (const v of map.viewSnapshots ?? []) byId.set(v.id, v); // snapshots win
+  return [...byId.values()];
+}
 
 export function emptyBodyMap(
   activeView: BodyMapViewId = "posterior",
