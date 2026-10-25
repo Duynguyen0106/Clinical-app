@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import {
@@ -37,14 +37,17 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contentRef = useRef(content);
+  contentRef.current = content;
 
   const sections = useMemo(
     () => parseTemplateSections(note?.template?.schema),
     [note?.template?.schema],
   );
   const markdownSections = sections.filter((s) => s.type === "markdown");
-  const hasBodyMapSection =
-    sections.some((s) => s.type === "body_map") || sections.length === 0;
+  // Always show chart (align with VisitRecorder) — even if older templates omit it
   const readOnly = note?.status === "SIGNED" || note?.status === "VOIDED";
 
   const bodyMap = useMemo(() => parseBodyMap(content), [content]);
@@ -62,6 +65,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
         : withBodyMap(raw, emptyBodyMap());
       setNote(data.note);
       setContent(next);
+      setDirty(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load note");
     }
@@ -71,42 +75,61 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
     void load();
   }, [load]);
 
-  async function save(nextContent: Record<string, unknown>) {
+  const save = useCallback(
+    async (nextContent: Record<string, unknown>) => {
+      if (readOnly) return;
+      setSaving(true);
+      setError(null);
+      try {
+        await api(`/notes/${noteId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ content: nextContent }),
+        });
+        setContent(nextContent);
+        setSavedAt(new Date().toISOString());
+        setDirty(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save failed");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [noteId, readOnly],
+  );
+
+  function scheduleAutosave(next: Record<string, unknown>) {
+    setContent(next);
+    setDirty(true);
     if (readOnly) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await api(`/notes/${noteId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ content: nextContent }),
-      });
-      setContent(nextContent);
-      setSavedAt(new Date().toISOString());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
-    }
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      void save(next);
+    }, 800);
   }
 
+  useEffect(() => {
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    };
+  }, []);
+
   function updateMarkdown(id: string, value: string) {
-    const next = { ...content, [id]: value };
-    setContent(next);
+    scheduleAutosave({ ...content, [id]: value });
   }
 
   function updateBodyMap(map: BodyMapContent) {
-    const next = withBodyMap(content, map);
-    setContent(next);
+    scheduleAutosave(withBodyMap(content, map));
   }
 
   async function sign() {
     if (readOnly) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     setSaving(true);
     setError(null);
     try {
       await api(`/notes/${noteId}`, {
         method: "PATCH",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: contentRef.current }),
       });
       await api(`/notes/${noteId}/sign`, { method: "POST", body: "{}" });
       await load();
@@ -140,11 +163,17 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
           </h2>
           <p className="muted">
             {note.status === "DRAFT"
-              ? "Draft — edit sections and body chart, then sign."
+              ? "Draft — edits autosave; review body chart, then sign."
               : note.status === "SIGNED"
                 ? "Signed record — read only."
                 : "Voided record — read only."}
-            {savedAt ? ` · Saved ${new Date(savedAt).toLocaleTimeString()}` : ""}
+            {saving
+              ? " · Saving…"
+              : dirty
+                ? " · Unsaved changes"
+                : savedAt
+                  ? ` · Saved ${new Date(savedAt).toLocaleTimeString()}`
+                  : ""}
           </p>
         </div>
         <div className="chart-workspace-actions">
@@ -164,7 +193,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
                 disabled={saving}
                 onClick={() => void save(content)}
               >
-                {saving ? "Saving…" : "Save draft"}
+                {saving ? "Saving…" : "Save now"}
               </button>
               <button
                 type="button"
@@ -218,21 +247,19 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
           </div>
         </section>
 
-        {hasBodyMapSection ? (
-          <section className="chart-body-map note-panel">
-            <div className="note-panel-head">
-              <h3>Body chart</h3>
-              <span className="muted">
-                Pain · lesion · somatic dysfunction · all views
-              </span>
-            </div>
-            <BodyMapEditor
-              value={bodyMap}
-              onChange={updateBodyMap}
-              readOnly={readOnly}
-            />
-          </section>
-        ) : null}
+        <section className="chart-body-map note-panel">
+          <div className="note-panel-head">
+            <h3>Body chart</h3>
+            <span className="muted">
+              Pain · lesion · somatic dysfunction · all views
+            </span>
+          </div>
+          <BodyMapEditor
+            value={bodyMap}
+            onChange={updateBodyMap}
+            readOnly={readOnly}
+          />
+        </section>
       </div>
     </div>
   );

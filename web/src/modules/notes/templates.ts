@@ -3,6 +3,8 @@
  * Addresses a Cliniko gap: only two default templates out of the box.
  */
 
+import { BODY_MAP_CONTENT_KEY } from "@/modules/notes/body-map";
+
 export type NoteSectionType = "markdown" | "body_map";
 
 export type NoteSection = {
@@ -21,7 +23,7 @@ export type NoteTemplateDef = {
 };
 
 const BODY_MAP_SECTION: NoteSection = {
-  id: "body_map",
+  id: BODY_MAP_CONTENT_KEY,
   title: "Body chart",
   type: "body_map",
   hint: "Mark pain, lesions, and somatic dysfunction on anatomy views",
@@ -155,7 +157,7 @@ export function parseTemplateSections(schema: unknown): NoteSection[] {
       const type: NoteSectionType =
         row.type === "body_map" ? "body_map" : "markdown";
       return {
-        id: row.id,
+        id: type === "body_map" ? BODY_MAP_CONTENT_KEY : row.id,
         title: row.title,
         type,
         hint: typeof row.hint === "string" ? row.hint : undefined,

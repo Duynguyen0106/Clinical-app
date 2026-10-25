@@ -3,6 +3,8 @@
  * Stored on ClinicalNote.content.body_map (JSON); included in sign hash & print.
  */
 
+import { z } from "zod";
+
 export const BODY_MAP_CONTENT_KEY = "body_map" as const;
 
 export const BODY_MAP_VIEWS = [
@@ -50,6 +52,10 @@ export type SomaticFinding = (typeof SOMATIC_FINDINGS)[number];
 export const BODY_SIDES = ["left", "right", "bilateral", "midline"] as const;
 export type BodySide = (typeof BODY_SIDES)[number];
 
+export const MAX_BODY_MAP_MARKS = 80;
+export const MAX_MARK_NOTE_LEN = 400;
+export const MAX_MARK_REGION_LEN = 80;
+
 export type BodyMapMark = {
   id: string;
   kind: BodyMapMarkKind;
@@ -72,6 +78,71 @@ export type BodyMapContent = {
   marks: BodyMapMark[];
 };
 
+const markSchema = z
+  .object({
+    id: z.string().trim().min(1).max(80),
+    kind: z.enum(BODY_MAP_MARK_KINDS),
+    view: z.enum(BODY_MAP_VIEWS),
+    x: z.number().finite(),
+    y: z.number().finite(),
+    intensity: z.number().finite().optional(),
+    lesionType: z.enum(LESION_TYPES).optional(),
+    region: z.string().optional(),
+    dysfunction: z.enum(SOMATIC_FINDINGS).optional(),
+    side: z.enum(BODY_SIDES).optional(),
+    note: z.string().optional(),
+    createdAt: z.string().trim().min(1).max(64).optional(),
+  })
+  .transform((m): BodyMapMark => {
+    const x = clamp01(m.x);
+    const y = clamp01(m.y);
+    const out: BodyMapMark = {
+      id: m.id.slice(0, 80),
+      kind: m.kind,
+      view: m.view,
+      x,
+      y,
+      createdAt: m.createdAt || new Date().toISOString(),
+    };
+    if (m.kind === "pain") {
+      out.intensity = clampInt(m.intensity ?? 0, 0, 10);
+    }
+    if (m.kind === "lesion" && m.lesionType) {
+      out.lesionType = m.lesionType;
+    }
+    if (m.kind === "somatic_dysfunction") {
+      if (m.dysfunction) out.dysfunction = m.dysfunction;
+      if (m.region?.trim()) {
+        out.region = m.region.trim().slice(0, MAX_MARK_REGION_LEN);
+      }
+    }
+    if (m.side) out.side = m.side;
+    if (m.note?.trim()) {
+      out.note = m.note.trim().slice(0, MAX_MARK_NOTE_LEN);
+    }
+    return out;
+  });
+
+export const bodyMapContentSchema = z
+  .object({
+    version: z.literal(1),
+    activeView: z.enum(BODY_MAP_VIEWS).default("posterior"),
+    marks: z.array(z.unknown()).max(MAX_BODY_MAP_MARKS).default([]),
+  })
+  .transform((raw): BodyMapContent => {
+    const marks: BodyMapMark[] = [];
+    for (const item of raw.marks) {
+      const parsed = markSchema.safeParse(item);
+      if (parsed.success) marks.push(parsed.data);
+      if (marks.length >= MAX_BODY_MAP_MARKS) break;
+    }
+    return {
+      version: 1,
+      activeView: raw.activeView,
+      marks,
+    };
+  });
+
 export function emptyBodyMap(
   activeView: BodyMapViewId = "posterior",
 ): BodyMapContent {
@@ -88,38 +159,66 @@ export function isBodyMapContent(value: unknown): value is BodyMapContent {
   );
 }
 
+/** Normalise any body-map-shaped value; invalid input → empty map. */
+export function sanitizeBodyMap(value: unknown): BodyMapContent {
+  const parsed = bodyMapContentSchema.safeParse(value);
+  return parsed.success ? parsed.data : emptyBodyMap();
+}
+
+/**
+ * Read body_map from note content. Migrates misplaced keys that look like
+ * body-map objects onto the canonical BODY_MAP_CONTENT_KEY.
+ */
 export function parseBodyMap(content: unknown): BodyMapContent {
   if (!content || typeof content !== "object" || Array.isArray(content)) {
     return emptyBodyMap();
   }
   const raw = content as Record<string, unknown>;
-  const nested = raw[BODY_MAP_CONTENT_KEY];
-  if (isBodyMapContent(nested)) {
-    return {
-      version: 1,
-      activeView: BODY_MAP_VIEWS.includes(nested.activeView)
-        ? nested.activeView
-        : "posterior",
-      marks: nested.marks.filter(isValidMark),
-    };
+  let best = sanitizeBodyMap(raw[BODY_MAP_CONTENT_KEY]);
+  for (const [key, val] of Object.entries(raw)) {
+    if (key === BODY_MAP_CONTENT_KEY) continue;
+    if (!isBodyMapContent(val) && !looksLikeBodyMap(val)) continue;
+    const alt = sanitizeBodyMap(val);
+    if (alt.marks.length > best.marks.length) best = alt;
   }
-  return emptyBodyMap();
+  return best;
 }
 
-function isValidMark(m: unknown): m is BodyMapMark {
-  if (!m || typeof m !== "object") return false;
-  const mark = m as BodyMapMark;
-  return (
-    typeof mark.id === "string" &&
-    BODY_MAP_MARK_KINDS.includes(mark.kind) &&
-    BODY_MAP_VIEWS.includes(mark.view) &&
-    typeof mark.x === "number" &&
-    typeof mark.y === "number" &&
-    mark.x >= 0 &&
-    mark.x <= 1 &&
-    mark.y >= 0 &&
-    mark.y <= 1
-  );
+function looksLikeBodyMap(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as { version?: unknown; marks?: unknown };
+  return v.version === 1 && Array.isArray(v.marks);
+}
+
+/**
+ * Canonicalise note JSON before persist/sign:
+ * - one body_map under BODY_MAP_CONTENT_KEY
+ * - drop misplaced body-map objects
+ * - preserve clinician marks when incoming map is empty (re-organise)
+ */
+export function sanitizeNoteContent(
+  content: Record<string, unknown>,
+  opts: { preserveBodyMapFrom?: unknown } = {},
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...content };
+  let map = parseBodyMap(out);
+
+  for (const key of Object.keys(out)) {
+    if (key === BODY_MAP_CONTENT_KEY) continue;
+    if (isBodyMapContent(out[key]) || looksLikeBodyMap(out[key])) {
+      delete out[key];
+    }
+  }
+
+  if (opts.preserveBodyMapFrom) {
+    const prev = parseBodyMap(opts.preserveBodyMapFrom);
+    if (prev.marks.length > 0 && map.marks.length === 0) {
+      map = prev;
+    }
+  }
+
+  out[BODY_MAP_CONTENT_KEY] = map;
+  return out;
 }
 
 export function viewLabel(view: BodyMapViewId): string {
@@ -190,5 +289,15 @@ export function withBodyMap(
   content: Record<string, unknown>,
   map: BodyMapContent,
 ): Record<string, unknown> {
-  return { ...content, [BODY_MAP_CONTENT_KEY]: map };
+  return { ...content, [BODY_MAP_CONTENT_KEY]: sanitizeBodyMap(map) };
+}
+
+function clamp01(n: number) {
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(1, Math.max(0, n));
+}
+
+function clampInt(n: number, min: number, max: number) {
+  if (!Number.isFinite(n)) return min;
+  return Math.min(max, Math.max(min, Math.round(n)));
 }

@@ -5275,3 +5275,50 @@ button.cal-block-btn:focus-visible {
 .form-success {
   color: var(--accent-deep, #0f6b5c);
 }
+
+.body-map-print {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.body-map-print-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.body-map-print-view {
+  margin: 0;
+  border: 1px solid #d8d2c8;
+  border-radius: 10px;
+  padding: 0.5rem;
+  break-inside: avoid;
+}
+
+.body-map-print-view figcaption {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.body-map-print-svg {
+  width: 100%;
+  max-width: 160px;
+  height: auto;
+  color: #3d4a45;
+  display: block;
+  margin: 0 auto;
+}
+
+.body-map-print-legend {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+@media print {
+  .body-map-print-svg {
+    max-width: 140px;
+  }
+}

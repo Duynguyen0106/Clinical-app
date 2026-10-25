@@ -6,6 +6,10 @@ import { badRequest, notFound } from "@/server/errors";
 import type { NoteContent } from "@/modules/ai/providers";
 import { hashNoteContent } from "@/modules/notes/hash";
 import { assertNoteDiaryAccess } from "@/modules/notes/access";
+import {
+  BODY_MAP_CONTENT_KEY,
+  sanitizeNoteContent,
+} from "@/modules/notes/body-map";
 import { withClinicTransaction } from "@/server/clinic-rls";
 import { assertOwnsDiaryOrOwner } from "@/server/rbac";
 
@@ -31,11 +35,38 @@ const noteSectionSchema = z.object({
   hint: z.string().trim().max(400).optional(),
 });
 
-export const noteTemplateUpsertSchema = z.object({
-  name: z.string().trim().min(2).max(120),
-  isDefault: z.boolean().optional(),
-  sections: z.array(noteSectionSchema).min(1).max(24),
-});
+export const noteTemplateUpsertSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120),
+    isDefault: z.boolean().optional(),
+    sections: z.array(noteSectionSchema).min(1).max(24),
+  })
+  .superRefine((val, ctx) => {
+    const ids = val.sections.map((s) => s.id.toLowerCase());
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Section ids must be unique",
+        path: ["sections"],
+      });
+    }
+    const charts = val.sections.filter((s) => s.type === "body_map");
+    if (charts.length > 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "At most one body chart section is allowed",
+        path: ["sections"],
+      });
+    }
+  })
+  .transform((val) => ({
+    ...val,
+    sections: val.sections.map((s) =>
+      s.type === "body_map"
+        ? { ...s, id: BODY_MAP_CONTENT_KEY, title: s.title || "Body chart" }
+        : s,
+    ),
+  }));
 
 export async function createNoteTemplate(
   ctx: AuthContext,
@@ -238,12 +269,16 @@ export async function createDraftFromAi(
     });
 
     if (existing) {
+      const merged = sanitizeNoteContent(
+        args.content as Record<string, unknown>,
+        { preserveBodyMapFrom: existing.content },
+      );
       return tx.clinicalNote.update({
         where: { id: existing.id },
         data: {
           templateId: templateId ?? existing.templateId,
           source: "ai",
-          content: args.content as unknown as Prisma.InputJsonValue,
+          content: merged as Prisma.InputJsonValue,
           audits: {
             create: {
               actorId: ctx.userId,
@@ -255,6 +290,9 @@ export async function createDraftFromAi(
       });
     }
 
+    const createdContent = sanitizeNoteContent(
+      args.content as Record<string, unknown>,
+    );
     return tx.clinicalNote.create({
       data: {
         patientId: args.patientId,
@@ -262,7 +300,7 @@ export async function createDraftFromAi(
         templateId: templateId ?? null,
         status: NoteStatus.DRAFT,
         source: "ai",
-        content: args.content as unknown as Prisma.InputJsonValue,
+        content: createdContent as Prisma.InputJsonValue,
         audits: {
           create: {
             actorId: ctx.userId,
@@ -295,14 +333,17 @@ export async function updateDraftNote(
       throw badRequest("Only draft notes can be edited");
     }
 
+    const sanitized = sanitizeNoteContent(content);
+
     return tx.clinicalNote.update({
       where: { id },
       data: {
-        content: content as Prisma.InputJsonValue,
+        content: sanitized as Prisma.InputJsonValue,
         audits: {
           create: {
             actorId: ctx.userId,
             action: "updated",
+            meta: { hasBodyMap: true },
           },
         },
       },
@@ -322,11 +363,17 @@ export async function signNote(ctx: AuthContext, id: string) {
       throw badRequest("Only draft notes can be signed");
     }
 
-    const contentHash = hashNoteContent(note.content);
+    const raw =
+      note.content && typeof note.content === "object" && !Array.isArray(note.content)
+        ? (note.content as Record<string, unknown>)
+        : {};
+    const sanitized = sanitizeNoteContent(raw);
+    const contentHash = hashNoteContent(sanitized);
 
     return tx.clinicalNote.update({
       where: { id },
       data: {
+        content: sanitized as Prisma.InputJsonValue,
         status: NoteStatus.SIGNED,
         signedAt: new Date(),
         signedById: ctx.userId,

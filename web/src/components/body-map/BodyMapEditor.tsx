@@ -78,8 +78,10 @@ export function BodyMapEditor({ value, onChange, readOnly }: Props) {
     setNote("");
   }
 
-  function onSvgClick(e: React.MouseEvent<SVGSVGElement>) {
+  function placeFromPointer(e: React.PointerEvent<SVGSVGElement>) {
     if (readOnly) return;
+    // Ignore secondary buttons / mark-handle taps (those stopPropagation)
+    if (e.button != null && e.button !== 0) return;
     const svg = e.currentTarget;
     const pt = svg.createSVGPoint();
     pt.x = e.clientX;
@@ -100,6 +102,12 @@ export function BodyMapEditor({ value, onChange, readOnly }: Props) {
 
   function clearView() {
     if (readOnly) return;
+    if (
+      viewMarks.length > 0 &&
+      !window.confirm(`Clear ${viewMarks.length} mark(s) on this view?`)
+    ) {
+      return;
+    }
     onChange({
       ...map,
       marks: map.marks.filter((m) => m.view !== map.activeView),
@@ -235,7 +243,7 @@ export function BodyMapEditor({ value, onChange, readOnly }: Props) {
           className="body-map-svg"
           role="img"
           aria-labelledby={`${uid}-title`}
-          onClick={onSvgClick}
+          onPointerDown={placeFromPointer}
           style={{ cursor: readOnly ? "default" : "crosshair" }}
         >
           <title id={`${uid}-title`}>
@@ -255,7 +263,7 @@ export function BodyMapEditor({ value, onChange, readOnly }: Props) {
               style={{ cursor: "pointer" }}
             >
               <circle
-                r={selectedId === m.id ? 9 : 7}
+                r={selectedId === m.id ? 12 : 10}
                 fill={MARK_COLOUR[m.kind]}
                 opacity={0.9}
                 stroke="#fff"
@@ -264,7 +272,7 @@ export function BodyMapEditor({ value, onChange, readOnly }: Props) {
               <text
                 y={4}
                 textAnchor="middle"
-                fontSize="9"
+                fontSize="10"
                 fill="#fff"
                 fontWeight="700"
                 style={{ pointerEvents: "none" }}

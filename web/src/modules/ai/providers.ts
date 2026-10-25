@@ -5,6 +5,10 @@
 
 import type { NoteSection } from "@/modules/notes/templates";
 import {
+  BODY_MAP_CONTENT_KEY,
+  emptyBodyMap,
+} from "@/modules/notes/body-map";
+import {
   mockOrganiseNote,
   mockTranscribe,
   type OrganiseNoteInput,
@@ -81,8 +85,9 @@ async function whisperTranscribe(audioBytes: Buffer): Promise<string> {
 async function openaiOrganise(
   input: OrganiseWithTemplateInput,
 ): Promise<NoteContent> {
-  const sectionIds = input.sections.map((s) => s.id);
-  const schemaHint = input.sections
+  const textSections = input.sections.filter((s) => s.type !== "body_map");
+  const sectionIds = textSections.map((s) => s.id);
+  const schemaHint = textSections
     .map((s) => `- ${s.id} (${s.title}): ${s.hint ?? "clinical prose"}`)
     .join("\n");
   const templateLine = input.templateName
@@ -95,6 +100,7 @@ async function openaiOrganise(
   const system = `You are a UK allied-health clinical scribe for physiotherapy, osteopathy, and manual therapy.
 ${templateLine}
 Return ONLY valid JSON with keys: ${sectionIds.join(", ")}, clinician_review_flags (string array).
+Do not invent body-chart or anatomical mark JSON — clinicians place those marks separately.
 Write each section in the clinical voice matching that section title (e.g. osteopathy “Presentation/Findings/Treatment”, physio SOAP, manual therapy Techniques/Response).
 Rules:
 - Do not invent findings, diagnoses, or numbers not present in the transcript.
@@ -133,15 +139,26 @@ Transcript:\n${input.transcript}`;
   const data = (await res.json()) as {
     choices: { message: { content: string } }[];
   };
-  const parsed = JSON.parse(data.choices[0]?.message?.content ?? "{}") as NoteContent;
+  const parsed = JSON.parse(
+    data.choices[0]?.message?.content ?? "{}",
+  ) as NoteContent;
   if (!Array.isArray(parsed.clinician_review_flags)) {
     parsed.clinician_review_flags = [];
   }
   for (const s of input.sections) {
+    if (s.type === "body_map") {
+      // Clinician-drawn only — never coerce chart to prose
+      delete parsed[s.id];
+      parsed[BODY_MAP_CONTENT_KEY] = emptyBodyMap();
+      continue;
+    }
     if (typeof parsed[s.id] !== "string") {
       parsed[s.id] = "Not discussed — review transcript.";
       parsed.clinician_review_flags.push(`Missing ${s.title}`);
     }
+  }
+  if (!parsed[BODY_MAP_CONTENT_KEY]) {
+    parsed[BODY_MAP_CONTENT_KEY] = emptyBodyMap();
   }
   return parsed;
 }

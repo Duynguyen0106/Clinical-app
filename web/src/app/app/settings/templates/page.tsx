@@ -238,7 +238,8 @@ export default function NoteTemplatesSettingsPage() {
                 <label>
                   Id
                   <input
-                    value={s.id}
+                    value={s.type === "body_map" ? "body_map" : s.id}
+                    disabled={s.type === "body_map"}
                     onChange={(e) =>
                       updateSection(i, {
                         id: e.target.value.replace(/\s+/g, "_"),
@@ -257,11 +258,17 @@ export default function NoteTemplatesSettingsPage() {
                   Type
                   <select
                     value={s.type}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const type = e.target.value as NoteSectionType;
                       updateSection(i, {
-                        type: e.target.value as NoteSectionType,
-                      })
-                    }
+                        type,
+                        id: type === "body_map" ? "body_map" : s.id === "body_map" ? `section_${i + 1}` : s.id,
+                        title:
+                          type === "body_map" && !s.title
+                            ? "Body chart"
+                            : s.title,
+                      });
+                    }}
                   >
                     <option value="markdown">Text (markdown)</option>
                     <option value="body_map">Body chart</option>

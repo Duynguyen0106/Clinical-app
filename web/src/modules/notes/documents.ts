@@ -8,6 +8,7 @@ import {
   BODY_MAP_CONTENT_KEY,
   bodyMapPrintLines,
   parseBodyMap,
+  type BodyMapContent,
 } from "@/modules/notes/body-map";
 
 
@@ -53,6 +54,8 @@ export type ClinicalDocument = {
   appointmentStartsAt: string | null;
   templateName: string | null;
   sections: DocumentSection[];
+  /** Structured body chart for print figures (null when empty). */
+  bodyMap: BodyMapContent | null;
   printedAt: string;
 };
 
@@ -215,11 +218,14 @@ function composeLetterBody(args: {
     }${when ? ` on ${when}` : ""}.`,
   ];
 
+  const bodyChart = sectionText(args.sections, [BODY_MAP_CONTENT_KEY, "body chart"]);
+
   if (subjective) paragraphs.push(`Presenting history:\n${subjective}`);
   if (objective) paragraphs.push(`Examination findings:\n${objective}`);
+  if (bodyChart) paragraphs.push(`Body chart findings:\n${bodyChart}`);
   if (assessment) paragraphs.push(`Clinical impression:\n${assessment}`);
   if (plan) paragraphs.push(`Plan and recommendations:\n${plan}`);
-  if (!subjective && !objective && !assessment && !plan) {
+  if (!subjective && !objective && !assessment && !plan && !bodyChart) {
     paragraphs.push(
       "Please see the enclosed clinical note for the full consultation record.",
     );
@@ -362,6 +368,10 @@ export async function getClinicalDocument(
       note.visit?.appointment.startsAt.toISOString() ?? null,
     templateName: note.template?.name ?? null,
     sections,
+    bodyMap: (() => {
+      const map = parseBodyMap(note.content);
+      return map.marks.length > 0 ? map : null;
+    })(),
     printedAt: new Date().toISOString(),
   };
 }

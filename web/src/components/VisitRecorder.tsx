@@ -563,15 +563,9 @@ export function VisitRecorder({ visitId }: Props) {
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
 
-  const fields = orderedSectionIds(Object.keys(content), templateSections).filter(
-    (key) => {
-      const section = templateSections?.find((s) => s.id === key);
-      return section?.type !== "body_map" && key !== BODY_MAP_CONTENT_KEY;
-    },
-  );
-  const showBodyMap =
-    Boolean(templateSections?.some((s) => s.type === "body_map")) ||
-    isBodyMapContent(content[BODY_MAP_CONTENT_KEY]);
+  const fields = orderedSectionIds(Object.keys(content), templateSections);
+  // Always available on visit review (older templates may omit the section)
+  const showBodyMap = phase === "review" || phase === "signed";
   const bodyMapValue = parseBodyMap(content);
 
 
