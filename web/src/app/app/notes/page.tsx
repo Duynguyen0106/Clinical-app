@@ -143,14 +143,22 @@ function NotesPageInner() {
                     {noteStatusLabel(n.status)}
                   </p>
                 </div>
-                {n.visit ? (
+                <div className="row-actions">
                   <Link
-                    href={`/app/visits/${n.visit.id}`}
+                    href={`/app/notes/${n.id}`}
                     className="btn-primary btn-sm"
                   >
-                    Open visit
+                    Open chart
                   </Link>
-                ) : null}
+                  {n.visit ? (
+                    <Link
+                      href={`/app/visits/${n.visit.id}`}
+                      className="btn-ghost btn-sm"
+                    >
+                      Visit
+                    </Link>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>

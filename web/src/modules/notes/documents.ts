@@ -4,6 +4,19 @@ import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
 import { assertNoteDiaryAccess } from "@/modules/notes/access";
 import { clinicLogoDataUrl } from "@/modules/clinic/profile";
+import {
+  BODY_MAP_CONTENT_KEY,
+  bodyMapPrintLines,
+  allCustomViews,
+  parseBodyChartConfig,
+  parseBodyMap,
+  resolveCustomViewsForMap,
+  sanitizeNoteContent,
+  type BodyChartCustomView,
+  type BodyMapContent,
+} from "@/modules/notes/body-map";
+import { hashNoteContent } from "@/modules/notes/hash";
+
 
 export type DocumentSection = { key: string; label: string; value: string };
 
@@ -47,6 +60,9 @@ export type ClinicalDocument = {
   appointmentStartsAt: string | null;
   templateName: string | null;
   sections: DocumentSection[];
+  /** Structured body chart for print figures (null when empty). */
+  bodyMap: BodyMapContent | null;
+  bodyChartCustomViews: BodyChartCustomView[];
   printedAt: string;
 };
 
@@ -93,7 +109,10 @@ function asRecord(content: unknown): Record<string, unknown> {
   return {};
 }
 
-export function flattenNoteSections(content: unknown): DocumentSection[] {
+export function flattenNoteSections(
+  content: unknown,
+  customViews?: BodyChartCustomView[],
+): DocumentSection[] {
   const raw = asRecord(content);
   const nested =
     raw.sections && typeof raw.sections === "object" && !Array.isArray(raw.sections)
@@ -101,7 +120,12 @@ export function flattenNoteSections(content: unknown): DocumentSection[] {
       : raw;
   const out: DocumentSection[] = [];
   for (const [key, val] of Object.entries(nested)) {
-    if (key === "flags" || key === "sections" || key === "clinician_review_flags") {
+    if (
+      key === "flags" ||
+      key === "sections" ||
+      key === "clinician_review_flags" ||
+      key === BODY_MAP_CONTENT_KEY
+    ) {
       continue;
     }
     let text = "";
@@ -110,6 +134,14 @@ export function flattenNoteSections(content: unknown): DocumentSection[] {
       text = String((val as { text?: unknown }).text ?? "").trim();
     }
     if (text) out.push({ key, label: titleCase(key), value: text });
+  }
+  const mapLines = bodyMapPrintLines(parseBodyMap(content), customViews);
+  if (mapLines.length > 0) {
+    out.push({
+      key: BODY_MAP_CONTENT_KEY,
+      label: "Body chart",
+      value: mapLines.join("\n"),
+    });
   }
   return out;
 }
@@ -196,11 +228,14 @@ function composeLetterBody(args: {
     }${when ? ` on ${when}` : ""}.`,
   ];
 
+  const bodyChart = sectionText(args.sections, [BODY_MAP_CONTENT_KEY, "body chart"]);
+
   if (subjective) paragraphs.push(`Presenting history:\n${subjective}`);
   if (objective) paragraphs.push(`Examination findings:\n${objective}`);
+  if (bodyChart) paragraphs.push(`Body chart findings:\n${bodyChart}`);
   if (assessment) paragraphs.push(`Clinical impression:\n${assessment}`);
   if (plan) paragraphs.push(`Plan and recommendations:\n${plan}`);
-  if (!subjective && !objective && !assessment && !plan) {
+  if (!subjective && !objective && !assessment && !plan && !bodyChart) {
     paragraphs.push(
       "Please see the enclosed clinical note for the full consultation record.",
     );
@@ -251,6 +286,7 @@ async function loadSignedNoteForDocuments(ctx: AuthContext, noteId: string) {
                   email: true,
                   address: true,
                   brandColour: true,
+                  bodyChartConfig: true,
                 },
               },
             },
@@ -262,6 +298,18 @@ async function loadSignedNoteForDocuments(ctx: AuthContext, noteId: string) {
   if (!note) throw notFound("Note not found");
   if (note.status !== NoteStatus.SIGNED) {
     throw badRequest("Only signed notes can be printed or used for GP letters");
+  }
+  if (note.contentHash) {
+    const raw =
+      note.content && typeof note.content === "object" && !Array.isArray(note.content)
+        ? (note.content as Record<string, unknown>)
+        : {};
+    const expected = hashNoteContent(sanitizeNoteContent(raw));
+    if (expected !== note.contentHash) {
+      throw badRequest(
+        "Signed note content hash mismatch — record may be corrupted; contact support",
+      );
+    }
   }
 
   const clinic =
@@ -276,6 +324,7 @@ async function loadSignedNoteForDocuments(ctx: AuthContext, noteId: string) {
         email: true,
         address: true,
         brandColour: true,
+        bodyChartConfig: true,
       },
     }));
 
@@ -299,7 +348,14 @@ export async function getClinicalDocument(
 ): Promise<ClinicalDocument> {
   const { note, clinic, signedByName, logoDataUrl } =
     await loadSignedNoteForDocuments(ctx, noteId);
-  const sections = flattenNoteSections(note.content);
+  const clinicViews = allCustomViews(
+    parseBodyChartConfig(
+      "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
+    ),
+  );
+  const bodyMap = parseBodyMap(note.content);
+  const customViews = resolveCustomViewsForMap(bodyMap, clinicViews);
+  const sections = flattenNoteSections(note.content, customViews);
   const practitioner = mapPractitioner(note.visit?.appointment.practitioner);
 
   await prisma.noteAuditEvent.create({
@@ -343,6 +399,8 @@ export async function getClinicalDocument(
       note.visit?.appointment.startsAt.toISOString() ?? null,
     templateName: note.template?.name ?? null,
     sections,
+    bodyMap: bodyMap.marks.length > 0 ? bodyMap : null,
+    bodyChartCustomViews: customViews,
     printedAt: new Date().toISOString(),
   };
 }
@@ -353,7 +411,16 @@ export async function getGpLetterDocument(
 ): Promise<GpLetterDocument> {
   const { note, clinic, signedByName, logoDataUrl } =
     await loadSignedNoteForDocuments(ctx, noteId);
-  const sections = flattenNoteSections(note.content);
+  const clinicViews = allCustomViews(
+    parseBodyChartConfig(
+      "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
+    ),
+  );
+  const customViews = resolveCustomViewsForMap(
+    parseBodyMap(note.content),
+    clinicViews,
+  );
+  const sections = flattenNoteSections(note.content, customViews);
   const practitioner =
     mapPractitioner(note.visit?.appointment.practitioner) ?? {
       displayName: "Treating clinician",

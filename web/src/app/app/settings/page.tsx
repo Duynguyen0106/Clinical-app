@@ -381,6 +381,10 @@ export default function SettingsPage() {
       title="Settings"
       subtitle="Brand, booking, patient messaging status, and compliance — grouped for owners."
     >
+      <p className="muted">
+        Clinical charting:{" "}
+        <Link href="/app/settings/templates">Note templates &amp; body charts</Link>
+      </p>
       <div
         className="view-toggle settings-section-nav"
         role="tablist"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Mic, Square, Check, AlertTriangle, RefreshCw } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
@@ -21,6 +21,17 @@ import {
   orderedSectionIds,
   sectionLabel,
 } from "@/modules/ai/map-to-template";
+import {
+  BODY_MAP_CONTENT_KEY,
+  emptyBodyMap,
+  isBodyMapContent,
+  parseBodyMap,
+  withBodyMap,
+  type BodyChartCustomView,
+  type BodyMapContent,
+} from "@/modules/notes/body-map";
+import { BodyMapEditor } from "@/components/body-map/BodyMapEditor";
+
 
 type Phase =
   | "loading"
@@ -52,6 +63,7 @@ type VisitPayload = {
     id: string;
     status: string;
     content: Record<string, unknown>;
+    updatedAt?: string;
     parentNoteId?: string | null;
     voidReason?: string | null;
     template?: { id: string; name: string; schema: unknown } | null;
@@ -72,7 +84,7 @@ export function VisitRecorder({ visitId }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [visit, setVisit] = useState<VisitPayload | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
-  const [content, setContent] = useState<Record<string, string>>({});
+  const [content, setContent] = useState<Record<string, unknown>>({});
   const [flags, setFlags] = useState<string[]>([]);
   const [statusLine, setStatusLine] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +108,8 @@ export function VisitRecorder({ visitId }: Props) {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [correctOpen, setCorrectOpen] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [customViews, setCustomViews] = useState<BodyChartCustomView[]>([]);
+  const [archivedViews, setArchivedViews] = useState<BodyChartCustomView[]>([]);
   const [templateSections, setTemplateSections] = useState<NoteSection[] | null>(
     null,
   );
@@ -107,6 +121,38 @@ export function VisitRecorder({ visitId }: Props) {
   const streamRef = useRef<MediaStream | null>(null);
   const mimeRef = useRef({ mimeType: "audio/webm", extension: "webm" });
   const elapsedRef = useRef(0);
+  const contentRef = useRef(content);
+  contentRef.current = content;
+  const noteIdRef = useRef(noteId);
+  noteIdRef.current = noteId;
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  const chartAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chartSaveSeq = useRef(0);
+  const chartSaveAbort = useRef<AbortController | null>(null);
+  const signBusyRef = useRef(false);
+  const baseUpdatedAtRef = useRef<string | null>(null);
+  const chartSavePromiseRef = useRef<Promise<void> | null>(null);
+
+  function adoptNote(note: {
+    id: string;
+    updatedAt?: string | Date | null;
+  }) {
+    setNoteId(note.id);
+    noteIdRef.current = note.id;
+    baseUpdatedAtRef.current =
+      typeof note.updatedAt === "string"
+        ? note.updatedAt
+        : note.updatedAt instanceof Date
+          ? note.updatedAt.toISOString()
+          : null;
+  }
+
+  function clearAdoptedNote() {
+    setNoteId(null);
+    noteIdRef.current = null;
+    baseUpdatedAtRef.current = null;
+  }
 
   function applyTemplateMeta(
     template?: { id: string; name: string; schema: unknown } | null,
@@ -115,6 +161,95 @@ export function VisitRecorder({ visitId }: Props) {
     setTemplateName(template.name);
     setTemplateSections(extractSectionsFromSchema(template.schema));
   }
+
+  useEffect(() => {
+    void api<{
+      config: {
+        customViews: BodyChartCustomView[];
+        archivedViews?: BodyChartCustomView[];
+      };
+    }>("/clinic/body-chart")
+      .then((d) => {
+        setCustomViews(d.config.customViews ?? []);
+        setArchivedViews(d.config.archivedViews ?? []);
+      })
+      .catch(() => {
+        setCustomViews([]);
+        setArchivedViews([]);
+      });
+  }, []);
+
+  const persistReviewContent = useCallback(
+    async (next: Record<string, unknown>) => {
+      const id = noteIdRef.current;
+      if (!id || phaseRef.current !== "review" || signBusyRef.current) return;
+      const seq = ++chartSaveSeq.current;
+      chartSaveAbort.current?.abort();
+      const ac = new AbortController();
+      chartSaveAbort.current = ac;
+      const run = (async () => {
+        try {
+          const data = await api<{
+            note: { updatedAt?: string; content?: unknown };
+          }>(`/notes/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              content: next,
+              ...(baseUpdatedAtRef.current
+                ? { baseUpdatedAt: baseUpdatedAtRef.current }
+                : {}),
+            }),
+            signal: ac.signal,
+          });
+          if (seq !== chartSaveSeq.current) return;
+          if (typeof data.note.updatedAt === "string") {
+            baseUpdatedAtRef.current = data.note.updatedAt;
+          }
+          if (data.note.content && typeof data.note.content === "object") {
+            const serverMap = parseBodyMap(data.note.content);
+            if (serverMap.viewSnapshots?.length) {
+              const local = parseBodyMap(contentRef.current);
+              const merged = withBodyMap(contentRef.current, {
+                ...local,
+                viewSnapshots: serverMap.viewSnapshots,
+              });
+              contentRef.current = merged;
+              setContent(merged);
+            }
+          }
+        } catch {
+          /* autosave errors surface on explicit sign */
+        }
+      })();
+      chartSavePromiseRef.current = run;
+      await run;
+    },
+    [],
+  );
+
+  function scheduleReviewAutosave(next: Record<string, unknown>) {
+    contentRef.current = next;
+    setContent(next);
+    if (
+      phaseRef.current !== "review" ||
+      !noteIdRef.current ||
+      signBusyRef.current
+    ) {
+      return;
+    }
+    if (chartAutosaveTimer.current) clearTimeout(chartAutosaveTimer.current);
+    chartAutosaveTimer.current = setTimeout(() => {
+      if (signBusyRef.current) return;
+      void persistReviewContent(contentRef.current);
+    }, 800);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (chartAutosaveTimer.current) clearTimeout(chartAutosaveTimer.current);
+      chartSaveAbort.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,14 +264,14 @@ export function VisitRecorder({ visitId }: Props) {
         const draft = v.notes.find((n) => n.status === "DRAFT");
         const signed = v.notes.find((n) => n.status === "SIGNED");
         if (signed) {
-          setNoteId(signed.id);
+          adoptNote(signed);
           setContent(stringifyContent(signed.content));
           applyTemplateMeta(signed.template);
           setPhase("signed");
           return;
         }
         if (draft) {
-          setNoteId(draft.id);
+          adoptNote(draft);
           setContent(stringifyContent(draft.content));
           setFlags(asFlags(draft.content));
           applyTemplateMeta(draft.template);
@@ -293,7 +428,7 @@ export function VisitRecorder({ visitId }: Props) {
       if (draft) {
         await clearVisitAudioBuffer(visitId);
         setVisit(v);
-        setNoteId(draft.id);
+        adoptNote(draft);
         setContent(stringifyContent(draft.content));
         setFlags(asFlags(draft.content));
         applyTemplateMeta(draft.template);
@@ -358,18 +493,16 @@ export function VisitRecorder({ visitId }: Props) {
 
     if (result.note) {
       await clearVisitAudioBuffer(visitId);
-      setNoteId(result.note.id);
+      const { visit: v } = await api<{ visit: VisitPayload }>(
+        `/visits/${visitId}`,
+      );
+      setVisit(v);
+      const draft = v.notes.find((n) => n.id === result.note!.id);
+      adoptNote(draft ?? result.note);
       setContent(stringifyContent(result.note.content));
       setFlags(asFlags(result.note.content));
       if (result.template) applyTemplateMeta(result.template);
-      else {
-        const { visit: v } = await api<{ visit: VisitPayload }>(
-          `/visits/${visitId}`,
-        );
-        setVisit(v);
-        const draft = v.notes.find((n) => n.id === result.note!.id);
-        applyTemplateMeta(draft?.template);
-      }
+      else applyTemplateMeta(draft?.template);
       setPhase("review");
       return;
     }
@@ -426,14 +559,15 @@ export function VisitRecorder({ visitId }: Props) {
         { attempts: 2, delayMs: 1200 },
       );
       if (result.note) {
-        setNoteId(result.note.id);
         setContent(stringifyContent(result.note.content));
         setFlags(asFlags(result.note.content));
         const { visit: v } = await api<{ visit: VisitPayload }>(
           `/visits/${visitId}`,
         );
         setVisit(v);
-        applyTemplateMeta(v.notes.find((n) => n.id === result.note!.id)?.template);
+        const draft = v.notes.find((n) => n.id === result.note!.id);
+        adoptNote(draft ?? result.note);
+        applyTemplateMeta(draft?.template);
         setPhase("review");
         return;
       }
@@ -457,26 +591,70 @@ export function VisitRecorder({ visitId }: Props) {
     setPhase("ready");
   }
 
+  const [signBusy, setSignBusy] = useState(false);
+
   async function signNote() {
-    if (!noteId) return;
-    await api(`/notes/${noteId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ content }),
-    });
-    await api(`/notes/${noteId}/sign`, { method: "POST" });
-    setPhase("signed");
+    if (!noteId || signBusyRef.current) return;
+    if (chartAutosaveTimer.current) clearTimeout(chartAutosaveTimer.current);
+    // Wait for in-flight autosave rather than aborting (server may still commit)
+    if (chartSavePromiseRef.current) {
+      await chartSavePromiseRef.current.catch(() => {});
+    }
+    signBusyRef.current = true;
+    setSignBusy(true);
+    setError(null);
     try {
-      const { suggestion } = await api<{
-        suggestion: {
-          suggestedWeeks: number;
-          appointmentTypeName: string;
-          planExcerpt: string;
-          slots: string[];
-        };
-      }>(`/visits/${visitId}/rebook`);
-      setRebook(suggestion);
-    } catch {
-      setRebook(null);
+      const patchOnce = () =>
+        api<{ note: { updatedAt?: string; content?: unknown } }>(
+          `/notes/${noteId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              content: contentRef.current,
+              ...(baseUpdatedAtRef.current
+                ? { baseUpdatedAt: baseUpdatedAtRef.current }
+                : {}),
+            }),
+          },
+        );
+      let patched;
+      try {
+        patched = await patchOnce();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "";
+        if (!/modified elsewhere/i.test(msg)) throw e;
+        const fresh = await api<{ note: { updatedAt?: string } }>(
+          `/notes/${noteId}`,
+        );
+        baseUpdatedAtRef.current =
+          typeof fresh.note.updatedAt === "string"
+            ? fresh.note.updatedAt
+            : null;
+        patched = await patchOnce();
+      }
+      if (typeof patched.note.updatedAt === "string") {
+        baseUpdatedAtRef.current = patched.note.updatedAt;
+      }
+      await api(`/notes/${noteId}/sign`, { method: "POST" });
+      setPhase("signed");
+      try {
+        const { suggestion } = await api<{
+          suggestion: {
+            suggestedWeeks: number;
+            appointmentTypeName: string;
+            planExcerpt: string;
+            slots: string[];
+          };
+        }>(`/visits/${visitId}/rebook`);
+        setRebook(suggestion);
+      } catch {
+        setRebook(null);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not sign note");
+    } finally {
+      signBusyRef.current = false;
+      setSignBusy(false);
     }
   }
 
@@ -491,7 +669,7 @@ export function VisitRecorder({ visitId }: Props) {
       });
       setCorrectionOpen(null);
       setVoidReason("");
-      setNoteId(null);
+      clearAdoptedNote();
       setContent({});
       setFlags([]);
       setPhase("ready");
@@ -510,12 +688,12 @@ export function VisitRecorder({ visitId }: Props) {
     setError(null);
     try {
       const { note } = await api<{
-        note: { id: string; content: Record<string, unknown> };
+        note: { id: string; content: Record<string, unknown>; updatedAt?: string };
       }>(`/notes/${noteId}/addendum`, {
         method: "POST",
         body: JSON.stringify({ text: addendumText.trim() }),
       });
-      setNoteId(note.id);
+      adoptNote(note);
       setContent(stringifyContent(note.content));
       setFlags(asFlags(note.content));
       setCorrectionOpen(null);
@@ -554,6 +732,9 @@ export function VisitRecorder({ visitId }: Props) {
   const ss = String(elapsed % 60).padStart(2, "0");
 
   const fields = orderedSectionIds(Object.keys(content), templateSections);
+  // Always available on visit review (older templates may omit the section)
+  const showBodyMap = phase === "review" || phase === "signed";
+  const bodyMapValue = parseBodyMap(content);
 
 
   return (
@@ -887,7 +1068,7 @@ export function VisitRecorder({ visitId }: Props) {
             </div>
           ) : null}
 
-          {fields.length > 0 && (
+          {(fields.length > 0 || showBodyMap) && (
             <div className="note-editor">
               {flags.length > 0 && (
                 <div className="flag-banner" role="status">
@@ -899,22 +1080,60 @@ export function VisitRecorder({ visitId }: Props) {
                 <label key={key} className="note-field">
                   <span>{sectionLabel(key, templateSections)}</span>
                   <textarea
-                    value={content[key] ?? ""}
-                    onChange={(e) =>
-                      setContent((c) => ({ ...c, [key]: e.target.value }))
+                    value={
+                      typeof content[key] === "string"
+                        ? (content[key] as string)
+                        : ""
                     }
-                    readOnly={phase === "signed"}
+                    onChange={(e) => {
+                      if (signBusyRef.current) return;
+                      const next = {
+                        ...contentRef.current,
+                        [key]: e.target.value,
+                      };
+                      if (phase === "review") scheduleReviewAutosave(next);
+                      else setContent(next);
+                    }}
+                    readOnly={phase === "signed" || signBusy}
                     rows={4}
                   />
                 </label>
               ))}
+              {showBodyMap ? (
+                <div className="note-body-map">
+                  <div className="note-panel-head">
+                    <h4>Body chart</h4>
+                    {noteId && (phase === "review" || phase === "signed") ? (
+                      <Link
+                        href={`/app/notes/${noteId}`}
+                        className="btn-ghost btn-sm"
+                      >
+                        Open full chart
+                      </Link>
+                    ) : null}
+                  </div>
+                  <BodyMapEditor
+                    value={bodyMapValue}
+                    onChange={(map: BodyMapContent) => {
+                      if (signBusyRef.current) return;
+                      const next = withBodyMap(contentRef.current, map);
+                      if (phase === "review") scheduleReviewAutosave(next);
+                      else setContent(next);
+                    }}
+                    readOnly={phase === "signed" || signBusy}
+                    customViews={customViews}
+                    archivedViews={archivedViews}
+                  />
+                </div>
+              ) : null}
               {phase === "review" && (
                 <button
                   type="button"
                   className="btn-primary"
+                  disabled={signBusy}
                   onClick={() => void signNote()}
                 >
-                  Sign note
+                  {signBusy ? "Signing…" : "Sign note"}
                 </button>
               )}
             </div>
@@ -926,10 +1145,18 @@ export function VisitRecorder({ visitId }: Props) {
 }
 
 function stringifyContent(raw: Record<string, unknown>) {
-  const out: Record<string, string> = {};
+  const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw)) {
     if (k === "clinician_review_flags") continue;
+    if (k === BODY_MAP_CONTENT_KEY || isBodyMapContent(v)) {
+      out[k] = isBodyMapContent(v) ? v : emptyBodyMap();
+      continue;
+    }
     out[k] = typeof v === "string" ? v : JSON.stringify(v);
+  }
+  if (!isBodyMapContent(out[BODY_MAP_CONTENT_KEY])) {
+    // Keep chart available on drafts even if older templates omit the section.
+    out[BODY_MAP_CONTENT_KEY] = emptyBodyMap();
   }
   return out;
 }

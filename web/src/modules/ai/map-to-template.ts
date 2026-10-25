@@ -1,13 +1,18 @@
 import type { NoteSection } from "@/modules/notes/templates";
 import type { SoapNoteContent } from "@/modules/ai/mock-pipeline";
+import {
+  BODY_MAP_CONTENT_KEY,
+  emptyBodyMap,
+} from "@/modules/notes/body-map";
 
-export type OrganisedContent = Record<string, string | string[]> & {
+export type OrganisedContent = Record<string, unknown> & {
   clinician_review_flags: string[];
 };
 
 /**
  * Map a SOAP-shaped draft onto clinic template sections (physio / osteo / manual).
  * Pure — used by mock organise and unit tests.
+ * Body-map sections are left empty for the clinician to mark.
  */
 export function mapSoapToTemplateSections(
   soap: SoapNoteContent,
@@ -18,6 +23,11 @@ export function mapSoapToTemplateSections(
   };
 
   for (const section of sections) {
+    if (section.type === "body_map") {
+      // Always canonical key — never write chart under a custom section id
+      content[BODY_MAP_CONTENT_KEY] = emptyBodyMap();
+      continue;
+    }
     const mapped = mapSection(soap, section.id);
     if (mapped != null) {
       content[section.id] = mapped;
@@ -158,16 +168,22 @@ function scoreTemplateMatch(appointmentLower: string, templateLower: string): nu
 }
 
 export function extractSectionsFromSchema(schema: unknown): NoteSection[] {
+  // Lazy import avoided — keep in sync with templates.parseTemplateSections
   if (
     schema &&
     typeof schema === "object" &&
     Array.isArray((schema as { sections?: unknown }).sections)
   ) {
-    return (schema as { sections: NoteSection[] }).sections;
+    const sections = (schema as { sections: NoteSection[] }).sections;
+    return sections.map((s) => ({
+      ...s,
+      type: s.type === "body_map" ? "body_map" : "markdown",
+    }));
   }
   return [
     { id: "subjective", title: "Subjective", type: "markdown" },
     { id: "objective", title: "Objective", type: "markdown" },
+    { id: "body_map", title: "Body chart", type: "body_map" },
     { id: "assessment", title: "Assessment", type: "markdown" },
     { id: "plan", title: "Plan", type: "markdown" },
   ];
@@ -183,14 +199,25 @@ export function sectionLabel(
   return sectionId.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Ordered field ids for a note draft. */
+/** Ordered markdown field ids for a note draft (excludes body_map). */
 export function orderedSectionIds(
   contentKeys: string[],
   sections?: NoteSection[] | null,
 ): string[] {
-  const keys = contentKeys.filter((k) => k !== "clinician_review_flags");
+  const bodyMapIds = new Set(
+    (sections ?? [])
+      .filter((s) => s.type === "body_map")
+      .map((s) => s.id)
+      .concat([BODY_MAP_CONTENT_KEY]),
+  );
+  const keys = contentKeys.filter(
+    (k) => k !== "clinician_review_flags" && !bodyMapIds.has(k),
+  );
   if (!sections?.length) return keys;
-  const ordered = sections.map((s) => s.id).filter((id) => keys.includes(id));
+  const markdownSections = sections.filter((s) => s.type !== "body_map");
+  const ordered = markdownSections
+    .map((s) => s.id)
+    .filter((id) => keys.includes(id));
   const extras = keys.filter((k) => !ordered.includes(k));
   return [...ordered, ...extras];
 }

@@ -5034,3 +5034,292 @@ button.cal-block-btn:focus-visible {
   width: 100%;
   text-align: center;
 }
+
+/* —— Clinical body chart / EHR charting —— */
+.chart-workspace {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.chart-workspace-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.chart-workspace-head h2 {
+  margin: 0.15rem 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+}
+
+.chart-workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.chart-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .chart-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.note-hint {
+  display: block;
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+
+.note-body-map {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.body-map {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.body-map-toolbar {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.body-map-views,
+.body-map-tools,
+.body-map-attrs,
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.body-map-attr {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.body-map-attr span {
+  color: var(--muted);
+}
+
+.body-map-attr input[type="text"],
+.body-map-attr input:not([type]),
+.body-map-attr select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.35rem 0.55rem;
+  font: inherit;
+  min-width: 7rem;
+}
+
+.body-map-attr-grow {
+  flex: 1 1 12rem;
+}
+
+.body-map-attr-grow input {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.body-map-stage {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .body-map-stage {
+    grid-template-columns: 1fr;
+  }
+}
+
+.body-map-svg {
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+  color: #3d4a45;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  touch-action: manipulation;
+}
+
+.body-map-silhouette {
+  color: #4a5c55;
+}
+
+.body-map-legend {
+  min-width: 0;
+}
+
+.body-map-legend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.body-map-legend-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.body-map-mark-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.body-map-mark-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-solid) 92%, white);
+}
+
+.body-map-mark-item.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft, #e8f0ee) 70%, white);
+}
+
+.body-map-mark-select {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+
+.body-map-mark-select .muted {
+  display: block;
+  font-size: 0.78rem;
+  margin-top: 0.15rem;
+}
+
+.body-map-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  margin-top: 0.35rem;
+  flex: 0 0 auto;
+}
+
+.body-map-count {
+  margin: 0.65rem 0 0;
+  font-size: 0.8rem;
+}
+
+.template-section-list {
+  list-style: none;
+  margin: 0.75rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.template-section-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 0.5rem;
+  align-items: end;
+  padding: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+@media (max-width: 720px) {
+  .template-section-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mt-4 {
+  margin-top: 1rem;
+}
+
+.form-success {
+  color: var(--accent-deep, #0f6b5c);
+}
+
+.body-map-print {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.body-map-print-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.body-map-print-view {
+  margin: 0;
+  border: 1px solid #d8d2c8;
+  border-radius: 10px;
+  padding: 0.5rem;
+  break-inside: avoid;
+}
+
+.body-map-print-view figcaption {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.body-map-print-svg {
+  width: 100%;
+  max-width: 160px;
+  height: auto;
+  color: #3d4a45;
+  display: block;
+  margin: 0 auto;
+}
+
+.body-map-print-legend {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+@media print {
+  .body-map-print-svg {
+    max-width: 140px;
+  }
+}
+.body-map-hint { margin: 0; font-size: 0.8rem; }

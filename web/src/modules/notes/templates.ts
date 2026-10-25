@@ -3,10 +3,14 @@
  * Addresses a Cliniko gap: only two default templates out of the box.
  */
 
+import { BODY_MAP_CONTENT_KEY } from "@/modules/notes/body-map";
+
+export type NoteSectionType = "markdown" | "body_map";
+
 export type NoteSection = {
   id: string;
   title: string;
-  type: "markdown";
+  type: NoteSectionType;
   hint?: string;
 };
 
@@ -16,6 +20,13 @@ export type NoteTemplateDef = {
   discipline: "physio" | "osteo" | "manual" | "shared";
   isDefault?: boolean;
   sections: NoteSection[];
+};
+
+const BODY_MAP_SECTION: NoteSection = {
+  id: BODY_MAP_CONTENT_KEY,
+  title: "Body chart",
+  type: "body_map",
+  hint: "Mark pain, lesions, and somatic dysfunction on anatomy views",
 };
 
 const SOAP_SECTIONS: NoteSection[] = [
@@ -31,6 +42,7 @@ const SOAP_SECTIONS: NoteSection[] = [
     type: "markdown",
     hint: "Observation, ROM, special tests, palpation",
   },
+  BODY_MAP_SECTION,
   {
     id: "assessment",
     title: "Assessment",
@@ -82,6 +94,7 @@ export const MSK_TEMPLATE_PACK: NoteTemplateDef[] = [
         title: "Findings",
         type: "markdown",
       },
+      BODY_MAP_SECTION,
       {
         id: "treatment",
         title: "Treatment",
@@ -104,6 +117,7 @@ export const MSK_TEMPLATE_PACK: NoteTemplateDef[] = [
         title: "Subjective",
         type: "markdown",
       },
+      BODY_MAP_SECTION,
       {
         id: "techniques",
         title: "Techniques applied",
@@ -123,8 +137,31 @@ export const MSK_TEMPLATE_PACK: NoteTemplateDef[] = [
   },
   {
     id: "tpl_soap",
-    name: "SOAP (generic)",
+    name: "Generic SOAP",
     discipline: "shared",
     sections: SOAP_SECTIONS,
   },
 ];
+
+export function parseTemplateSections(schema: unknown): NoteSection[] {
+  if (!schema || typeof schema !== "object") return [];
+  const sections = (schema as { sections?: unknown }).sections;
+  if (!Array.isArray(sections)) return [];
+  return sections
+    .map((s): NoteSection | null => {
+      if (!s || typeof s !== "object") return null;
+      const row = s as Record<string, unknown>;
+      if (typeof row.id !== "string" || typeof row.title !== "string") {
+        return null;
+      }
+      const type: NoteSectionType =
+        row.type === "body_map" ? "body_map" : "markdown";
+      return {
+        id: type === "body_map" ? BODY_MAP_CONTENT_KEY : row.id,
+        title: row.title,
+        type,
+        hint: typeof row.hint === "string" ? row.hint : undefined,
+      };
+    })
+    .filter((s): s is NoteSection => Boolean(s));
+}

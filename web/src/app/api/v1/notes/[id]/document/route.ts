@@ -5,12 +5,14 @@ import {
   getGpLetterDocument,
 } from "@/modules/notes/documents";
 import { badRequest } from "@/server/errors";
+import { requireClinician } from "@/server/rbac";
 
 /**
  * GET /notes/:id/document?kind=clinical_note|gp_letter
  * Printable packs for signed notes (clinician only).
  */
 export const GET = withAuth(async (req, ctx, params) => {
+  requireClinician(ctx);
   const kind = new URL(req.url).searchParams.get("kind") ?? "clinical_note";
   if (kind === "gp_letter") {
     const document = await getGpLetterDocument(ctx, params.id);
