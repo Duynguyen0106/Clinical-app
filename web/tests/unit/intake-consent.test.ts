@@ -5,7 +5,9 @@ import {
   verifyIntakeToken,
 } from "../../src/modules/intake/token";
 import {
+  intakeAnswersSchema,
   intakeCompleteSchema,
+  isOsteoIntakeConsentMeta,
   normalizePersonName,
   OSTEO_CONSENT_FORM_KEY,
   OSTEO_TREATMENT_CONSENT_TEXT,
@@ -74,6 +76,23 @@ describe("intake consent schema", () => {
     assert.equal(signatureMatchesPatient("Mina", patient), false);
     assert.equal(signatureMatchesPatient("Someone Else", patient), false);
     assert.equal(normalizePersonName("José  O'Neil"), "jose o neil");
+  });
+
+  it("rejects future dates of birth", () => {
+    assert.throws(() =>
+      intakeAnswersSchema.parse({ dateOfBirth: "2999-01-01" }),
+    );
+    const ok = intakeAnswersSchema.parse({ dateOfBirth: "1990-05-01" });
+    assert.equal(ok.dateOfBirth, "1990-05-01");
+  });
+
+  it("recognises osteo intake consent meta only", () => {
+    assert.equal(
+      isOsteoIntakeConsentMeta({ formKey: OSTEO_CONSENT_FORM_KEY }),
+      true,
+    );
+    assert.equal(isOsteoIntakeConsentMeta({ preferred: true }), false);
+    assert.equal(isOsteoIntakeConsentMeta(null), false);
   });
 });
 

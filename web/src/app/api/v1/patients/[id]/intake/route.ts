@@ -8,6 +8,7 @@ import {
   staffRequestReconsent,
 } from "@/modules/intake/service";
 import { sendEmail } from "@/modules/notifications/email";
+import { sendSms } from "@/modules/notifications/sms";
 import { buildIntakeConsentEmail } from "@/modules/notifications/intake-consent-email";
 import { prisma } from "@/server/db";
 import { z } from "zod";
@@ -28,17 +29,21 @@ const postSchema = z.object({
   appointmentId: z.string().optional().nullable(),
 });
 
-async function emailPreparedConsent(
+async function deliverPreparedConsent(
   ctx: { clinicId: string },
   prepared: {
     url: string | null;
-    patient: { email: string | null; firstName: string };
+    patient: {
+      email: string | null;
+      phone?: string | null;
+      firstName: string;
+    };
     appointmentId: string | null;
   },
   patientId: string,
 ) {
-  if (!prepared.url || !prepared.patient.email) {
-    return { sent: false };
+  if (!prepared.url) {
+    return { sent: false, emailed: false, smsSent: false };
   }
 
   let whenLabel: string | undefined;
@@ -77,29 +82,50 @@ async function emailPreparedConsent(
     where: { id: ctx.clinicId },
     select: { name: true, phone: true, email: true },
   });
-  const content = buildIntakeConsentEmail({
-    clinicName: clinic.name,
-    clinicPhone: clinic.phone,
-    patientFirstName: prepared.patient.firstName,
-    intakeLink: prepared.url,
-    whenLabel,
-    practitionerName,
-    serviceName,
-  });
-  const emailResult = await sendEmail({
-    to: prepared.patient.email,
-    subject: content.subject,
-    text: content.text,
-    html: content.html,
-    replyTo: clinic.email,
-  });
+
+  let emailed = false;
+  if (prepared.patient.email?.trim()) {
+    const content = buildIntakeConsentEmail({
+      clinicName: clinic.name,
+      clinicPhone: clinic.phone,
+      patientFirstName: prepared.patient.firstName,
+      intakeLink: prepared.url,
+      whenLabel,
+      practitionerName,
+      serviceName,
+    });
+    const emailResult = await sendEmail({
+      to: prepared.patient.email,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+      replyTo: clinic.email,
+    });
+    emailed = emailResult.delivered || emailResult.provider === "console";
+  }
+
+  let smsSent = false;
+  // SMS when phone-only, or as a short-link backup alongside email
+  if (prepared.patient.phone?.trim() && (!emailed || !prepared.patient.email?.trim())) {
+    const smsResult = await sendSms({
+      to: prepared.patient.phone,
+      body: [
+        `${clinic.name}: please sign your consent forms (~2 min)`,
+        prepared.url,
+      ].join(" · "),
+    });
+    smsSent = smsResult.delivered || smsResult.provider === "console";
+  }
+
   return {
-    sent: emailResult.delivered || emailResult.provider === "console",
+    sent: emailed || smsSent,
+    emailed,
+    smsSent,
   };
 }
 
 /**
- * Single prepare → email path (no dual ensure).
+ * Single prepare → email/SMS path (no dual ensure).
  * appointmentId is validated inside staff prepare helpers (clinic + patient).
  */
 export const POST = withAuth(async (req, ctx, params) => {
@@ -111,10 +137,10 @@ export const POST = withAuth(async (req, ctx, params) => {
       patientId: params.id,
       appointmentId: body.appointmentId,
     });
-    const { sent } = await emailPreparedConsent(ctx, prepared, params.id);
+    const delivery = await deliverPreparedConsent(ctx, prepared, params.id);
     return jsonOk({
       ok: true,
-      sent,
+      ...delivery,
       alreadyComplete: false,
       reconsent: true,
       submissionId: prepared.submissionId,
@@ -139,10 +165,10 @@ export const POST = withAuth(async (req, ctx, params) => {
     });
   }
 
-  const { sent } = await emailPreparedConsent(ctx, prepared, params.id);
+  const delivery = await deliverPreparedConsent(ctx, prepared, params.id);
   return jsonOk({
     ok: true,
-    sent,
+    ...delivery,
     alreadyComplete: false,
     submissionId: prepared.submissionId,
   });

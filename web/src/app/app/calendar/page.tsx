@@ -1568,8 +1568,8 @@ export default function CalendarPage() {
                           });
                           setMessage(
                             r.sent
-                              ? "Re-consent pack emailed to the patient."
-                              : "Re-consent pack created but email was not delivered.",
+                              ? "Re-consent pack sent to the patient."
+                              : "Re-consent pack created but message was not delivered.",
                           );
                         } else {
                           setMessage(
@@ -1579,8 +1579,8 @@ export default function CalendarPage() {
                       } else {
                         setMessage(
                           d.sent
-                            ? "Consent forms emailed to the patient."
-                            : "Consent email was not delivered — check patient email.",
+                            ? "Consent forms sent to the patient."
+                            : "Consent message was not delivered — check email / mobile.",
                         );
                       }
                     } catch (e) {

@@ -14,15 +14,34 @@ I understand that treatment can sometimes cause temporary soreness or stiffness,
 
 I confirm the information I provide is accurate to the best of my knowledge.`;
 
+function isPastDateOfBirth(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return false;
+  const min = new Date("1900-01-01T12:00:00.000Z");
+  const today = new Date();
+  const todayUtc = new Date(
+    Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 12),
+  );
+  return d >= min && d <= todayUtc;
+}
+
 export const intakeAnswersSchema = z.object({
   dateOfBirth: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD")
+    .refine(isPastDateOfBirth, "Date of birth must be a real past date")
     .nullable()
     .optional(),
   emergencyPhone: z.string().trim().max(40).nullable().optional(),
   safetyNote: z.string().trim().max(2000).nullable().optional(),
 });
+
+/** True when PatientConsent.meta came from the osteo consent pack. */
+export function isOsteoIntakeConsentMeta(meta: unknown) {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+  return (meta as { formKey?: unknown }).formKey === OSTEO_CONSENT_FORM_KEY;
+}
 
 export const intakeCompleteSchema = z.object({
   token: z.string().min(8),

@@ -155,13 +155,15 @@ export async function sendBookingConfirmation(
   let clinicEmailSent = false;
   let practitionerEmailSent = false;
 
-  // Prepare consent link up front so confirmation can include a single CTA
-  // (avoids a second back-to-back consent email).
+  // Prepare consent link up front so confirmation email/SMS can include a CTA
+  // (avoids a second back-to-back consent message when delivery succeeds).
   let intakeLink: string | null = null;
   let intakeEmailSent = false;
   try {
     const done = await patientHasCompletedIntake(apt.clinicId, apt.patientId);
-    if (!done && apt.patient.email?.trim()) {
+    const hasContact =
+      Boolean(apt.patient.email?.trim()) || Boolean(apt.patient.phone?.trim());
+    if (!done && hasContact) {
       const ensured = await ensureIntakeForAppointment({
         clinicId: apt.clinicId,
         patientId: apt.patientId,
@@ -225,11 +227,15 @@ export async function sendBookingConfirmation(
       `with ${apt.practitioner.displayName}`,
       apt.room ? `Room ${apt.room.name}` : null,
       `Manage: ${manageLink}`,
+      intakeLink ? `Consent forms: ${intakeLink}` : null,
     ]
       .filter(Boolean)
       .join(" · ");
     const smsResult = await sendSms({ to: apt.patient.phone, body: smsBody });
     smsSent = smsResult.delivered;
+    if (intakeLink && (smsResult.delivered || smsResult.provider === "console")) {
+      intakeEmailSent = true;
+    }
   }
 
   try {
@@ -310,7 +316,9 @@ export async function sendIntakeConsentEmail(
   _opts: { force?: boolean } = {},
 ) {
   const apt = await loadNotifyAppointment(appointmentId);
-  if (!apt?.patient.email?.trim()) return false;
+  const email = apt?.patient.email?.trim() || null;
+  const phone = apt?.patient.phone?.trim() || null;
+  if (!apt || (!email && !phone)) return false;
 
   // Never orphan a COMPLETED pack — reuse DRAFT or skip when already signed.
   const done = await patientHasCompletedIntake(apt.clinicId, apt.patientId);
@@ -324,24 +332,40 @@ export async function sendIntakeConsentEmail(
   if (!ensured.url || ensured.alreadyComplete) return false;
 
   const when = formatWhen(apt.startsAt, apt.clinic.timezone);
-  const content = buildIntakeConsentEmail({
-    clinicName: apt.clinic.name,
-    clinicPhone: apt.clinic.phone,
-    patientFirstName: apt.patient.firstName,
-    intakeLink: ensured.url,
-    whenLabel: when,
-    practitionerName: apt.practitioner.displayName,
-    serviceName: apt.appointmentType.name,
-  });
+  let sent = false;
 
-  const result = await sendEmail({
-    to: apt.patient.email,
-    subject: content.subject,
-    text: content.text,
-    html: content.html,
-    replyTo: apt.clinic.email,
-  });
-  return result.delivered || result.provider === "console";
+  if (email) {
+    const content = buildIntakeConsentEmail({
+      clinicName: apt.clinic.name,
+      clinicPhone: apt.clinic.phone,
+      patientFirstName: apt.patient.firstName,
+      intakeLink: ensured.url,
+      whenLabel: when,
+      practitionerName: apt.practitioner.displayName,
+      serviceName: apt.appointmentType.name,
+    });
+    const result = await sendEmail({
+      to: email,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+      replyTo: apt.clinic.email,
+    });
+    sent = result.delivered || result.provider === "console";
+  }
+
+  if (phone && !sent) {
+    const smsResult = await sendSms({
+      to: phone,
+      body: [
+        `${apt.clinic.name}: please sign your consent forms (~2 min)`,
+        ensured.url,
+      ].join(" · "),
+    });
+    sent = smsResult.delivered || smsResult.provider === "console";
+  }
+
+  return sent;
 }
 
 export async function sendAppointmentRescheduled(opts: {

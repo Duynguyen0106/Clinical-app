@@ -204,13 +204,13 @@ function PatientsPageInner() {
       setMessage(
         d.reconsent
           ? d.sent
-            ? "Re-consent pack emailed to the patient."
-            : "Re-consent pack created but email was not delivered."
+            ? "Re-consent pack sent to the patient."
+            : "Re-consent pack created but message was not delivered."
           : d.alreadyComplete
             ? "Consent pack already signed — no new link sent. Use re-consent to request a fresh signature."
             : d.sent
-              ? "Consent forms emailed to the patient."
-              : "Could not send email (check patient email / provider).",
+              ? "Consent forms sent to the patient."
+              : "Could not send (check patient email / mobile).",
       );
       const refreshed = await api<{
         status: string;
@@ -709,22 +709,24 @@ function PatientsPageInner() {
                     className="btn-secondary btn-sm"
                     disabled={
                       intakeBusy ||
-                      !selected.email ||
+                      (!selected.email && !selected.phone) ||
                       intakeStatus?.status === "COMPLETED"
                     }
                     onClick={() => void sendConsent("resend")}
                   >
-                    {intakeBusy ? "Sending…" : "Email consent forms"}
+                    {intakeBusy ? "Sending…" : "Send consent forms"}
                   </button>
                   {intakeStatus?.status === "COMPLETED" ? (
                     <button
                       type="button"
                       className="btn-ghost btn-sm"
-                      disabled={intakeBusy || !selected.email}
+                      disabled={
+                        intakeBusy || (!selected.email && !selected.phone)
+                      }
                       onClick={() => {
                         if (
                           !window.confirm(
-                            "Supersede the signed pack and email a new consent link?",
+                            "Supersede the signed pack and send a new consent link?",
                           )
                         ) {
                           return;

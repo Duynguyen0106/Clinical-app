@@ -17,6 +17,7 @@ import {
   SUPERSEDED_INTAKE_LINK_MSG,
   type IntakeAnswers,
   intakeAnswersSchema,
+  isOsteoIntakeConsentMeta,
   signatureMatchesPatient,
 } from "./schema";
 
@@ -49,6 +50,7 @@ export async function patientHasCompletedIntake(
  * Ensure a DRAFT (or reuse COMPLETED) submission for an appointment.
  * Never orphans a COMPLETED pack. Prefers reusing a null-appointment DRAFT
  * (staff send before book) by attaching it to this appointment.
+ * Draft attach/create runs in a clinic transaction to avoid dual drafts.
  */
 export async function ensureIntakeForAppointment(opts: {
   clinicId: string;
@@ -72,20 +74,20 @@ export async function ensureIntakeForAppointment(opts: {
     };
   }
 
-  const existingDraft = await prisma.patientIntakeSubmission.findFirst({
-    where: {
-      clinicId: opts.clinicId,
-      patientId: opts.patientId,
-      appointmentId: opts.appointmentId,
-      status: "DRAFT",
-      formKey: OSTEO_CONSENT_FORM_KEY,
-    },
-    orderBy: { startedAt: "desc" },
-  });
+  const submission = await withClinicTransaction(opts.clinicId, async (tx) => {
+    const existingDraft = await tx.patientIntakeSubmission.findFirst({
+      where: {
+        clinicId: opts.clinicId,
+        patientId: opts.patientId,
+        appointmentId: opts.appointmentId,
+        status: "DRAFT",
+        formKey: OSTEO_CONSENT_FORM_KEY,
+      },
+      orderBy: { startedAt: "desc" },
+    });
+    if (existingDraft) return existingDraft;
 
-  let submission = existingDraft;
-  if (!submission) {
-    const orphanDraft = await prisma.patientIntakeSubmission.findFirst({
+    const orphanDraft = await tx.patientIntakeSubmission.findFirst({
       where: {
         clinicId: opts.clinicId,
         patientId: opts.patientId,
@@ -96,24 +98,24 @@ export async function ensureIntakeForAppointment(opts: {
       orderBy: { startedAt: "desc" },
     });
     if (orphanDraft) {
-      submission = await prisma.patientIntakeSubmission.update({
+      return tx.patientIntakeSubmission.update({
         where: { id: orphanDraft.id },
         data: { appointmentId: opts.appointmentId },
       });
-    } else {
-      submission = await prisma.patientIntakeSubmission.create({
-        data: {
-          clinicId: opts.clinicId,
-          patientId: opts.patientId,
-          appointmentId: opts.appointmentId,
-          formKey: OSTEO_CONSENT_FORM_KEY,
-          formVersion: OSTEO_CONSENT_FORM_VERSION,
-          status: "DRAFT",
-          answers: {},
-        },
-      });
     }
-  }
+
+    return tx.patientIntakeSubmission.create({
+      data: {
+        clinicId: opts.clinicId,
+        patientId: opts.patientId,
+        appointmentId: opts.appointmentId,
+        formKey: OSTEO_CONSENT_FORM_KEY,
+        formVersion: OSTEO_CONSENT_FORM_VERSION,
+        status: "DRAFT",
+        answers: {},
+      },
+    });
+  });
 
   const token = createIntakeToken(
     submission.id,
@@ -477,13 +479,16 @@ export async function staffPrepareIntakeSend(
     select: {
       id: true,
       email: true,
+      phone: true,
       firstName: true,
       lastName: true,
     },
   });
   if (!patient) throw notFound("Patient not found");
-  if (!patient.email?.trim()) {
-    throw badRequest("Patient needs an email address to receive the consent link");
+  if (!patient.email?.trim() && !patient.phone?.trim()) {
+    throw badRequest(
+      "Patient needs an email or mobile number to receive the consent link",
+    );
   }
 
   let appointmentId: string | null = null;
@@ -608,27 +613,15 @@ export async function staffRequestReconsent(
     select: {
       id: true,
       email: true,
+      phone: true,
       firstName: true,
       lastName: true,
     },
   });
   if (!patient) throw notFound("Patient not found");
-  if (!patient.email?.trim()) {
-    throw badRequest("Patient needs an email address to receive the consent link");
-  }
-
-  const priorCompleted = await prisma.patientIntakeSubmission.findFirst({
-    where: {
-      clinicId: ctx.clinicId,
-      patientId: patient.id,
-      formKey: OSTEO_CONSENT_FORM_KEY,
-      status: "COMPLETED",
-    },
-    select: { id: true },
-  });
-  if (!priorCompleted) {
+  if (!patient.email?.trim() && !patient.phone?.trim()) {
     throw badRequest(
-      "No signed consent pack to renew — email the outstanding forms instead",
+      "Patient needs an email or mobile number to receive the consent link",
     );
   }
 
@@ -662,7 +655,23 @@ export async function staffRequestReconsent(
 
   const now = new Date();
   const submission = await withClinicTransaction(ctx.clinicId, async (tx) => {
-    await tx.patientIntakeSubmission.updateMany({
+    // Serialize concurrent re-consent: claim COMPLETED inside the transaction.
+    const priorCompleted = await tx.patientIntakeSubmission.findFirst({
+      where: {
+        clinicId: ctx.clinicId,
+        patientId: patient.id,
+        formKey: OSTEO_CONSENT_FORM_KEY,
+        status: "COMPLETED",
+      },
+      select: { id: true },
+    });
+    if (!priorCompleted) {
+      throw badRequest(
+        "No signed consent pack to renew — send the outstanding forms instead",
+      );
+    }
+
+    const claimed = await tx.patientIntakeSubmission.updateMany({
       where: {
         clinicId: ctx.clinicId,
         patientId: patient.id,
@@ -671,6 +680,12 @@ export async function staffRequestReconsent(
       },
       data: { status: "SUPERSEDED" },
     });
+    if (claimed.count === 0) {
+      throw badRequest(
+        "No signed consent pack to renew — send the outstanding forms instead",
+      );
+    }
+
     // Drop open drafts so the new pack is the only live one
     await tx.patientIntakeSubmission.updateMany({
       where: {
@@ -682,7 +697,7 @@ export async function staffRequestReconsent(
       data: { status: "SUPERSEDED" },
     });
 
-    // Revoke prior online_form consents so "current" grant is clear until re-sign
+    // Revoke only osteo intake consents (keep booking-time privacy/recording)
     const priorConsents = await tx.patientConsent.findMany({
       where: {
         patientId: patient.id,
@@ -693,6 +708,7 @@ export async function staffRequestReconsent(
       select: { id: true, meta: true },
     });
     for (const row of priorConsents) {
+      if (!isOsteoIntakeConsentMeta(row.meta)) continue;
       const meta =
         row.meta && typeof row.meta === "object" && !Array.isArray(row.meta)
           ? (row.meta as Record<string, unknown>)
