@@ -3,6 +3,10 @@ import { z } from "zod";
 export const OSTEO_CONSENT_FORM_KEY = "osteo_consent_v1";
 export const OSTEO_CONSENT_FORM_VERSION = 1;
 
+/** Shown when a re-consent pack replaced this submission's link. */
+export const SUPERSEDED_INTAKE_LINK_MSG =
+  "This consent link was replaced. Ask the clinic for a new link.";
+
 /** Plain UK osteopathic treatment / examination consent copy. */
 export const OSTEO_TREATMENT_CONSENT_TEXT = `I consent to osteopathic assessment and treatment. This may include case history questions, observation, movement testing, soft-tissue techniques, joint mobilisation or manipulation, and advice on exercise or self-care.
 

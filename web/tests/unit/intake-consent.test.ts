@@ -9,6 +9,7 @@ import {
   normalizePersonName,
   OSTEO_CONSENT_FORM_KEY,
   OSTEO_TREATMENT_CONSENT_TEXT,
+  SUPERSEDED_INTAKE_LINK_MSG,
   signatureMatchesPatient,
 } from "../../src/modules/intake/schema";
 import { buildIntakeConsentEmail } from "../../src/modules/notifications/intake-consent-email";
@@ -61,6 +62,7 @@ describe("intake consent schema", () => {
     assert.equal(OSTEO_CONSENT_FORM_KEY, "osteo_consent_v1");
     assert.match(OSTEO_TREATMENT_CONSENT_TEXT, /osteopathic/i);
     assert.match(OSTEO_TREATMENT_CONSENT_TEXT, /stop at any time/i);
+    assert.match(SUPERSEDED_INTAKE_LINK_MSG, /replaced/i);
   });
 
   it("matches signature names with spacing, order, and middle names", () => {

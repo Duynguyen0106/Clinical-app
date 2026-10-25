@@ -14,6 +14,7 @@ import {
   OSTEO_CONSENT_FORM_KEY,
   OSTEO_CONSENT_FORM_VERSION,
   OSTEO_TREATMENT_CONSENT_TEXT,
+  SUPERSEDED_INTAKE_LINK_MSG,
   type IntakeAnswers,
   intakeAnswersSchema,
   signatureMatchesPatient,
@@ -24,6 +25,9 @@ const TERMINAL: AppointmentStatus[] = [
   AppointmentStatus.COMPLETED,
   AppointmentStatus.NO_SHOW,
 ];
+
+/** Debounce staff intake_viewed noise (same actor + submission). */
+const INTAKE_VIEW_DEBOUNCE_MS = 60 * 60 * 1000;
 
 export async function patientHasCompletedIntake(
   clinicId: string,
@@ -158,6 +162,9 @@ export async function loadPublicIntake(token: string) {
     },
   });
   if (!submission) throw notFound("Consent form not found");
+  if (submission.status === "SUPERSEDED") {
+    throw forbidden(SUPERSEDED_INTAKE_LINK_MSG);
+  }
   // Allow DRAFT/COMPLETED load even if the linked appointment is terminal
   // (cancel/reschedule) so the patient can still finish or view the pack.
   const appointmentTerminal = Boolean(
@@ -166,19 +173,19 @@ export async function loadPublicIntake(token: string) {
   );
 
   // Minimize PHI on the public GET — no email/phone/DOB from patient record.
-  // Strip answers entirely once signed (token may be forwarded).
+  // Only DRAFT may expose answers; signed packs strip them (token may be forwarded).
   const rawAnswers = (submission.answers ?? {}) as IntakeAnswers;
   const answers =
-    submission.status === "COMPLETED"
+    submission.status === "DRAFT"
       ? {
-          dateOfBirth: null,
-          emergencyPhone: null,
-          safetyNote: null,
-        }
-      : {
           dateOfBirth: rawAnswers.dateOfBirth ?? null,
           emergencyPhone: rawAnswers.emergencyPhone ?? null,
           safetyNote: rawAnswers.safetyNote ?? null,
+        }
+      : {
+          dateOfBirth: null,
+          emergencyPhone: null,
+          safetyNote: null,
         };
   return {
     status: submission.status,
@@ -232,6 +239,9 @@ export async function savePublicDraft(
       select: { id: true, status: true },
     });
     if (!existing) throw notFound("Consent form not found");
+    if (existing.status === "SUPERSEDED") {
+      throw forbidden(SUPERSEDED_INTAKE_LINK_MSG);
+    }
     throw badRequest("This consent pack is already signed");
   }
   return { id: submissionId };
@@ -271,8 +281,14 @@ export async function completePublicIntake(opts: {
     },
   });
   if (!submission) throw notFound("Consent form not found");
+  if (submission.status === "SUPERSEDED") {
+    throw forbidden(SUPERSEDED_INTAKE_LINK_MSG);
+  }
   if (submission.status === "COMPLETED") {
     return { alreadyComplete: true, submissionId: submission.id };
+  }
+  if (submission.status !== "DRAFT") {
+    throw badRequest("This consent pack cannot be signed");
   }
   if (
     !signatureMatchesPatient(signatureName, {
@@ -576,7 +592,8 @@ export async function staffResendIntake(
 }
 
 /**
- * Explicit re-consent: supersede prior COMPLETED packs, open a new DRAFT, return URL.
+ * Explicit re-consent: require a prior COMPLETED pack, supersede it (and open
+ * drafts + prior online_form consents), then create a new DRAFT atomically.
  * Does not email — caller sends using the returned url.
  */
 export async function staffRequestReconsent(
@@ -598,6 +615,21 @@ export async function staffRequestReconsent(
   if (!patient) throw notFound("Patient not found");
   if (!patient.email?.trim()) {
     throw badRequest("Patient needs an email address to receive the consent link");
+  }
+
+  const priorCompleted = await prisma.patientIntakeSubmission.findFirst({
+    where: {
+      clinicId: ctx.clinicId,
+      patientId: patient.id,
+      formKey: OSTEO_CONSENT_FORM_KEY,
+      status: "COMPLETED",
+    },
+    select: { id: true },
+  });
+  if (!priorCompleted) {
+    throw badRequest(
+      "No signed consent pack to renew — email the outstanding forms instead",
+    );
   }
 
   let appointmentId: string | null = null;
@@ -628,7 +660,8 @@ export async function staffRequestReconsent(
     appointmentId = upcoming?.id ?? null;
   }
 
-  await withClinicTransaction(ctx.clinicId, async (tx) => {
+  const now = new Date();
+  const submission = await withClinicTransaction(ctx.clinicId, async (tx) => {
     await tx.patientIntakeSubmission.updateMany({
       where: {
         clinicId: ctx.clinicId,
@@ -648,19 +681,49 @@ export async function staffRequestReconsent(
       },
       data: { status: "SUPERSEDED" },
     });
+
+    // Revoke prior online_form consents so "current" grant is clear until re-sign
+    const priorConsents = await tx.patientConsent.findMany({
+      where: {
+        patientId: patient.id,
+        granted: true,
+        method: "online_form",
+        type: { in: ["PRIVACY_POLICY", "TREATMENT", "MARKETING"] },
+      },
+      select: { id: true, meta: true },
+    });
+    for (const row of priorConsents) {
+      const meta =
+        row.meta && typeof row.meta === "object" && !Array.isArray(row.meta)
+          ? (row.meta as Record<string, unknown>)
+          : {};
+      await tx.patientConsent.update({
+        where: { id: row.id },
+        data: {
+          granted: false,
+          meta: {
+            ...meta,
+            supersededAt: now.toISOString(),
+            supersededByReconsent: true,
+            priorIntakeSubmissionId: priorCompleted.id,
+          },
+        },
+      });
+    }
+
+    return tx.patientIntakeSubmission.create({
+      data: {
+        clinicId: ctx.clinicId,
+        patientId: patient.id,
+        appointmentId,
+        formKey: OSTEO_CONSENT_FORM_KEY,
+        formVersion: OSTEO_CONSENT_FORM_VERSION,
+        status: "DRAFT",
+        answers: {},
+      },
+    });
   });
 
-  const submission = await prisma.patientIntakeSubmission.create({
-    data: {
-      clinicId: ctx.clinicId,
-      patientId: patient.id,
-      appointmentId,
-      formKey: OSTEO_CONSENT_FORM_KEY,
-      formVersion: OSTEO_CONSENT_FORM_VERSION,
-      status: "DRAFT",
-      answers: {},
-    },
-  });
   const token = createIntakeToken(submission.id);
   return {
     url: intakeUrlForToken(token),
@@ -679,8 +742,29 @@ export async function recordIntakeViewed(
   submissionId: string,
   meta?: { status?: string },
 ) {
-  void prisma.patientAccessEvent
-    .create({
+  void (async () => {
+    const since = new Date(Date.now() - INTAKE_VIEW_DEBOUNCE_MS);
+    const recent = await prisma.patientAccessEvent.findFirst({
+      where: {
+        clinicId: ctx.clinicId,
+        patientId,
+        actorId: ctx.userId,
+        action: "intake_viewed",
+        createdAt: { gte: since },
+      },
+      select: { id: true, meta: true },
+      orderBy: { createdAt: "desc" },
+    });
+    const recentSubmissionId =
+      recent?.meta &&
+      typeof recent.meta === "object" &&
+      !Array.isArray(recent.meta) &&
+      typeof (recent.meta as { submissionId?: unknown }).submissionId === "string"
+        ? (recent.meta as { submissionId: string }).submissionId
+        : null;
+    if (recentSubmissionId === submissionId) return;
+
+    await prisma.patientAccessEvent.create({
       data: {
         clinicId: ctx.clinicId,
         patientId,
@@ -688,6 +772,6 @@ export async function recordIntakeViewed(
         action: "intake_viewed",
         meta: { submissionId, ...meta },
       },
-    })
-    .catch(() => undefined);
+    });
+  })().catch(() => undefined);
 }
