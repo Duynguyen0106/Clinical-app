@@ -280,21 +280,21 @@ export async function sendBookingConfirmation(
  */
 export async function sendIntakeConsentEmail(
   appointmentId: string,
-  opts: { force?: boolean } = {},
+  /** @deprecated force no longer creates orphan drafts after COMPLETED */
+  _opts: { force?: boolean } = {},
 ) {
   const apt = await loadNotifyAppointment(appointmentId);
   if (!apt?.patient.email?.trim()) return false;
 
-  if (!opts.force) {
-    const done = await patientHasCompletedIntake(apt.clinicId, apt.patientId);
-    if (done) return false;
-  }
+  // Never orphan a COMPLETED pack — reuse DRAFT or skip when already signed.
+  const done = await patientHasCompletedIntake(apt.clinicId, apt.patientId);
+  if (done) return false;
 
   const ensured = await ensureIntakeForAppointment({
     clinicId: apt.clinicId,
     patientId: apt.patientId,
     appointmentId: apt.id,
-    forceNewDraft: Boolean(opts.force),
+    forceNewDraft: false,
   });
   if (!ensured.url || ensured.alreadyComplete) return false;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { BrandLogo } from "@/components/BrandLogo";
 import { BRAND } from "@/modules/config/brand";
@@ -19,9 +19,6 @@ type IntakeForm = {
   patient: {
     firstName: string;
     lastName: string;
-    email: string | null;
-    phone: string | null;
-    dateOfBirth: string | null;
     needsDateOfBirth: boolean;
   };
   clinic: {
@@ -43,9 +40,16 @@ type Props = { params: Promise<{ token: string }> };
 
 type Step = "details" | "safety" | "consent";
 
+const STEPS: { id: Step; label: string }[] = [
+  { id: "details", label: "Details" },
+  { id: "safety", label: "Safety" },
+  { id: "consent", label: "Sign" },
+];
+
 export default function IntakeConsentPage({ params }: Props) {
   const { token: rawToken } = use(params);
   const token = decodeURIComponent(rawToken);
+  const baseId = useId();
   const [form, setForm] = useState<IntakeForm | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -70,14 +74,12 @@ export default function IntakeConsentPage({ params }: Props) {
           setDone(true);
           return;
         }
-        setDateOfBirth(d.form.answers.dateOfBirth ?? d.form.patient.dateOfBirth ?? "");
-        setEmergencyPhone(
-          d.form.answers.emergencyPhone ?? d.form.patient.phone ?? "",
-        );
+        setDateOfBirth(d.form.answers.dateOfBirth ?? "");
+        // Only draft answers — never prefill from patient.phone (PHI / overwrite risk)
+        setEmergencyPhone(d.form.answers.emergencyPhone ?? "");
         setSafetyNote(d.form.answers.safetyNote ?? "");
-        setSignatureName(
-          `${d.form.patient.firstName} ${d.form.patient.lastName}`.trim(),
-        );
+        // Empty signature — patient must type their name (attestation)
+        setSignatureName("");
       })
       .catch((e: Error) => setError(e.message));
   }, [token]);
@@ -105,6 +107,10 @@ export default function IntakeConsentPage({ params }: Props) {
   }
 
   async function complete() {
+    if (!privacyConsent || !treatmentConsent) {
+      setError("Please tick the required consent boxes");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -119,8 +125,8 @@ export default function IntakeConsentPage({ params }: Props) {
             emergencyPhone: emergencyPhone.trim() || null,
             safetyNote: safetyNote.trim() || null,
           },
-          privacyConsent: true,
-          treatmentConsent: true,
+          privacyConsent,
+          treatmentConsent,
           marketingConsent,
           signatureName: signatureName.trim(),
         }),
@@ -131,6 +137,12 @@ export default function IntakeConsentPage({ params }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  function goToStep(next: Step) {
+    setError(null);
+    setStep(next);
+    document.getElementById(`${baseId}-tab-${next}`)?.focus();
   }
 
   if (error && !form) {
@@ -155,6 +167,8 @@ export default function IntakeConsentPage({ params }: Props) {
       </main>
     );
   }
+
+  const registeredName = `${form.patient.firstName} ${form.patient.lastName}`.trim();
 
   return (
     <main className="book-page" style={{ ["--book-accent" as string]: accent }}>
@@ -204,23 +218,36 @@ export default function IntakeConsentPage({ params }: Props) {
           </section>
         ) : (
           <>
-            <div className="view-toggle" role="tablist" aria-label="Consent steps">
-              {(
-                [
-                  ["details", "Details"],
-                  ["safety", "Safety"],
-                  ["consent", "Sign"],
-                ] as const
-              ).map(([id, label]) => (
+            <div
+              className="view-toggle"
+              role="tablist"
+              aria-label="Consent steps"
+              onKeyDown={(e) => {
+                if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+                e.preventDefault();
+                const idx = STEPS.findIndex((s) => s.id === step);
+                if (idx < 0) return;
+                const next =
+                  e.key === "ArrowRight"
+                    ? STEPS[(idx + 1) % STEPS.length]
+                    : STEPS[(idx - 1 + STEPS.length) % STEPS.length];
+                if (!next) return;
+                goToStep(next.id);
+              }}
+            >
+              {STEPS.map((s) => (
                 <button
-                  key={id}
+                  key={s.id}
                   type="button"
                   role="tab"
-                  aria-selected={step === id}
-                  className={step === id ? "is-active" : undefined}
-                  onClick={() => setStep(id)}
+                  id={`${baseId}-tab-${s.id}`}
+                  aria-selected={step === s.id}
+                  aria-controls={`${baseId}-panel-${s.id}`}
+                  tabIndex={step === s.id ? 0 : -1}
+                  className={step === s.id ? "is-active" : undefined}
+                  onClick={() => goToStep(s.id)}
                 >
-                  {label}
+                  {s.label}
                 </button>
               ))}
             </div>
@@ -228,12 +255,14 @@ export default function IntakeConsentPage({ params }: Props) {
             {error ? <p className="form-error">{error}</p> : null}
 
             {step === "details" ? (
-              <section className="panel">
+              <section
+                className="panel"
+                id={`${baseId}-panel-details`}
+                role="tabpanel"
+                aria-labelledby={`${baseId}-tab-details`}
+              >
                 <h2>Confirm details</h2>
-                <p className="muted">
-                  {form.patient.firstName} {form.patient.lastName}
-                  {form.patient.email ? ` · ${form.patient.email}` : ""}
-                </p>
+                <p className="muted">{registeredName}</p>
                 {form.patient.needsDateOfBirth || dateOfBirth ? (
                   <label className="field">
                     <span>Date of birth</span>
@@ -245,12 +274,13 @@ export default function IntakeConsentPage({ params }: Props) {
                   </label>
                 ) : null}
                 <label className="field">
-                  <span>Mobile / emergency contact number</span>
+                  <span>Emergency contact number</span>
                   <input
                     type="tel"
                     value={emergencyPhone}
                     onChange={(e) => setEmergencyPhone(e.target.value)}
-                    placeholder="Optional if already on file"
+                    placeholder="Optional — stored with this form only"
+                    autoComplete="tel"
                   />
                 </label>
                 <button
@@ -258,7 +288,7 @@ export default function IntakeConsentPage({ params }: Props) {
                   className="btn-primary"
                   onClick={() => {
                     void saveDraft();
-                    setStep("safety");
+                    goToStep("safety");
                   }}
                 >
                   Continue
@@ -267,7 +297,12 @@ export default function IntakeConsentPage({ params }: Props) {
             ) : null}
 
             {step === "safety" ? (
-              <section className="panel">
+              <section
+                className="panel"
+                id={`${baseId}-panel-safety`}
+                role="tabpanel"
+                aria-labelledby={`${baseId}-tab-safety`}
+              >
                 <h2>Anything we must know?</h2>
                 <p className="muted">
                   Optional — allergies, medications, or other notes before
@@ -286,7 +321,7 @@ export default function IntakeConsentPage({ params }: Props) {
                   <button
                     type="button"
                     className="btn-ghost"
-                    onClick={() => setStep("details")}
+                    onClick={() => goToStep("details")}
                   >
                     Back
                   </button>
@@ -295,7 +330,7 @@ export default function IntakeConsentPage({ params }: Props) {
                     className="btn-primary"
                     onClick={() => {
                       void saveDraft();
-                      setStep("consent");
+                      goToStep("consent");
                     }}
                   >
                     Continue to sign
@@ -305,7 +340,12 @@ export default function IntakeConsentPage({ params }: Props) {
             ) : null}
 
             {step === "consent" ? (
-              <section className="panel">
+              <section
+                className="panel"
+                id={`${baseId}-panel-consent`}
+                role="tabpanel"
+                aria-labelledby={`${baseId}-tab-consent`}
+              >
                 <h2>Consents &amp; signature</h2>
                 <div className="consent-copy">
                   <p>{form.treatmentConsentText}</p>
@@ -326,7 +366,7 @@ export default function IntakeConsentPage({ params }: Props) {
                   />
                   <span>
                     I have read the{" "}
-                    <Link href="/privacy" target="_blank">
+                    <Link href="/privacy" target="_blank" referrerPolicy="no-referrer">
                       privacy notice
                     </Link>
                   </span>
@@ -346,14 +386,19 @@ export default function IntakeConsentPage({ params }: Props) {
                   <input
                     value={signatureName}
                     onChange={(e) => setSignatureName(e.target.value)}
-                    autoComplete="name"
+                    autoComplete="off"
+                    placeholder={registeredName}
+                    aria-describedby={`${baseId}-sig-hint`}
                   />
                 </label>
+                <p id={`${baseId}-sig-hint`} className="muted">
+                  Sign as registered: {registeredName}
+                </p>
                 <div className="home-cta">
                   <button
                     type="button"
                     className="btn-ghost"
-                    onClick={() => setStep("safety")}
+                    onClick={() => goToStep("safety")}
                   >
                     Back
                   </button>

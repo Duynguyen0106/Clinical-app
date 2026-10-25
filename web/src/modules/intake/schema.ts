@@ -35,3 +35,31 @@ export const intakeDraftSchema = z.object({
 });
 
 export type IntakeAnswers = z.infer<typeof intakeAnswersSchema>;
+
+/** Normalize names for signature comparison (case/spacing/punctuation). */
+export function normalizePersonName(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function signatureMatchesPatient(
+  signatureName: string,
+  patient: { firstName: string; lastName: string },
+) {
+  const signed = normalizePersonName(signatureName);
+  const expected = normalizePersonName(
+    `${patient.firstName} ${patient.lastName}`,
+  );
+  if (!signed || !expected) return false;
+  if (signed === expected) return true;
+  // Allow "Last First" order
+  const swapped = normalizePersonName(
+    `${patient.lastName} ${patient.firstName}`,
+  );
+  return signed === swapped;
+}

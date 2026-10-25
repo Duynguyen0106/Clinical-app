@@ -1540,7 +1540,10 @@ export default function CalendarPage() {
                     setBusy(true);
                     setError(null);
                     try {
-                      const d = await api<{ sent: boolean }>(
+                      const d = await api<{
+                        sent: boolean;
+                        alreadyComplete?: boolean;
+                      }>(
                         `/patients/${selected.patient.id}/intake`,
                         {
                           method: "POST",
@@ -1551,9 +1554,11 @@ export default function CalendarPage() {
                         },
                       );
                       setMessage(
-                        d.sent
-                          ? "Consent forms emailed to the patient."
-                          : "Consent email was not delivered — check patient email.",
+                        d.alreadyComplete
+                          ? "Consent pack already signed — no new link sent."
+                          : d.sent
+                            ? "Consent forms emailed to the patient."
+                            : "Consent email was not delivered — check patient email.",
                       );
                     } catch (e) {
                       setError(

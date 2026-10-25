@@ -16,6 +16,7 @@ import {
   OSTEO_TREATMENT_CONSENT_TEXT,
   type IntakeAnswers,
   intakeAnswersSchema,
+  signatureMatchesPatient,
 } from "./schema";
 
 const TERMINAL: AppointmentStatus[] = [
@@ -113,8 +114,6 @@ export async function loadPublicIntake(token: string) {
           id: true,
           firstName: true,
           lastName: true,
-          email: true,
-          phone: true,
           dateOfBirth: true,
         },
       },
@@ -147,23 +146,25 @@ export async function loadPublicIntake(token: string) {
     throw badRequest("This appointment is no longer active");
   }
 
+  // Minimize PHI on the public GET — no email/phone/DOB values.
+  // Answers may still hold emergencyPhone / dateOfBirth the patient already typed.
+  const answers = (submission.answers ?? {}) as IntakeAnswers;
   return {
     status: submission.status,
     formKey: submission.formKey,
     formVersion: submission.formVersion,
     treatmentConsentText: OSTEO_TREATMENT_CONSENT_TEXT,
-    answers: (submission.answers ?? {}) as IntakeAnswers,
+    answers: {
+      dateOfBirth: answers.dateOfBirth ?? null,
+      emergencyPhone: answers.emergencyPhone ?? null,
+      safetyNote: answers.safetyNote ?? null,
+    },
     completedAt: submission.completedAt?.toISOString() ?? null,
     signedAt: submission.signedAt?.toISOString() ?? null,
     signatureName: submission.signatureName,
     patient: {
       firstName: submission.patient.firstName,
       lastName: submission.patient.lastName,
-      email: submission.patient.email,
-      phone: submission.patient.phone,
-      dateOfBirth: submission.patient.dateOfBirth
-        ? submission.patient.dateOfBirth.toISOString().slice(0, 10)
-        : null,
       needsDateOfBirth: !submission.patient.dateOfBirth,
     },
     clinic: {
@@ -243,6 +244,16 @@ export async function completePublicIntake(opts: {
   if (submission.status === "COMPLETED") {
     return { alreadyComplete: true, submissionId: submission.id };
   }
+  if (
+    !signatureMatchesPatient(signatureName, {
+      firstName: submission.patient.firstName,
+      lastName: submission.patient.lastName,
+    })
+  ) {
+    throw badRequest(
+      `Please type your name exactly as registered: ${submission.patient.firstName} ${submission.patient.lastName}`,
+    );
+  }
 
   const ipHash = opts.ip
     ? createHash("sha256").update(opts.ip).digest("hex").slice(0, 32)
@@ -252,15 +263,12 @@ export async function completePublicIntake(opts: {
   await withClinicTransaction(submission.clinicId, async (tx) => {
     const patientPatch: {
       dateOfBirth?: Date;
-      phone?: string;
       alerts?: string;
     } = {};
     if (!submission.patient.dateOfBirth && answers.dateOfBirth) {
       patientPatch.dateOfBirth = new Date(`${answers.dateOfBirth}T12:00:00.000Z`);
     }
-    if (!submission.patient.phone && answers.emergencyPhone?.trim()) {
-      patientPatch.phone = answers.emergencyPhone.trim();
-    }
+    // emergencyPhone stays in answers only — do not overwrite patient.phone
     const safety = answers.safetyNote?.trim();
     if (safety) {
       const prefix = `Safety (intake): ${safety}`;
@@ -337,7 +345,7 @@ export async function completePublicIntake(opts: {
   return { alreadyComplete: false, submissionId: submission.id };
 }
 
-/** Staff: latest intake status for a patient. */
+/** Staff: latest intake status for a patient (COMPLETED preferred over DRAFT). */
 export async function getPatientIntakeStatus(
   ctx: AuthContext,
   patientId: string,
@@ -348,14 +356,25 @@ export async function getPatientIntakeStatus(
   });
   if (!patient) throw notFound("Patient not found");
 
-  const latest = await prisma.patientIntakeSubmission.findFirst({
+  const completed = await prisma.patientIntakeSubmission.findFirst({
     where: {
       clinicId: ctx.clinicId,
       patientId,
       formKey: OSTEO_CONSENT_FORM_KEY,
+      status: "COMPLETED",
     },
-    orderBy: [{ completedAt: "desc" }, { startedAt: "desc" }],
+    orderBy: { completedAt: "desc" },
   });
+  const latest =
+    completed ??
+    (await prisma.patientIntakeSubmission.findFirst({
+      where: {
+        clinicId: ctx.clinicId,
+        patientId,
+        formKey: OSTEO_CONSENT_FORM_KEY,
+      },
+      orderBy: { startedAt: "desc" },
+    }));
 
   if (!latest) {
     return { status: "NONE" as const, submission: null };
@@ -379,7 +398,12 @@ export async function getPatientIntakeStatus(
   };
 }
 
-export async function staffResendIntake(
+/**
+ * Staff: prepare a consent link for email.
+ * - Bounds appointmentId to this clinic + patient (IDOR-safe)
+ * - Reuses existing DRAFT; does not orphan a COMPLETED pack
+ */
+export async function staffPrepareIntakeSend(
   ctx: AuthContext,
   opts: { patientId: string; appointmentId?: string | null },
 ) {
@@ -400,8 +424,21 @@ export async function staffResendIntake(
     throw badRequest("Patient needs an email address to receive the consent link");
   }
 
-  let appointmentId = opts.appointmentId ?? null;
-  if (!appointmentId) {
+  let appointmentId: string | null = null;
+  if (opts.appointmentId) {
+    const apt = await prisma.appointment.findFirst({
+      where: {
+        id: opts.appointmentId,
+        clinicId: ctx.clinicId,
+        patientId: patient.id,
+      },
+      select: { id: true },
+    });
+    if (!apt) {
+      throw badRequest("Appointment not found for this patient");
+    }
+    appointmentId = apt.id;
+  } else {
     const upcoming = await prisma.appointment.findFirst({
       where: {
         clinicId: ctx.clinicId,
@@ -415,9 +452,56 @@ export async function staffResendIntake(
     appointmentId = upcoming?.id ?? null;
   }
 
-  if (!appointmentId) {
-    // Create a draft not tied to an appointment so they can still sign.
-    const submission = await prisma.patientIntakeSubmission.create({
+  const completed = await prisma.patientIntakeSubmission.findFirst({
+    where: {
+      clinicId: ctx.clinicId,
+      patientId: patient.id,
+      status: "COMPLETED",
+      formKey: OSTEO_CONSENT_FORM_KEY,
+    },
+    select: { id: true },
+  });
+  if (completed) {
+    return {
+      url: null as string | null,
+      token: null as string | null,
+      patient,
+      alreadyComplete: true,
+      submissionId: completed.id,
+      appointmentId,
+    };
+  }
+
+  if (appointmentId) {
+    const ensured = await ensureIntakeForAppointment({
+      clinicId: ctx.clinicId,
+      patientId: patient.id,
+      appointmentId,
+      forceNewDraft: false,
+    });
+    return {
+      url: ensured.url,
+      token: ensured.token ?? null,
+      patient,
+      alreadyComplete: ensured.alreadyComplete,
+      submissionId: ensured.submission.id,
+      appointmentId,
+    };
+  }
+
+  // No upcoming appointment — reuse open DRAFT or create one without appointment.
+  const existingDraft = await prisma.patientIntakeSubmission.findFirst({
+    where: {
+      clinicId: ctx.clinicId,
+      patientId: patient.id,
+      status: "DRAFT",
+      formKey: OSTEO_CONSENT_FORM_KEY,
+    },
+    orderBy: { startedAt: "desc" },
+  });
+  const submission =
+    existingDraft ??
+    (await prisma.patientIntakeSubmission.create({
       data: {
         clinicId: ctx.clinicId,
         patientId: patient.id,
@@ -426,30 +510,24 @@ export async function staffResendIntake(
         status: "DRAFT",
         answers: {},
       },
-    });
-    const token = createIntakeToken(submission.id);
-    return {
-      url: intakeUrlForToken(token),
-      token,
-      patient,
-      alreadyComplete: false,
-      submissionId: submission.id,
-    };
-  }
-
-  const ensured = await ensureIntakeForAppointment({
-    clinicId: ctx.clinicId,
-    patientId: patient.id,
-    appointmentId,
-    forceNewDraft: true,
-  });
+    }));
+  const token = createIntakeToken(submission.id);
   return {
-    url: ensured.url,
-    token: ensured.token,
+    url: intakeUrlForToken(token),
+    token,
     patient,
-    alreadyComplete: ensured.alreadyComplete,
-    submissionId: ensured.submission.id,
+    alreadyComplete: false,
+    submissionId: submission.id,
+    appointmentId: null,
   };
+}
+
+/** @deprecated use staffPrepareIntakeSend */
+export async function staffResendIntake(
+  ctx: AuthContext,
+  opts: { patientId: string; appointmentId?: string | null },
+) {
+  return staffPrepareIntakeSend(ctx, opts);
 }
 
 export async function recordIntakeViewed(

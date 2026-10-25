@@ -202,7 +202,7 @@ function PatientsPageInner() {
       );
       setMessage(
         d.alreadyComplete
-          ? "Consent pack already signed — a fresh link was still emailed if needed."
+          ? "Consent pack already signed — no new link sent."
           : d.sent
             ? "Consent forms emailed to the patient."
             : "Could not send email (check patient email / provider).",
