@@ -16,6 +16,8 @@ export const GET = withAuth(async (_req, ctx, params) => {
 export const PATCH = withAuth(async (req, ctx, params) => {
   requireClinician(ctx);
   const body = updateNoteSchema.parse(await req.json());
-  const note = await updateDraftNote(ctx, params.id, body.content);
+  const note = await updateDraftNote(ctx, params.id, body.content, {
+    baseUpdatedAt: body.baseUpdatedAt,
+  });
   return jsonOk({ note });
 });

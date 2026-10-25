@@ -100,15 +100,17 @@ export async function deleteClinicCustomAnatomyView(
         const current = parseBodyChartConfig(clinic.bodyChartConfig);
         const removed = current.customViews.find((v) => v.id === viewId);
         const customViews = current.customViews.filter((v) => v.id !== viewId);
-        // Soft-delete: keep SVG so historical marks still render
+        // Soft-delete: keep SVG so historical marks still render — never FIFO-evict
         let archivedViews = (current.archivedViews ?? []).filter(
           (v) => v.id !== viewId,
         );
         if (removed) {
-          archivedViews = [removed, ...archivedViews].slice(
-            0,
-            MAX_ARCHIVED_CUSTOM_VIEWS,
-          );
+          if (archivedViews.length >= MAX_ARCHIVED_CUSTOM_VIEWS) {
+            throw badRequest(
+              `Archive full (${MAX_ARCHIVED_CUSTOM_VIEWS}). Restore an archived view before removing another.`,
+            );
+          }
+          archivedViews = [removed, ...archivedViews];
         }
         const next: BodyChartConfig = {
           customViews,

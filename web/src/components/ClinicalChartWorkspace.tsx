@@ -22,6 +22,7 @@ type NotePayload = {
     status: string;
     content: Record<string, unknown>;
     signedAt: string | null;
+    updatedAt?: string;
     visitId: string | null;
     patient: { id: string; firstName: string; lastName: string };
     template: { id: string; name: string; schema: unknown } | null;
@@ -37,6 +38,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   const [content, setContent] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [signing, setSigning] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [customViews, setCustomViews] = useState<BodyChartCustomView[]>([]);
@@ -47,6 +49,8 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   /** Monotonic save generation — stale in-flight PATCHes must not clobber UI. */
   const saveSeq = useRef(0);
   const saveAbort = useRef<AbortController | null>(null);
+  const signingRef = useRef(false);
+  const baseUpdatedAtRef = useRef<string | null>(null);
 
   const sections = useMemo(
     () => parseTemplateSections(note?.template?.schema),
@@ -54,7 +58,9 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   );
   const markdownSections = sections.filter((s) => s.type === "markdown");
   // Always show chart (align with VisitRecorder) — even if older templates omit it
-  const readOnly = note?.status === "SIGNED" || note?.status === "VOIDED";
+  const statusLocked =
+    note?.status === "SIGNED" || note?.status === "VOIDED";
+  const readOnly = statusLocked || signing;
 
   const bodyMap = useMemo(() => parseBodyMap(content), [content]);
 
@@ -72,6 +78,12 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
       setNote(data.note);
       setContent(next);
       setDirty(false);
+      baseUpdatedAtRef.current =
+        typeof data.note.updatedAt === "string"
+          ? data.note.updatedAt
+          : data.note.updatedAt
+            ? new Date(data.note.updatedAt as string).toISOString()
+            : null;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load note");
     }
@@ -100,7 +112,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
 
   const save = useCallback(
     async (nextContent: Record<string, unknown>) => {
-      if (readOnly) return;
+      if (statusLocked || signingRef.current) return;
       const seq = ++saveSeq.current;
       saveAbort.current?.abort();
       const ac = new AbortController();
@@ -108,17 +120,41 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
       setSaving(true);
       setError(null);
       try {
-        await api(`/notes/${noteId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ content: nextContent }),
-          signal: ac.signal,
-        });
-        if (seq !== saveSeq.current) return;
-        // Never setContent from the request payload — newer local edits win.
-        setSavedAt(new Date().toISOString());
-        if (contentRef.current === nextContent) {
+        const data = await api<{ note: { updatedAt?: string; content?: unknown } }>(
+          `/notes/${noteId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              content: nextContent,
+              ...(baseUpdatedAtRef.current
+                ? { baseUpdatedAt: baseUpdatedAtRef.current }
+                : {}),
+            }),
+            signal: ac.signal,
+          },
+        );
+        if (seq !== saveSeq.current || signingRef.current) return;
+        if (typeof data.note.updatedAt === "string") {
+          baseUpdatedAtRef.current = data.note.updatedAt;
+        }
+        // Merge server-frozen snapshots into local state without clobbering newer edits
+        if (
+          data.note.content &&
+          typeof data.note.content === "object" &&
+          contentRef.current === nextContent
+        ) {
+          const serverMap = parseBodyMap(data.note.content);
+          if (serverMap.viewSnapshots?.length) {
+            const merged = withBodyMap(contentRef.current, {
+              ...parseBodyMap(contentRef.current),
+              viewSnapshots: serverMap.viewSnapshots,
+            });
+            contentRef.current = merged;
+            setContent(merged);
+          }
           setDirty(false);
         }
+        setSavedAt(new Date().toISOString());
       } catch (e) {
         if (ac.signal.aborted || seq !== saveSeq.current) return;
         setError(e instanceof Error ? e.message : "Save failed");
@@ -126,16 +162,17 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
         if (seq === saveSeq.current) setSaving(false);
       }
     },
-    [noteId, readOnly],
+    [noteId, statusLocked],
   );
 
   function scheduleAutosave(next: Record<string, unknown>) {
     contentRef.current = next;
     setContent(next);
     setDirty(true);
-    if (readOnly) return;
+    if (statusLocked || signingRef.current) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
+      if (signingRef.current) return;
       void save(contentRef.current);
     }, 800);
   }
@@ -148,42 +185,57 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   }, []);
 
   function updateMarkdown(id: string, value: string) {
+    if (signingRef.current) return;
     const next = { ...contentRef.current, [id]: value };
     scheduleAutosave(next);
   }
 
   function updateBodyMap(map: BodyMapContent) {
+    if (signingRef.current) return;
     scheduleAutosave(withBodyMap(contentRef.current, map));
   }
 
   async function sign() {
-    if (readOnly) return;
+    if (statusLocked || signingRef.current) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    // Invalidate any in-flight autosave so it cannot race the sign PATCH
-    const seq = ++saveSeq.current;
+    // Abort in-flight autosave only — sign uses its own controller
     saveAbort.current?.abort();
-    const ac = new AbortController();
-    saveAbort.current = ac;
+    ++saveSeq.current;
+    signingRef.current = true;
+    setSigning(true);
     setSaving(true);
     setError(null);
+    const ac = new AbortController();
     try {
-      await api(`/notes/${noteId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ content: contentRef.current }),
-        signal: ac.signal,
-      });
+      const patched = await api<{ note: { updatedAt?: string } }>(
+        `/notes/${noteId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            content: contentRef.current,
+            ...(baseUpdatedAtRef.current
+              ? { baseUpdatedAt: baseUpdatedAtRef.current }
+              : {}),
+          }),
+          signal: ac.signal,
+        },
+      );
+      if (typeof patched.note.updatedAt === "string") {
+        baseUpdatedAtRef.current = patched.note.updatedAt;
+      }
       await api(`/notes/${noteId}/sign`, {
         method: "POST",
         body: "{}",
         signal: ac.signal,
       });
-      if (seq !== saveSeq.current) return;
       await load();
     } catch (e) {
-      if (ac.signal.aborted || seq !== saveSeq.current) return;
+      if (ac.signal.aborted) return;
       setError(e instanceof Error ? e.message : "Sign failed");
     } finally {
-      if (seq === saveSeq.current) setSaving(false);
+      signingRef.current = false;
+      setSigning(false);
+      setSaving(false);
     }
   }
 
@@ -214,13 +266,15 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
               : note.status === "SIGNED"
                 ? "Signed record — read only."
                 : "Voided record — read only."}
-            {saving
-              ? " · Saving…"
-              : dirty
-                ? " · Unsaved changes"
-                : savedAt
-                  ? ` · Saved ${new Date(savedAt).toLocaleTimeString()}`
-                  : ""}
+            {signing
+              ? " · Signing…"
+              : saving
+                ? " · Saving…"
+                : dirty
+                  ? " · Unsaved changes"
+                  : savedAt
+                    ? ` · Saved ${new Date(savedAt).toLocaleTimeString()}`
+                    : ""}
           </p>
         </div>
         <div className="chart-workspace-actions">
@@ -232,23 +286,23 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
           <Link href="/app/notes" className="btn-ghost btn-sm">
             All notes
           </Link>
-          {!readOnly ? (
+          {!statusLocked ? (
             <>
               <button
                 type="button"
                 className="btn-secondary btn-sm"
-                disabled={saving}
+                disabled={saving || signing}
                 onClick={() => void save(contentRef.current)}
               >
-                {saving ? "Saving…" : "Save now"}
+                {saving && !signing ? "Saving…" : "Save now"}
               </button>
               <button
                 type="button"
                 className="btn-primary btn-sm"
-                disabled={saving}
+                disabled={saving || signing}
                 onClick={() => void sign()}
               >
-                Sign note
+                {signing ? "Signing…" : "Sign note"}
               </button>
             </>
           ) : note.status === "SIGNED" ? (

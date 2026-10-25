@@ -443,6 +443,8 @@ export async function createDraftFromAi(
 
 export const updateNoteSchema = z.object({
   content: z.record(z.string(), z.unknown()),
+  /** Optional optimistic concurrency token (ISO updatedAt from last load/save). */
+  baseUpdatedAt: z.string().datetime().optional(),
 });
 
 async function clinicCustomViewsForSnapshots(
@@ -459,8 +461,10 @@ async function clinicCustomViewsForSnapshots(
 function contentWithSnapshots(
   content: Record<string, unknown>,
   clinicViews: ReturnType<typeof allCustomViews>,
+  priorContent?: unknown,
 ): Record<string, unknown> {
-  const map = attachViewSnapshots(parseBodyMap(content), clinicViews);
+  const prior = priorContent ? parseBodyMap(priorContent).viewSnapshots ?? [] : [];
+  const map = attachViewSnapshots(parseBodyMap(content), clinicViews, prior);
   return withBodyMap(content, map);
 }
 
@@ -468,6 +472,7 @@ export async function updateDraftNote(
   ctx: AuthContext,
   id: string,
   content: Record<string, unknown>,
+  opts: { baseUpdatedAt?: string } = {},
 ) {
   await assertNoteDiaryAccess(ctx, id);
 
@@ -479,6 +484,14 @@ export async function updateDraftNote(
     if (note.status !== NoteStatus.DRAFT) {
       throw badRequest("Only draft notes can be edited");
     }
+    if (
+      opts.baseUpdatedAt &&
+      note.updatedAt.toISOString() !== opts.baseUpdatedAt
+    ) {
+      throw badRequest(
+        "Note was modified elsewhere — reload before saving",
+      );
+    }
 
     // If the client omitted body_map entirely, keep existing clinician marks.
     // An explicit empty/present body_map still replaces (intentional edit).
@@ -489,7 +502,8 @@ export async function updateDraftNote(
         : { preserveBodyMapFrom: note.content },
     );
     const clinicViews = await clinicCustomViewsForSnapshots(tx, ctx.clinicId);
-    sanitized = contentWithSnapshots(sanitized, clinicViews);
+    // Seed from existing note snapshots so draft autosaves stay frozen
+    sanitized = contentWithSnapshots(sanitized, clinicViews, note.content);
     const hasBodyMap = parseBodyMap(sanitized).marks.length > 0;
 
     // Status predicate closes the race where a stale PATCH lands after sign
@@ -531,7 +545,11 @@ export async function signNote(ctx: AuthContext, id: string) {
         ? (note.content as Record<string, unknown>)
         : {};
     const clinicViews = await clinicCustomViewsForSnapshots(tx, ctx.clinicId);
-    const sanitized = contentWithSnapshots(sanitizeNoteContent(raw), clinicViews);
+    const sanitized = contentWithSnapshots(
+      sanitizeNoteContent(raw),
+      clinicViews,
+      raw,
+    );
     const contentHash = hashNoteContent(sanitized);
     const signedAt = new Date();
 

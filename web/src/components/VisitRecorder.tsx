@@ -129,6 +129,8 @@ export function VisitRecorder({ visitId }: Props) {
   const chartAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chartSaveSeq = useRef(0);
   const chartSaveAbort = useRef<AbortController | null>(null);
+  const signBusyRef = useRef(false);
+  const baseUpdatedAtRef = useRef<string | null>(null);
 
   function applyTemplateMeta(
     template?: { id: string; name: string; schema: unknown } | null,
@@ -158,18 +160,43 @@ export function VisitRecorder({ visitId }: Props) {
   const persistReviewContent = useCallback(
     async (next: Record<string, unknown>) => {
       const id = noteIdRef.current;
-      if (!id || phaseRef.current !== "review") return;
+      if (!id || phaseRef.current !== "review" || signBusyRef.current) return;
       const seq = ++chartSaveSeq.current;
       chartSaveAbort.current?.abort();
       const ac = new AbortController();
       chartSaveAbort.current = ac;
       try {
-        await api(`/notes/${id}`, {
+        const data = await api<{
+          note: { updatedAt?: string; content?: unknown };
+        }>(`/notes/${id}`, {
           method: "PATCH",
-          body: JSON.stringify({ content: next }),
+          body: JSON.stringify({
+            content: next,
+            ...(baseUpdatedAtRef.current
+              ? { baseUpdatedAt: baseUpdatedAtRef.current }
+              : {}),
+          }),
           signal: ac.signal,
         });
-        void seq;
+        if (seq !== chartSaveSeq.current || signBusyRef.current) return;
+        if (typeof data.note.updatedAt === "string") {
+          baseUpdatedAtRef.current = data.note.updatedAt;
+        }
+        if (
+          data.note.content &&
+          typeof data.note.content === "object" &&
+          contentRef.current === next
+        ) {
+          const serverMap = parseBodyMap(data.note.content);
+          if (serverMap.viewSnapshots?.length) {
+            const merged = withBodyMap(contentRef.current, {
+              ...parseBodyMap(contentRef.current),
+              viewSnapshots: serverMap.viewSnapshots,
+            });
+            contentRef.current = merged;
+            setContent(merged);
+          }
+        }
       } catch {
         /* autosave errors surface on explicit sign */
       }
@@ -180,9 +207,16 @@ export function VisitRecorder({ visitId }: Props) {
   function scheduleReviewAutosave(next: Record<string, unknown>) {
     contentRef.current = next;
     setContent(next);
-    if (phaseRef.current !== "review" || !noteIdRef.current) return;
+    if (
+      phaseRef.current !== "review" ||
+      !noteIdRef.current ||
+      signBusyRef.current
+    ) {
+      return;
+    }
     if (chartAutosaveTimer.current) clearTimeout(chartAutosaveTimer.current);
     chartAutosaveTimer.current = setTimeout(() => {
+      if (signBusyRef.current) return;
       void persistReviewContent(contentRef.current);
     }, 800);
   }
@@ -538,17 +572,29 @@ export function VisitRecorder({ visitId }: Props) {
   const [signBusy, setSignBusy] = useState(false);
 
   async function signNote() {
-    if (!noteId || signBusy) return;
+    if (!noteId || signBusyRef.current) return;
     if (chartAutosaveTimer.current) clearTimeout(chartAutosaveTimer.current);
-    ++chartSaveSeq.current;
     chartSaveAbort.current?.abort();
+    ++chartSaveSeq.current;
+    signBusyRef.current = true;
     setSignBusy(true);
     setError(null);
     try {
-      await api(`/notes/${noteId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ content: contentRef.current }),
-      });
+      const patched = await api<{ note: { updatedAt?: string } }>(
+        `/notes/${noteId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            content: contentRef.current,
+            ...(baseUpdatedAtRef.current
+              ? { baseUpdatedAt: baseUpdatedAtRef.current }
+              : {}),
+          }),
+        },
+      );
+      if (typeof patched.note.updatedAt === "string") {
+        baseUpdatedAtRef.current = patched.note.updatedAt;
+      }
       await api(`/notes/${noteId}/sign`, { method: "POST" });
       setPhase("signed");
       try {
@@ -567,6 +613,7 @@ export function VisitRecorder({ visitId }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not sign note");
     } finally {
+      signBusyRef.current = false;
       setSignBusy(false);
     }
   }
@@ -999,6 +1046,7 @@ export function VisitRecorder({ visitId }: Props) {
                         : ""
                     }
                     onChange={(e) => {
+                      if (signBusyRef.current) return;
                       const next = {
                         ...contentRef.current,
                         [key]: e.target.value,
@@ -1006,7 +1054,7 @@ export function VisitRecorder({ visitId }: Props) {
                       if (phase === "review") scheduleReviewAutosave(next);
                       else setContent(next);
                     }}
-                    readOnly={phase === "signed"}
+                    readOnly={phase === "signed" || signBusy}
                     rows={4}
                   />
                 </label>
@@ -1027,11 +1075,12 @@ export function VisitRecorder({ visitId }: Props) {
                   <BodyMapEditor
                     value={bodyMapValue}
                     onChange={(map: BodyMapContent) => {
+                      if (signBusyRef.current) return;
                       const next = withBodyMap(contentRef.current, map);
                       if (phase === "review") scheduleReviewAutosave(next);
                       else setContent(next);
                     }}
-                    readOnly={phase === "signed"}
+                    readOnly={phase === "signed" || signBusy}
                     customViews={customViews}
                     archivedViews={archivedViews}
                   />

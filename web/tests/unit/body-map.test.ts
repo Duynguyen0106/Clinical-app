@@ -410,6 +410,48 @@ describe("body map model", () => {
       ])[0]!.svg,
       attached.viewSnapshots![0]!.svg,
     );
+
+    // Prior note snapshots win over empty incoming (draft autosave freeze)
+    const bare = sanitizeBodyMap({
+      version: 1,
+      activeView: "custom_tmj",
+      marks: map.marks,
+    });
+    const seeded = attachViewSnapshots(
+      bare,
+      [{ id: "custom_tmj", label: "TMJ v2", svg: other }],
+      [{ id: "custom_tmj", label: "TMJ", svg: safe }],
+    );
+    assert.match(seeded.viewSnapshots![0]!.svg, /path/);
+  });
+
+  it("truncates over-cap viewSnapshots instead of wiping marks", () => {
+    const safe = sanitizeAnatomySvg(
+      '<svg viewBox="0 0 200 360"><path d="M10 10 L20 20"/></svg>',
+    )!;
+    const snaps = Array.from({ length: 60 }, (_, i) => ({
+      id: `custom_v${i}`,
+      label: `V${i}`,
+      svg: safe,
+    }));
+    const clean = sanitizeBodyMap({
+      version: 1,
+      activeView: "custom_v0",
+      marks: [
+        {
+          id: "1",
+          kind: "pain",
+          view: "custom_v0",
+          x: 0.5,
+          y: 0.5,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      viewSnapshots: snaps,
+    });
+    assert.equal(clean.marks.length, 1);
+    assert.ok((clean.viewSnapshots?.length ?? 0) <= 48);
+    assert.equal(clean.viewSnapshots![0]!.id, "custom_v0");
   });
 
   it("rejects reserved body_map id on non-chart template sections", () => {

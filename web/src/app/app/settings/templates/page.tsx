@@ -367,6 +367,7 @@ export default function NoteTemplatesSettingsPage() {
               <button
                 type="button"
                 className="btn-ghost btn-sm"
+                disabled={customBusy}
                 onClick={() => {
                   if (
                     !window.confirm(
@@ -375,6 +376,8 @@ export default function NoteTemplatesSettingsPage() {
                   ) {
                     return;
                   }
+                  setCustomBusy(true);
+                  setError(null);
                   void api(`/clinic/body-chart?id=${encodeURIComponent(v.id)}`, {
                     method: "DELETE",
                   })
@@ -382,7 +385,8 @@ export default function NoteTemplatesSettingsPage() {
                       setMessage(`Archived “${v.label}”.`);
                       return loadCustomViews();
                     })
-                    .catch((e: Error) => setError(e.message));
+                    .catch((e: Error) => setError(e.message))
+                    .finally(() => setCustomBusy(false));
                 }}
               >
                 Archive

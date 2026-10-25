@@ -211,7 +211,7 @@ export const bodyMapContentSchema = z
     activeView: z.string().trim().min(1).max(64).default("posterior"),
     // No .max() here — over-cap must truncate, not failParse→empty (data loss)
     marks: z.array(z.unknown()).default([]),
-    viewSnapshots: z.array(z.unknown()).max(MAX_ARCHIVED_CUSTOM_VIEWS).optional(),
+    viewSnapshots: z.array(z.unknown()).optional(),
   })
   .transform((raw): BodyMapContent => {
     const marks: BodyMapMark[] = [];
@@ -234,7 +234,8 @@ export const bodyMapContentSchema = z
       if (!isBuiltinView(m.view)) needed.add(m.view);
     }
     if (!isBuiltinView(activeView)) needed.add(activeView);
-    const viewSnapshots = sanitizeViewSnapshots(raw.viewSnapshots, needed);
+    // Keep needed first, then any extra prior snapshots (re-mark freeze)
+    const viewSnapshots = sanitizeViewSnapshots(raw.viewSnapshots, needed, true);
     return {
       version: 1,
       activeView,
@@ -246,47 +247,64 @@ export const bodyMapContentSchema = z
 function sanitizeViewSnapshots(
   raw: unknown,
   needed: Set<string>,
+  keepExtra = false,
 ): BodyChartCustomView[] {
-  if (!Array.isArray(raw) || needed.size === 0) return [];
-  const out: BodyChartCustomView[] = [];
+  if (!Array.isArray(raw)) return [];
+  const neededOut: BodyChartCustomView[] = [];
+  const extraOut: BodyChartCustomView[] = [];
   const seen = new Set<string>();
   for (const row of raw) {
     const view = parseCustomViewRow(row);
-    if (!view || !needed.has(view.id) || seen.has(view.id)) continue;
+    if (!view || seen.has(view.id)) continue;
     seen.add(view.id);
-    out.push(view);
-    if (out.length >= MAX_ARCHIVED_CUSTOM_VIEWS) break;
+    if (needed.has(view.id)) neededOut.push(view);
+    else if (keepExtra) extraOut.push(view);
+    if (neededOut.length + extraOut.length >= MAX_ARCHIVED_CUSTOM_VIEWS) break;
   }
-  return out;
+  return [...neededOut, ...extraOut].slice(0, MAX_ARCHIVED_CUSTOM_VIEWS);
 }
 
 /**
  * Ensure custom views used by marks are snapshotted onto the map.
- * Existing snapshots win (frozen); clinic views fill gaps only.
+ * Preference: incoming map snapshots → prior note snapshots → live clinic.
+ * Retains prior unused snapshots (capped) so clearing then re-marking stays frozen.
  */
 export function attachViewSnapshots(
   map: BodyMapContent,
   clinicViews: BodyChartCustomView[],
+  priorSnapshots: BodyChartCustomView[] = [],
 ): BodyMapContent {
   const needed = new Set<string>();
   for (const m of map.marks) {
     if (!isBuiltinView(m.view)) needed.add(m.view);
   }
   if (!isBuiltinView(map.activeView)) needed.add(map.activeView);
-  if (needed.size === 0) {
+
+  const byId = new Map<string, BodyChartCustomView>();
+  // Incoming first, then prior DB overwrites (frozen history wins), clinic fills gaps
+  for (const v of map.viewSnapshots ?? []) byId.set(v.id, v);
+  for (const v of priorSnapshots) byId.set(v.id, v);
+  for (const v of clinicViews) {
+    if (needed.has(v.id) && !byId.has(v.id)) byId.set(v.id, v);
+  }
+
+  // Prefer needed ids, then retain other frozen snapshots up to cap
+  const neededViews: BodyChartCustomView[] = [];
+  const extras: BodyChartCustomView[] = [];
+  for (const [id, v] of byId) {
+    if (needed.has(id)) neededViews.push(v);
+    else extras.push(v);
+  }
+  const viewSnapshots = [...neededViews, ...extras].slice(
+    0,
+    MAX_ARCHIVED_CUSTOM_VIEWS,
+  );
+  if (viewSnapshots.length === 0) {
     const { viewSnapshots: _drop, ...rest } = map;
     void _drop;
     return rest;
   }
-  const byId = new Map<string, BodyChartCustomView>();
-  for (const v of map.viewSnapshots ?? []) {
-    if (needed.has(v.id)) byId.set(v.id, v);
-  }
-  for (const v of clinicViews) {
-    if (needed.has(v.id) && !byId.has(v.id)) byId.set(v.id, v);
-  }
-  const viewSnapshots = [...byId.values()];
-  return viewSnapshots.length ? { ...map, viewSnapshots } : { ...map };
+  return { ...map, viewSnapshots };
 }
 
 /** Prefer note snapshots over live clinic views when resolving SVG for print/editor. */

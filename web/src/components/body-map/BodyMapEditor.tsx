@@ -141,11 +141,13 @@ export function BodyMapEditor({
   );
 
   const activeIsOrphan = orphanViewIds.has(map.activeView);
-  const drawLocked =
-    readOnly ||
+  const viewOnlyAnatomy =
     activeIsOrphan ||
     (archivedIds.has(map.activeView) &&
       !customViews.some((v) => v.id === map.activeView));
+  const drawLocked = Boolean(readOnly || viewOnlyAnatomy);
+  /** Archived/orphan: no draw and no mark remove/clear. */
+  const marksLocked = drawLocked;
 
   function emit(next: BodyMapContent) {
     onChange({
@@ -275,7 +277,7 @@ export function BodyMapEditor({
   }
 
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (!drawingRef.current || drawMode !== "path" || readOnly) return;
+    if (!drawingRef.current || drawMode !== "path" || drawLocked) return;
     const p = svgPoint(e);
     if (!p) return;
     const pts = draftPointsRef.current;
@@ -305,7 +307,7 @@ export function BodyMapEditor({
   }
 
   function removeMark(id: string) {
-    if (readOnly) return;
+    if (marksLocked) return;
     const nextMarks = marksRef.current.filter((m) => m.id !== id);
     marksRef.current = nextMarks;
     emit({
@@ -317,7 +319,7 @@ export function BodyMapEditor({
   }
 
   function clearView() {
-    if (readOnly) return;
+    if (marksLocked) return;
     if (
       viewMarks.length > 0 &&
       !window.confirm(`Clear ${viewMarks.length} mark(s) on this view?`)
@@ -431,7 +433,7 @@ export function BodyMapEditor({
           </>
         ) : null}
 
-        {!readOnly ? (
+        {!drawLocked ? (
           <div className="body-map-attrs">
             {tool === "pain" ? (
               <label className="body-map-attr">
@@ -583,7 +585,7 @@ export function BodyMapEditor({
         <aside className="body-map-legend" aria-label="Marks on this view">
           <div className="body-map-legend-head">
             <h4>{viewLabel(map.activeView, renderViews)} marks</h4>
-            {!readOnly && viewMarks.length > 0 ? (
+            {!marksLocked && viewMarks.length > 0 ? (
               <button type="button" className="btn-ghost btn-sm" onClick={clearView}>
                 Clear view
               </button>
@@ -628,7 +630,7 @@ export function BodyMapEditor({
                       </span>
                     </span>
                   </button>
-                  {!readOnly ? (
+                  {!marksLocked ? (
                     <button
                       type="button"
                       className="btn-ghost btn-sm"
