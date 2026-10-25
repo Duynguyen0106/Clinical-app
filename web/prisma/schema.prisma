@@ -188,6 +188,8 @@ model Clinic {
   bookingPolicyText String @default("Please give at least 24 hours’ notice to cancel or reschedule online. Late cancels and no-shows may forfeit the deposit.")
   /// Diary display: FULL_NAME or INITIALS (open-desk privacy)
   calendarPrivacyMode CalendarPrivacyMode @default(FULL_NAME)
+  /// Custom body-chart anatomy overlays: { customViews: [{ id, label, svg }] }
+  bodyChartConfig Json?
   /// Patient email automation (Settings → Patient emails)
   /// Opt-in advance reminders (cron `/jobs/reminders`) — default off for safe first cron
   appointmentRemindersEnabled Boolean @default(false)

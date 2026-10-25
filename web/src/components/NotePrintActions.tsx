@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { Printer, FileText, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { BodyMapContent } from "@/modules/notes/body-map";
+import type {
+  BodyChartCustomView,
+  BodyMapContent,
+} from "@/modules/notes/body-map";
 import { BODY_MAP_CONTENT_KEY } from "@/modules/notes/body-map";
 import { BodyMapPrintFigure } from "@/components/body-map/BodyMapPrintFigure";
 
@@ -45,6 +48,7 @@ type ClinicalDocument = {
   templateName: string | null;
   sections: { key: string; label: string; value: string }[];
   bodyMap?: BodyMapContent | null;
+  bodyChartCustomViews?: BodyChartCustomView[];
   printedAt: string;
 };
 
@@ -330,7 +334,10 @@ function ClinicalNotePrint({ doc }: { doc: ClinicalDocument }) {
         <section key={s.key} className="print-block">
           <h2>{s.label}</h2>
           {s.key === BODY_MAP_CONTENT_KEY && doc.bodyMap ? (
-            <BodyMapPrintFigure map={doc.bodyMap} />
+            <BodyMapPrintFigure
+              map={doc.bodyMap}
+              customViews={doc.bodyChartCustomViews}
+            />
           ) : null}
           <p className="print-body">{s.value}</p>
         </section>

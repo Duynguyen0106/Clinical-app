@@ -17,7 +17,9 @@ export const BODY_MAP_VIEWS = [
   "plantar",
 ] as const;
 
-export type BodyMapViewId = (typeof BODY_MAP_VIEWS)[number];
+export type BuiltinBodyMapViewId = (typeof BODY_MAP_VIEWS)[number];
+/** Builtin views plus clinic custom_* SVG overlays. */
+export type BodyMapViewId = BuiltinBodyMapViewId | (string & {});
 
 export const BODY_MAP_MARK_KINDS = [
   "pain",
@@ -26,6 +28,9 @@ export const BODY_MAP_MARK_KINDS = [
 ] as const;
 
 export type BodyMapMarkKind = (typeof BODY_MAP_MARK_KINDS)[number];
+
+export const BODY_MAP_SHAPES = ["point", "path", "polygon"] as const;
+export type BodyMapShape = (typeof BODY_MAP_SHAPES)[number];
 
 export const LESION_TYPES = [
   "bruise",
@@ -53,16 +58,22 @@ export const BODY_SIDES = ["left", "right", "bilateral", "midline"] as const;
 export type BodySide = (typeof BODY_SIDES)[number];
 
 export const MAX_BODY_MAP_MARKS = 80;
+export const MAX_MARK_POINTS = 64;
 export const MAX_MARK_NOTE_LEN = 400;
 export const MAX_MARK_REGION_LEN = 80;
+
+export type BodyMapPoint = { x: number; y: number };
 
 export type BodyMapMark = {
   id: string;
   kind: BodyMapMarkKind;
   view: BodyMapViewId;
-  /** Normalised 0–1 within the view viewBox */
+  /** Anchor / centroid (normalised 0–1) */
   x: number;
   y: number;
+  shape?: BodyMapShape;
+  /** Freehand path or polygon vertices (normalised 0–1) */
+  points?: BodyMapPoint[];
   intensity?: number;
   lesionType?: LesionType;
   region?: string;
@@ -78,13 +89,41 @@ export type BodyMapContent = {
   marks: BodyMapMark[];
 };
 
+export type BodyChartCustomView = {
+  id: string;
+  label: string;
+  /** Sanitised SVG markup (viewBox preferably 0 0 200 360) */
+  svg: string;
+};
+
+export type BodyChartConfig = {
+  customViews: BodyChartCustomView[];
+};
+
+export function isBuiltinView(view: string): view is BuiltinBodyMapViewId {
+  return (BODY_MAP_VIEWS as readonly string[]).includes(view);
+}
+
+export function isBodyMapViewId(view: string): boolean {
+  return isBuiltinView(view) || /^custom_[a-z0-9_-]{1,40}$/i.test(view);
+}
+
+const pointSchema = z
+  .object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+  })
+  .transform((p) => ({ x: clamp01(p.x), y: clamp01(p.y) }));
+
 const markSchema = z
   .object({
     id: z.string().trim().min(1).max(80),
     kind: z.enum(BODY_MAP_MARK_KINDS),
-    view: z.enum(BODY_MAP_VIEWS),
+    view: z.string().trim().min(1).max(64),
     x: z.number().finite(),
     y: z.number().finite(),
+    shape: z.enum(BODY_MAP_SHAPES).optional(),
+    points: z.array(z.unknown()).max(MAX_MARK_POINTS).optional(),
     intensity: z.number().finite().optional(),
     lesionType: z.enum(LESION_TYPES).optional(),
     region: z.string().optional(),
@@ -93,17 +132,49 @@ const markSchema = z
     note: z.string().optional(),
     createdAt: z.string().trim().min(1).max(64).optional(),
   })
-  .transform((m): BodyMapMark => {
+  .transform((m): BodyMapMark | null => {
+    if (!isBodyMapViewId(m.view)) return null;
     const x = clamp01(m.x);
     const y = clamp01(m.y);
+    let shape: BodyMapShape = m.shape ?? "point";
+    let points: BodyMapPoint[] | undefined;
+    if (m.points?.length) {
+      const collected: BodyMapPoint[] = [];
+      for (const raw of m.points) {
+        const p = pointSchema.safeParse(raw);
+        if (p.success) collected.push(p.data);
+        if (collected.length >= MAX_MARK_POINTS) break;
+      }
+      if (shape === "point") {
+        shape =
+          collected.length >= 3
+            ? "polygon"
+            : collected.length >= 2
+              ? "path"
+              : "point";
+      }
+      const okPath = shape === "path" && collected.length >= 2;
+      const okPoly = shape === "polygon" && collected.length >= 3;
+      if (okPath || okPoly) {
+        points = collected;
+      } else {
+        shape = "point";
+        points = undefined;
+      }
+    } else {
+      shape = "point";
+    }
+
     const out: BodyMapMark = {
       id: m.id.slice(0, 80),
       kind: m.kind,
       view: m.view,
       x,
       y,
+      shape,
       createdAt: m.createdAt || new Date().toISOString(),
     };
+    if (points?.length) out.points = points;
     if (m.kind === "pain") {
       out.intensity = clampInt(m.intensity ?? 0, 0, 10);
     }
@@ -126,19 +197,22 @@ const markSchema = z
 export const bodyMapContentSchema = z
   .object({
     version: z.literal(1),
-    activeView: z.enum(BODY_MAP_VIEWS).default("posterior"),
+    activeView: z.string().trim().min(1).max(64).default("posterior"),
     marks: z.array(z.unknown()).max(MAX_BODY_MAP_MARKS).default([]),
   })
   .transform((raw): BodyMapContent => {
     const marks: BodyMapMark[] = [];
     for (const item of raw.marks) {
       const parsed = markSchema.safeParse(item);
-      if (parsed.success) marks.push(parsed.data);
+      if (parsed.success && parsed.data) marks.push(parsed.data);
       if (marks.length >= MAX_BODY_MAP_MARKS) break;
-    }
+    } // null transforms are dropped via && parsed.data
+    const activeView = isBodyMapViewId(raw.activeView)
+      ? raw.activeView
+      : "posterior";
     return {
       version: 1,
-      activeView: raw.activeView,
+      activeView,
       marks,
     };
   });
@@ -221,25 +295,32 @@ export function sanitizeNoteContent(
   return out;
 }
 
-export function viewLabel(view: BodyMapViewId): string {
-  switch (view) {
-    case "anterior":
-      return "Anterior";
-    case "posterior":
-      return "Posterior";
-    case "left_lateral":
-      return "Left lateral";
-    case "right_lateral":
-      return "Right lateral";
-    case "spine":
-      return "Spine";
-    case "cervical":
-      return "Cervical";
-    case "plantar":
-      return "Plantar feet";
-    default:
-      return view;
+export function viewLabel(
+  view: BodyMapViewId,
+  customViews?: BodyChartCustomView[],
+): string {
+  if (isBuiltinView(view)) {
+    switch (view) {
+      case "anterior":
+        return "Anterior";
+      case "posterior":
+        return "Posterior";
+      case "left_lateral":
+        return "Left lateral";
+      case "right_lateral":
+        return "Right lateral";
+      case "spine":
+        return "Spine";
+      case "cervical":
+        return "Cervical";
+      case "plantar":
+        return "Plantar feet";
+      default:
+        return view;
+    }
   }
+  const custom = customViews?.find((v) => v.id === view);
+  return custom?.label ?? view.replace(/^custom_/, "").replace(/_/g, " ");
 }
 
 export function kindLabel(kind: BodyMapMarkKind): string {
@@ -255,8 +336,15 @@ export function kindLabel(kind: BodyMapMarkKind): string {
   }
 }
 
-export function markSummary(mark: BodyMapMark): string {
-  const bits: string[] = [kindLabel(mark.kind), viewLabel(mark.view)];
+export function markSummary(
+  mark: BodyMapMark,
+  customViews?: BodyChartCustomView[],
+): string {
+  const bits: string[] = [
+    kindLabel(mark.kind),
+    viewLabel(mark.view, customViews),
+  ];
+  if (mark.shape && mark.shape !== "point") bits.push(mark.shape);
   if (mark.kind === "pain" && mark.intensity != null) {
     bits.push(`NRS ${mark.intensity}/10`);
   }
@@ -272,9 +360,32 @@ export function markSummary(mark: BodyMapMark): string {
   return bits.join(" · ");
 }
 
-export function bodyMapPrintLines(map: BodyMapContent): string[] {
+export function bodyMapPrintLines(
+  map: BodyMapContent,
+  customViews?: BodyChartCustomView[],
+): string[] {
   if (map.marks.length === 0) return [];
-  return map.marks.map((m, i) => `${i + 1}. ${markSummary(m)}`);
+  return map.marks.map((m, i) => `${i + 1}. ${markSummary(m, customViews)}`);
+}
+
+export function centroid(points: BodyMapPoint[]): BodyMapPoint {
+  if (points.length === 0) return { x: 0.5, y: 0.5 };
+  const sum = points.reduce(
+    (acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }),
+    { x: 0, y: 0 },
+  );
+  return { x: sum.x / points.length, y: sum.y / points.length };
+}
+
+export function pointsToSvgPath(points: BodyMapPoint[], closed: boolean): string {
+  if (points.length === 0) return "";
+  const [first, ...rest] = points;
+  let d = `M ${first!.x * 200} ${first!.y * 360}`;
+  for (const p of rest) {
+    d += ` L ${p.x * 200} ${p.y * 360}`;
+  }
+  if (closed) d += " Z";
+  return d;
 }
 
 export function newMarkId(): string {
@@ -290,6 +401,61 @@ export function withBodyMap(
   map: BodyMapContent,
 ): Record<string, unknown> {
   return { ...content, [BODY_MAP_CONTENT_KEY]: sanitizeBodyMap(map) };
+}
+
+/** Strip dangerous SVG constructs; keep basic drawing primitives. */
+export function sanitizeAnatomySvg(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 80_000) return null;
+  if (!/^<svg[\s>]/i.test(trimmed)) return null;
+  const lower = trimmed.toLowerCase();
+  const banned = [
+    "<script",
+    "javascript:",
+    "onerror",
+    "onload",
+    "onclick",
+    "onmouse",
+    "<foreignobject",
+    "<iframe",
+    "<object",
+    "<embed",
+    "<image",
+    "<use",
+    "xlink:href",
+    "data:text/html",
+  ];
+  if (banned.some((b) => lower.includes(b))) return null;
+  // Require a closing svg tag
+  if (!/<\/svg>\s*$/i.test(trimmed)) return null;
+  return trimmed;
+}
+
+export function parseBodyChartConfig(value: unknown): BodyChartConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { customViews: [] };
+  }
+  const views = (value as { customViews?: unknown }).customViews;
+  if (!Array.isArray(views)) return { customViews: [] };
+  const customViews: BodyChartCustomView[] = [];
+  for (const row of views) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    if (typeof r.id !== "string" || !isBodyMapViewId(r.id) || isBuiltinView(r.id)) {
+      continue;
+    }
+    if (typeof r.label !== "string" || !r.label.trim()) continue;
+    if (typeof r.svg !== "string") continue;
+    const svg = sanitizeAnatomySvg(r.svg);
+    if (!svg) continue;
+    customViews.push({
+      id: r.id,
+      label: r.label.trim().slice(0, 80),
+      svg,
+    });
+    if (customViews.length >= 12) break;
+  }
+  return { customViews };
 }
 
 function clamp01(n: number) {

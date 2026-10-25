@@ -1,14 +1,23 @@
 "use client";
 
-import type { BodyMapViewId } from "@/modules/notes/body-map";
+import { useMemo } from "react";
+import {
+  isBuiltinView,
+  type BodyMapViewId,
+} from "@/modules/notes/body-map";
 
 type Props = {
   view: BodyMapViewId;
   className?: string;
+  /** Sanitised custom SVG markup for clinic overlays */
+  customSvg?: string;
 };
 
 /** Stylised MSK silhouettes — click targets live in the parent SVG overlay. */
-export function AnatomySilhouette({ view, className }: Props) {
+export function AnatomySilhouette({ view, className, customSvg }: Props) {
+  if (!isBuiltinView(view) && customSvg) {
+    return <CustomOverlay svg={customSvg} className={className} />;
+  }
   switch (view) {
     case "anterior":
       return <Anterior className={className} />;
@@ -27,6 +36,30 @@ export function AnatomySilhouette({ view, className }: Props) {
     default:
       return <Posterior className={className} />;
   }
+}
+
+function CustomOverlay({
+  svg,
+  className,
+}: {
+  svg: string;
+  className?: string;
+}) {
+  const inner = useMemo(() => {
+    const match = svg.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
+    return match?.[1]?.trim() ?? "";
+  }, [svg]);
+  if (!inner) return <Posterior className={className} />;
+  return (
+    <g
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      // Sanitised server-side before persist; strip wrappers only here
+      dangerouslySetInnerHTML={{ __html: inner }}
+    />
+  );
 }
 
 function Anterior({ className }: { className?: string }) {

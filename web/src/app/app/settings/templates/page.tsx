@@ -11,6 +11,7 @@ import {
   type NoteSection,
   type NoteSectionType,
 } from "@/modules/notes/templates";
+import type { BodyChartCustomView } from "@/modules/notes/body-map";
 
 type TemplateRow = {
   id: string;
@@ -36,6 +37,10 @@ export default function NoteTemplatesSettingsPage() {
   const [isDefault, setIsDefault] = useState(false);
   const [sections, setSections] = useState<NoteSection[]>([EMPTY_SECTION]);
   const [saving, setSaving] = useState(false);
+  const [customViews, setCustomViews] = useState<BodyChartCustomView[]>([]);
+  const [customLabel, setCustomLabel] = useState("");
+  const [customSvg, setCustomSvg] = useState("");
+  const [customBusy, setCustomBusy] = useState(false);
 
   useEffect(() => {
     if (authLoading || !me) return;
@@ -54,8 +59,22 @@ export default function NoteTemplatesSettingsPage() {
     }
   }
 
+  async function loadCustomViews() {
+    try {
+      const data = await api<{ config: { customViews: BodyChartCustomView[] } }>(
+        "/clinic/body-chart",
+      );
+      setCustomViews(data.config.customViews ?? []);
+    } catch {
+      setCustomViews([]);
+    }
+  }
+
   useEffect(() => {
-    if (me?.role === "OWNER") void load();
+    if (me?.role === "OWNER") {
+      void load();
+      void loadCustomViews();
+    }
   }, [me?.role]);
 
   function startNew() {
@@ -322,6 +341,88 @@ export default function NoteTemplatesSettingsPage() {
           </div>
         </div>
       ) : null}
+
+      <div className="panel">
+        <div className="panel-head">
+          <h2>Custom anatomy views</h2>
+        </div>
+        <p className="muted">
+          Upload plain SVG overlays (viewBox 0 0 200 360 works best). Scripts and
+          images are rejected. These appear as extra tabs on the body chart.
+        </p>
+        <ul className="apt-list">
+          {customViews.map((v) => (
+            <li key={v.id} className="patient-row">
+              <div>
+                <p className="apt-name">{v.label}</p>
+                <p className="muted">{v.id}</p>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => {
+                  void api(`/clinic/body-chart?id=${encodeURIComponent(v.id)}`, {
+                    method: "DELETE",
+                  })
+                    .then(() => loadCustomViews())
+                    .catch((e: Error) => setError(e.message));
+                }}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="form-grid">
+          <label>
+            Label
+            <input
+              value={customLabel}
+              onChange={(e) => setCustomLabel(e.target.value)}
+              placeholder="e.g. TMJ close-up"
+            />
+          </label>
+          <label className="body-map-attr-grow">
+            SVG markup
+            <textarea
+              rows={5}
+              value={customSvg}
+              onChange={(e) => setCustomSvg(e.target.value)}
+              placeholder='<svg viewBox="0 0 200 360" xmlns="http://www.w3.org/2000/svg">…</svg>'
+            />
+          </label>
+        </div>
+        <div className="row-actions mt-4">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={
+              customBusy || !customLabel.trim() || customSvg.trim().length < 20
+            }
+            onClick={() => {
+              setCustomBusy(true);
+              setError(null);
+              void api("/clinic/body-chart", {
+                method: "POST",
+                body: JSON.stringify({
+                  label: customLabel.trim(),
+                  svg: customSvg.trim(),
+                }),
+              })
+                .then(() => {
+                  setCustomLabel("");
+                  setCustomSvg("");
+                  setMessage("Custom anatomy view saved.");
+                  return loadCustomViews();
+                })
+                .catch((e: Error) => setError(e.message))
+                .finally(() => setCustomBusy(false));
+            }}
+          >
+            {customBusy ? "Saving…" : "Add custom view"}
+          </button>
+        </div>
+      </div>
     </AppShell>
   );
 }

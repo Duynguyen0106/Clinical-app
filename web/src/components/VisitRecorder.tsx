@@ -27,6 +27,7 @@ import {
   isBodyMapContent,
   parseBodyMap,
   withBodyMap,
+  type BodyChartCustomView,
   type BodyMapContent,
 } from "@/modules/notes/body-map";
 import { BodyMapEditor } from "@/components/body-map/BodyMapEditor";
@@ -106,6 +107,7 @@ export function VisitRecorder({ visitId }: Props) {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [correctOpen, setCorrectOpen] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [customViews, setCustomViews] = useState<BodyChartCustomView[]>([]);
   const [templateSections, setTemplateSections] = useState<NoteSection[] | null>(
     null,
   );
@@ -125,6 +127,14 @@ export function VisitRecorder({ visitId }: Props) {
     setTemplateName(template.name);
     setTemplateSections(extractSectionsFromSchema(template.schema));
   }
+
+  useEffect(() => {
+    void api<{ config: { customViews: BodyChartCustomView[] } }>(
+      "/clinic/body-chart",
+    )
+      .then((d) => setCustomViews(d.config.customViews ?? []))
+      .catch(() => setCustomViews([]));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -944,6 +954,7 @@ export function VisitRecorder({ visitId }: Props) {
                       setContent((c) => withBodyMap(c, map))
                     }
                     readOnly={phase === "signed"}
+                    customViews={customViews}
                   />
                 </div>
               ) : null}

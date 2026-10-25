@@ -5322,3 +5322,4 @@ button.cal-block-btn:focus-visible {
     max-width: 140px;
   }
 }
+.body-map-hint { margin: 0; font-size: 0.8rem; }

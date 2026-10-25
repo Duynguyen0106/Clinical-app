@@ -7,7 +7,9 @@ import { clinicLogoDataUrl } from "@/modules/clinic/profile";
 import {
   BODY_MAP_CONTENT_KEY,
   bodyMapPrintLines,
+  parseBodyChartConfig,
   parseBodyMap,
+  type BodyChartCustomView,
   type BodyMapContent,
 } from "@/modules/notes/body-map";
 
@@ -56,6 +58,7 @@ export type ClinicalDocument = {
   sections: DocumentSection[];
   /** Structured body chart for print figures (null when empty). */
   bodyMap: BodyMapContent | null;
+  bodyChartCustomViews: BodyChartCustomView[];
   printedAt: string;
 };
 
@@ -276,6 +279,7 @@ async function loadSignedNoteForDocuments(ctx: AuthContext, noteId: string) {
                   email: true,
                   address: true,
                   brandColour: true,
+                  bodyChartConfig: true,
                 },
               },
             },
@@ -301,6 +305,7 @@ async function loadSignedNoteForDocuments(ctx: AuthContext, noteId: string) {
         email: true,
         address: true,
         brandColour: true,
+        bodyChartConfig: true,
       },
     }));
 
@@ -372,6 +377,9 @@ export async function getClinicalDocument(
       const map = parseBodyMap(note.content);
       return map.marks.length > 0 ? map : null;
     })(),
+    bodyChartCustomViews: parseBodyChartConfig(
+      "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
+    ).customViews,
     printedAt: new Date().toISOString(),
   };
 }

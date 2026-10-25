@@ -7,7 +7,9 @@ import {
   emptyBodyMap,
   isBodyMapContent,
   markSummary,
+  parseBodyChartConfig,
   parseBodyMap,
+  sanitizeAnatomySvg,
   sanitizeBodyMap,
   sanitizeNoteContent,
   withBodyMap,
@@ -166,6 +168,72 @@ describe("body map model", () => {
     assert.ok(isBodyMapContent(out[BODY_MAP_CONTENT_KEY]));
     assert.equal(out.chart_custom, undefined);
     assert.deepEqual(out[BODY_MAP_CONTENT_KEY], emptyBodyMap());
+  });
+
+  it("accepts freehand path and polygon marks", () => {
+    const pathMark = {
+      id: "p1",
+      kind: "pain" as const,
+      view: "posterior",
+      x: 0.5,
+      y: 0.5,
+      shape: "path" as const,
+      points: [
+        { x: 0.4, y: 0.4 },
+        { x: 0.5, y: 0.45 },
+        { x: 0.6, y: 0.5 },
+      ],
+      intensity: 4,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const polyMark = {
+      id: "p2",
+      kind: "lesion" as const,
+      view: "anterior",
+      x: 0.5,
+      y: 0.5,
+      shape: "polygon" as const,
+      points: [
+        { x: 0.3, y: 0.3 },
+        { x: 0.5, y: 0.3 },
+        { x: 0.4, y: 0.5 },
+      ],
+      lesionType: "swelling" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const clean = sanitizeBodyMap({
+      version: 1,
+      activeView: "posterior",
+      marks: [pathMark, polyMark],
+    });
+    assert.equal(clean.marks.length, 2);
+    assert.equal(clean.marks[0]!.shape, "path");
+    assert.equal(clean.marks[0]!.points?.length, 3);
+    assert.equal(clean.marks[1]!.shape, "polygon");
+    assert.match(markSummary(clean.marks[0]!), /path/);
+  });
+
+  it("sanitises custom anatomy SVG and rejects scripts", () => {
+    const ok = sanitizeAnatomySvg(
+      '<svg viewBox="0 0 200 360"><path d="M10 10 L20 20"/></svg>',
+    );
+    assert.ok(ok);
+    assert.equal(
+      sanitizeAnatomySvg("<svg><script>alert(1)</script></svg>"),
+      null,
+    );
+    const cfg = parseBodyChartConfig({
+      customViews: [
+        {
+          id: "custom_tmj",
+          label: "TMJ",
+          svg: ok!,
+        },
+        { id: "bad", label: "Nope", svg: "<div/>" },
+      ],
+    });
+    assert.equal(cfg.customViews.length, 1);
+    assert.equal(cfg.customViews[0]!.id, "custom_tmj");
   });
 
   it("locks body_map section id in template upsert schema", () => {

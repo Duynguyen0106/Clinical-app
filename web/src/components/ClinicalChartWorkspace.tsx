@@ -9,6 +9,7 @@ import {
   isBodyMapContent,
   parseBodyMap,
   withBodyMap,
+  type BodyChartCustomView,
   type BodyMapContent,
 } from "@/modules/notes/body-map";
 import { parseTemplateSections } from "@/modules/notes/templates";
@@ -38,6 +39,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [customViews, setCustomViews] = useState<BodyChartCustomView[]>([]);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = useRef(content);
   contentRef.current = content;
@@ -74,6 +76,14 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void api<{ config: { customViews: BodyChartCustomView[] } }>(
+      "/clinic/body-chart",
+    )
+      .then((d) => setCustomViews(d.config.customViews ?? []))
+      .catch(() => setCustomViews([]));
+  }, []);
 
   const save = useCallback(
     async (nextContent: Record<string, unknown>) => {
@@ -258,6 +268,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
             value={bodyMap}
             onChange={updateBodyMap}
             readOnly={readOnly}
+            customViews={customViews}
           />
         </section>
       </div>

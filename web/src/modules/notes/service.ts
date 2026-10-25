@@ -17,10 +17,66 @@ export { hashNoteContent } from "@/modules/notes/hash";
 export { assertNoteDiaryAccess } from "@/modules/notes/access";
 
 export async function listNoteTemplates(ctx: AuthContext) {
+  // Idempotent: ensure older clinic templates include a body chart section
+  await ensureBodyMapSectionsOnTemplates(ctx.clinicId);
   return prisma.noteTemplate.findMany({
     where: { clinicId: ctx.clinicId },
     orderBy: [{ isDefault: "desc" }, { name: "asc" }],
   });
+}
+
+/** Insert canonical body_map section into templates that lack one. */
+export async function ensureBodyMapSectionsOnTemplates(clinicId: string) {
+  const templates = await prisma.noteTemplate.findMany({
+    where: { clinicId },
+    select: { id: true, schema: true },
+  });
+  for (const tpl of templates) {
+    const schema =
+      tpl.schema && typeof tpl.schema === "object" && !Array.isArray(tpl.schema)
+        ? (tpl.schema as { sections?: unknown })
+        : { sections: [] };
+    const sections = Array.isArray(schema.sections) ? [...schema.sections] : [];
+    const hasChart = sections.some(
+      (s) =>
+        s &&
+        typeof s === "object" &&
+        ((s as { type?: string }).type === "body_map" ||
+          (s as { id?: string }).id === BODY_MAP_CONTENT_KEY),
+    );
+    if (hasChart) continue;
+
+    const chartSection = {
+      id: BODY_MAP_CONTENT_KEY,
+      title: "Body chart",
+      type: "body_map",
+      hint: "Mark pain, lesions, and somatic dysfunction on anatomy views",
+    };
+    // Prefer after objective / findings, else before plan, else append
+    let insertAt = sections.findIndex(
+      (s) =>
+        s &&
+        typeof s === "object" &&
+        ["objective", "findings"].includes(
+          String((s as { id?: string }).id ?? ""),
+        ),
+    );
+    if (insertAt >= 0) insertAt += 1;
+    else {
+      insertAt = sections.findIndex(
+        (s) =>
+          s &&
+          typeof s === "object" &&
+          String((s as { id?: string }).id ?? "") === "plan",
+      );
+      if (insertAt < 0) insertAt = sections.length;
+    }
+    sections.splice(insertAt, 0, chartSection);
+    await prisma.noteTemplate.update({
+      where: { id: tpl.id },
+      data: { schema: { ...schema, sections } as Prisma.InputJsonValue },
+    });
+  }
 }
 
 const noteSectionSchema = z.object({
