@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { EmbedFrameBridge } from "@/components/EmbedFrameBridge";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -10,5 +11,10 @@ export default function EmbedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <div className="embed-root">{children}</div>;
+  return (
+    <div className="embed-root">
+      <EmbedFrameBridge />
+      {children}
+    </div>
+  );
 }
