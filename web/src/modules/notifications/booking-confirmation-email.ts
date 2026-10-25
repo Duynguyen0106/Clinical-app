@@ -12,6 +12,8 @@ export type BookingConfirmationContentInput = {
   roomName?: string | null;
   manageLink: string;
   cancelNoticeHours?: number;
+  /** When set, confirmation includes the consent-pack CTA (no second email). */
+  intakeLink?: string | null;
 };
 
 export function buildBookingConfirmationEmail(
@@ -37,6 +39,13 @@ export function buildBookingConfirmationEmail(
     "Manage your booking (cancel or reschedule):",
     input.manageLink,
     "",
+    ...(input.intakeLink
+      ? [
+          "Before your visit, please sign a short consent pack (~2 minutes):",
+          input.intakeLink,
+          "",
+        ]
+      : []),
     `Online cancel/reschedule needs at least ${notice} hours’ notice.`,
     "",
     `— ${input.clinicName}`,
@@ -96,6 +105,22 @@ export function buildBookingConfirmationEmail(
               </a>
             </td>
           </tr>
+          ${
+            input.intakeLink
+              ? `<tr>
+            <td style="padding-top:12px;" align="center">
+              <a href="${escapeHtml(input.intakeLink)}" style="display:inline-block;background:#ffffff;color:#1E3F37;text-decoration:none;font-family:system-ui,-apple-system,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:999px;border:1px solid #1E3F37;">
+                Sign consent forms
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-top:10px;font-size:13px;line-height:1.45;color:#6a7a74;font-family:system-ui,-apple-system,sans-serif;" align="center">
+              Short osteopathic consent pack — about 2 minutes.
+            </td>
+          </tr>`
+              : ""
+          }
           <tr>
             <td style="padding-top:14px;font-size:13px;line-height:1.45;color:#6a7a74;font-family:system-ui,-apple-system,sans-serif;">
               A calendar invite (.ics) is attached — add it to Apple, Google, or Outlook.

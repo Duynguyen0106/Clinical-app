@@ -158,12 +158,12 @@ export async function loadPublicIntake(token: string) {
     },
   });
   if (!submission) throw notFound("Consent form not found");
-  if (
+  // Allow DRAFT/COMPLETED load even if the linked appointment is terminal
+  // (cancel/reschedule) so the patient can still finish or view the pack.
+  const appointmentTerminal = Boolean(
     submission.appointment &&
-    TERMINAL.includes(submission.appointment.status)
-  ) {
-    throw badRequest("This appointment is no longer active");
-  }
+      TERMINAL.includes(submission.appointment.status),
+  );
 
   // Minimize PHI on the public GET — no email/phone/DOB from patient record.
   // Strip answers entirely once signed (token may be forwarded).
@@ -209,6 +209,7 @@ export async function loadPublicIntake(token: string) {
           startsAt: submission.appointment.startsAt.toISOString(),
           serviceName: submission.appointment.appointmentType.name,
           practitionerName: submission.appointment.practitioner.displayName,
+          inactive: appointmentTerminal,
         }
       : null,
   };
@@ -220,18 +221,20 @@ export async function savePublicDraft(
 ) {
   const { submissionId } = verifyIntakeToken(token);
   const parsed = intakeAnswersSchema.parse(answers);
-  const submission = await prisma.patientIntakeSubmission.findUnique({
-    where: { id: submissionId },
-    select: { id: true, status: true },
-  });
-  if (!submission) throw notFound("Consent form not found");
-  if (submission.status === "COMPLETED") {
-    throw badRequest("This consent pack is already signed");
-  }
-  return prisma.patientIntakeSubmission.update({
-    where: { id: submissionId },
+  // Lock signed evidence: only DRAFT rows may receive answer updates.
+  const updated = await prisma.patientIntakeSubmission.updateMany({
+    where: { id: submissionId, status: "DRAFT" },
     data: { answers: parsed },
   });
+  if (updated.count === 0) {
+    const existing = await prisma.patientIntakeSubmission.findUnique({
+      where: { id: submissionId },
+      select: { id: true, status: true },
+    });
+    if (!existing) throw notFound("Consent form not found");
+    throw badRequest("This consent pack is already signed");
+  }
+  return { id: submissionId };
 }
 
 export async function completePublicIntake(opts: {
@@ -414,6 +417,7 @@ export async function getPatientIntakeStatus(
         clinicId: ctx.clinicId,
         patientId,
         formKey: OSTEO_CONSENT_FORM_KEY,
+        status: "DRAFT",
       },
       orderBy: { startedAt: "desc" },
     }));
@@ -571,10 +575,109 @@ export async function staffResendIntake(
   return staffPrepareIntakeSend(ctx, opts);
 }
 
+/**
+ * Explicit re-consent: supersede prior COMPLETED packs, open a new DRAFT, return URL.
+ * Does not email — caller sends using the returned url.
+ */
+export async function staffRequestReconsent(
+  ctx: AuthContext,
+  opts: { patientId: string; appointmentId?: string | null },
+) {
+  if (ctx.role === "PRACTITIONER" || ctx.role === "READ_ONLY") {
+    throw forbidden("Only owners or reception can request re-consent");
+  }
+  const patient = await prisma.patient.findFirst({
+    where: { id: opts.patientId, clinicId: ctx.clinicId },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+    },
+  });
+  if (!patient) throw notFound("Patient not found");
+  if (!patient.email?.trim()) {
+    throw badRequest("Patient needs an email address to receive the consent link");
+  }
+
+  let appointmentId: string | null = null;
+  if (opts.appointmentId) {
+    const apt = await prisma.appointment.findFirst({
+      where: {
+        id: opts.appointmentId,
+        clinicId: ctx.clinicId,
+        patientId: patient.id,
+      },
+      select: { id: true },
+    });
+    if (!apt) {
+      throw badRequest("Appointment not found for this patient");
+    }
+    appointmentId = apt.id;
+  } else {
+    const upcoming = await prisma.appointment.findFirst({
+      where: {
+        clinicId: ctx.clinicId,
+        patientId: patient.id,
+        startsAt: { gte: new Date() },
+        status: { notIn: TERMINAL },
+      },
+      orderBy: { startsAt: "asc" },
+      select: { id: true },
+    });
+    appointmentId = upcoming?.id ?? null;
+  }
+
+  await withClinicTransaction(ctx.clinicId, async (tx) => {
+    await tx.patientIntakeSubmission.updateMany({
+      where: {
+        clinicId: ctx.clinicId,
+        patientId: patient.id,
+        formKey: OSTEO_CONSENT_FORM_KEY,
+        status: "COMPLETED",
+      },
+      data: { status: "SUPERSEDED" },
+    });
+    // Drop open drafts so the new pack is the only live one
+    await tx.patientIntakeSubmission.updateMany({
+      where: {
+        clinicId: ctx.clinicId,
+        patientId: patient.id,
+        formKey: OSTEO_CONSENT_FORM_KEY,
+        status: "DRAFT",
+      },
+      data: { status: "SUPERSEDED" },
+    });
+  });
+
+  const submission = await prisma.patientIntakeSubmission.create({
+    data: {
+      clinicId: ctx.clinicId,
+      patientId: patient.id,
+      appointmentId,
+      formKey: OSTEO_CONSENT_FORM_KEY,
+      formVersion: OSTEO_CONSENT_FORM_VERSION,
+      status: "DRAFT",
+      answers: {},
+    },
+  });
+  const token = createIntakeToken(submission.id);
+  return {
+    url: intakeUrlForToken(token),
+    token,
+    patient,
+    alreadyComplete: false,
+    submissionId: submission.id,
+    appointmentId,
+    reconsent: true as const,
+  };
+}
+
 export async function recordIntakeViewed(
   ctx: AuthContext,
   patientId: string,
   submissionId: string,
+  meta?: { status?: string },
 ) {
   void prisma.patientAccessEvent
     .create({
@@ -583,7 +686,7 @@ export async function recordIntakeViewed(
         patientId,
         actorId: ctx.userId,
         action: "intake_viewed",
-        meta: { submissionId },
+        meta: { submissionId, ...meta },
       },
     })
     .catch(() => undefined);

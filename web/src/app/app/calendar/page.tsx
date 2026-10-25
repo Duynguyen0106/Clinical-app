@@ -1543,23 +1543,46 @@ export default function CalendarPage() {
                       const d = await api<{
                         sent: boolean;
                         alreadyComplete?: boolean;
-                      }>(
-                        `/patients/${selected.patient.id}/intake`,
-                        {
-                          method: "POST",
-                          body: JSON.stringify({
-                            action: "resend",
-                            appointmentId: selected.id,
-                          }),
-                        },
-                      );
-                      setMessage(
-                        d.alreadyComplete
-                          ? "Consent pack already signed — no new link sent."
-                          : d.sent
+                        reconsent?: boolean;
+                      }>(`/patients/${selected.patient.id}/intake`, {
+                        method: "POST",
+                        body: JSON.stringify({
+                          action: "resend",
+                          appointmentId: selected.id,
+                        }),
+                      });
+                      if (d.alreadyComplete) {
+                        const again = window.confirm(
+                          "Consent pack already signed. Request re-consent and email a fresh link?",
+                        );
+                        if (again) {
+                          const r = await api<{
+                            sent: boolean;
+                            reconsent?: boolean;
+                          }>(`/patients/${selected.patient.id}/intake`, {
+                            method: "POST",
+                            body: JSON.stringify({
+                              action: "reconsent",
+                              appointmentId: selected.id,
+                            }),
+                          });
+                          setMessage(
+                            r.sent
+                              ? "Re-consent pack emailed to the patient."
+                              : "Re-consent pack created but email was not delivered.",
+                          );
+                        } else {
+                          setMessage(
+                            "Consent pack already signed — no new link sent.",
+                          );
+                        }
+                      } else {
+                        setMessage(
+                          d.sent
                             ? "Consent forms emailed to the patient."
                             : "Consent email was not delivered — check patient email.",
-                      );
+                        );
+                      }
                     } catch (e) {
                       setError(
                         e instanceof ApiError

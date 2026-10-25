@@ -33,6 +33,7 @@ type IntakeForm = {
     startsAt: string;
     serviceName: string;
     practitionerName: string;
+    inactive?: boolean;
   } | null;
 };
 
@@ -199,6 +200,9 @@ export default function IntakeConsentPage({ params }: Props) {
               hour: "2-digit",
               minute: "2-digit",
             })}
+            {form.appointment.inactive
+              ? " · This appointment is no longer active — you can still sign this pack"
+              : ""}
           </p>
         ) : null}
 

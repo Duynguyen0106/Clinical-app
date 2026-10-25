@@ -187,25 +187,30 @@ function PatientsPageInner() {
 
   const selected = patients.find((p) => p.id === selectedId) ?? null;
 
-  async function resendConsent() {
+  async function sendConsent(action: "resend" | "reconsent") {
     if (!selectedId) return;
     setIntakeBusy(true);
     setError(null);
     setMessage(null);
     try {
-      const d = await api<{ sent: boolean; alreadyComplete?: boolean }>(
-        `/patients/${selectedId}/intake`,
-        {
-          method: "POST",
-          body: JSON.stringify({ action: "resend" }),
-        },
-      );
+      const d = await api<{
+        sent: boolean;
+        alreadyComplete?: boolean;
+        reconsent?: boolean;
+      }>(`/patients/${selectedId}/intake`, {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
       setMessage(
-        d.alreadyComplete
-          ? "Consent pack already signed — no new link sent."
-          : d.sent
-            ? "Consent forms emailed to the patient."
-            : "Could not send email (check patient email / provider).",
+        d.reconsent
+          ? d.sent
+            ? "Re-consent pack emailed to the patient."
+            : "Re-consent pack created but email was not delivered."
+          : d.alreadyComplete
+            ? "Consent pack already signed — no new link sent. Use re-consent to request a fresh signature."
+            : d.sent
+              ? "Consent forms emailed to the patient."
+              : "Could not send email (check patient email / provider).",
       );
       const refreshed = await api<{
         status: string;
@@ -698,14 +703,39 @@ function PatientsPageInner() {
                 </p>
               ) : null}
               {!isPractitioner ? (
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  disabled={intakeBusy || !selected.email}
-                  onClick={() => void resendConsent()}
-                >
-                  {intakeBusy ? "Sending…" : "Email consent forms"}
-                </button>
+                <div className="home-cta">
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    disabled={
+                      intakeBusy ||
+                      !selected.email ||
+                      intakeStatus?.status === "COMPLETED"
+                    }
+                    onClick={() => void sendConsent("resend")}
+                  >
+                    {intakeBusy ? "Sending…" : "Email consent forms"}
+                  </button>
+                  {intakeStatus?.status === "COMPLETED" ? (
+                    <button
+                      type="button"
+                      className="btn-ghost btn-sm"
+                      disabled={intakeBusy || !selected.email}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            "Supersede the signed pack and email a new consent link?",
+                          )
+                        ) {
+                          return;
+                        }
+                        void sendConsent("reconsent");
+                      }}
+                    >
+                      Request re-consent
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
             <PatientPrepPanel

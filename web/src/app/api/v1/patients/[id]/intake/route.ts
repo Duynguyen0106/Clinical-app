@@ -5,6 +5,7 @@ import {
   getPatientIntakeStatus,
   recordIntakeViewed,
   staffPrepareIntakeSend,
+  staffRequestReconsent,
 } from "@/modules/intake/service";
 import { sendEmail } from "@/modules/notifications/email";
 import { buildIntakeConsentEmail } from "@/modules/notifications/intake-consent-email";
@@ -14,50 +15,30 @@ import { z } from "zod";
 export const GET = withAuth(async (_req, ctx, params) => {
   requireStaff(ctx);
   const status = await getPatientIntakeStatus(ctx, params.id);
-  if (status.submission?.status === "COMPLETED") {
-    recordIntakeViewed(ctx, params.id, status.submission.id);
+  if (status.submission) {
+    recordIntakeViewed(ctx, params.id, status.submission.id, {
+      status: status.submission.status,
+    });
   }
   return jsonOk(status);
 });
 
 const postSchema = z.object({
-  action: z.enum(["resend"]),
+  action: z.enum(["resend", "reconsent"]),
   appointmentId: z.string().optional().nullable(),
 });
 
-/**
- * Single prepare → email path (no dual ensure).
- * appointmentId is validated inside staffPrepareIntakeSend (clinic + patient).
- */
-export const POST = withAuth(async (req, ctx, params) => {
-  requireStaff(ctx);
-  const body = postSchema.parse(await req.json().catch(() => ({})));
-
-  if (body.action !== "resend") {
-    return jsonOk({ ok: false });
-  }
-
-  const prepared = await staffPrepareIntakeSend(ctx, {
-    patientId: params.id,
-    appointmentId: body.appointmentId,
-  });
-
-  if (prepared.alreadyComplete) {
-    return jsonOk({
-      ok: true,
-      sent: false,
-      alreadyComplete: true,
-      submissionId: prepared.submissionId,
-    });
-  }
-
+async function emailPreparedConsent(
+  ctx: { clinicId: string },
+  prepared: {
+    url: string | null;
+    patient: { email: string | null; firstName: string };
+    appointmentId: string | null;
+  },
+  patientId: string,
+) {
   if (!prepared.url || !prepared.patient.email) {
-    return jsonOk({
-      ok: true,
-      sent: false,
-      alreadyComplete: false,
-      submissionId: prepared.submissionId,
-    });
+    return { sent: false };
   }
 
   let whenLabel: string | undefined;
@@ -68,7 +49,7 @@ export const POST = withAuth(async (req, ctx, params) => {
       where: {
         id: prepared.appointmentId,
         clinicId: ctx.clinicId,
-        patientId: params.id,
+        patientId,
       },
       select: {
         startsAt: true,
@@ -112,12 +93,57 @@ export const POST = withAuth(async (req, ctx, params) => {
     html: content.html,
     replyTo: clinic.email,
   });
+  return {
+    sent: emailResult.delivered || emailResult.provider === "console",
+  };
+}
 
+/**
+ * Single prepare → email path (no dual ensure).
+ * appointmentId is validated inside staff prepare helpers (clinic + patient).
+ */
+export const POST = withAuth(async (req, ctx, params) => {
+  requireStaff(ctx);
+  const body = postSchema.parse(await req.json().catch(() => ({})));
+
+  if (body.action === "reconsent") {
+    const prepared = await staffRequestReconsent(ctx, {
+      patientId: params.id,
+      appointmentId: body.appointmentId,
+    });
+    const { sent } = await emailPreparedConsent(ctx, prepared, params.id);
+    return jsonOk({
+      ok: true,
+      sent,
+      alreadyComplete: false,
+      reconsent: true,
+      submissionId: prepared.submissionId,
+    });
+  }
+
+  if (body.action !== "resend") {
+    return jsonOk({ ok: false });
+  }
+
+  const prepared = await staffPrepareIntakeSend(ctx, {
+    patientId: params.id,
+    appointmentId: body.appointmentId,
+  });
+
+  if (prepared.alreadyComplete) {
+    return jsonOk({
+      ok: true,
+      sent: false,
+      alreadyComplete: true,
+      submissionId: prepared.submissionId,
+    });
+  }
+
+  const { sent } = await emailPreparedConsent(ctx, prepared, params.id);
   return jsonOk({
     ok: true,
-    sent: emailResult.delivered || emailResult.provider === "console",
+    sent,
     alreadyComplete: false,
-    // Do not return the sealed intake URL to the staff browser
     submissionId: prepared.submissionId,
   });
 });

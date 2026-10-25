@@ -384,7 +384,7 @@ model PatientIntakeSubmission {
   appointmentId String?
   formKey       String    @default("osteo_consent_v1")
   formVersion   Int       @default(1)
-  /// DRAFT | COMPLETED
+  /// DRAFT | COMPLETED | SUPERSEDED
   status        String    @default("DRAFT")
   answers       Json?
   signatureName String?

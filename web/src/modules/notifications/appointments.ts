@@ -155,6 +155,26 @@ export async function sendBookingConfirmation(
   let clinicEmailSent = false;
   let practitionerEmailSent = false;
 
+  // Prepare consent link up front so confirmation can include a single CTA
+  // (avoids a second back-to-back consent email).
+  let intakeLink: string | null = null;
+  let intakeEmailSent = false;
+  try {
+    const done = await patientHasCompletedIntake(apt.clinicId, apt.patientId);
+    if (!done && apt.patient.email?.trim()) {
+      const ensured = await ensureIntakeForAppointment({
+        clinicId: apt.clinicId,
+        patientId: apt.patientId,
+        appointmentId: apt.id,
+      });
+      if (ensured.url && !ensured.alreadyComplete) {
+        intakeLink = ensured.url;
+      }
+    }
+  } catch (err) {
+    console.error("Intake prepare for confirmation failed", err);
+  }
+
   if (apt.patient.email) {
     const content = buildBookingConfirmationEmail({
       clinicName: apt.clinic.name,
@@ -168,6 +188,7 @@ export async function sendBookingConfirmation(
       roomName: apt.room?.name ?? null,
       manageLink,
       cancelNoticeHours: apt.clinic.cancelMinNoticeHours ?? 24,
+      intakeLink,
     });
 
     const ics = patientCalendarInvite(apt, {
@@ -192,6 +213,9 @@ export async function sendBookingConfirmation(
     emailSent = true;
     emailDelivered = result.delivered;
     emailProvider = result.provider;
+    if (intakeLink && (result.delivered || result.provider === "console")) {
+      intakeEmailSent = true;
+    }
   }
 
   if (apt.patient.phone) {
@@ -253,13 +277,15 @@ export async function sendBookingConfirmation(
     });
   }
 
-  let intakeEmailSent = false;
-  try {
-    intakeEmailSent = Boolean(
-      await sendIntakeConsentEmail(apt.id, { force: false }),
-    );
-  } catch (err) {
-    console.error("Intake consent email failed", err);
+  // Fallback: if confirmation had no email / no intake CTA, try standalone consent mail.
+  if (!intakeEmailSent) {
+    try {
+      intakeEmailSent = Boolean(
+        await sendIntakeConsentEmail(apt.id, { force: false }),
+      );
+    } catch (err) {
+      console.error("Intake consent email failed", err);
+    }
   }
 
   return {

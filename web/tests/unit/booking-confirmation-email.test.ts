@@ -46,4 +46,21 @@ describe("buildBookingConfirmationEmail", () => {
     assert.match(msg.html, /Sam &amp; Co/);
     assert.match(msg.html, /Dr &gt; Name/);
   });
+
+  it("includes consent CTA when intakeLink is set", () => {
+    const msg = buildBookingConfirmationEmail({
+      clinicName: "Harbour Osteopathy",
+      patientFirstName: "Mina",
+      whenLabel: "Monday",
+      timezone: "Europe/London",
+      practitionerName: "Dr Lee",
+      serviceName: "Osteopathy",
+      manageLink: "https://example.com/manage",
+      intakeLink: "https://example.com/book/intake/v2.token",
+    });
+    assert.match(msg.text, /consent pack/i);
+    assert.match(msg.text, /https:\/\/example.com\/book\/intake\/v2.token/);
+    assert.match(msg.html, /Sign consent forms/);
+    assert.match(msg.html, /book\/intake\/v2\.token/);
+  });
 });
