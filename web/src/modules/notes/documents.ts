@@ -4,6 +4,12 @@ import { prisma } from "@/server/db";
 import { badRequest, notFound } from "@/server/errors";
 import { assertNoteDiaryAccess } from "@/modules/notes/access";
 import { clinicLogoDataUrl } from "@/modules/clinic/profile";
+import {
+  BODY_MAP_CONTENT_KEY,
+  bodyMapPrintLines,
+  parseBodyMap,
+} from "@/modules/notes/body-map";
+
 
 export type DocumentSection = { key: string; label: string; value: string };
 
@@ -101,7 +107,12 @@ export function flattenNoteSections(content: unknown): DocumentSection[] {
       : raw;
   const out: DocumentSection[] = [];
   for (const [key, val] of Object.entries(nested)) {
-    if (key === "flags" || key === "sections" || key === "clinician_review_flags") {
+    if (
+      key === "flags" ||
+      key === "sections" ||
+      key === "clinician_review_flags" ||
+      key === BODY_MAP_CONTENT_KEY
+    ) {
       continue;
     }
     let text = "";
@@ -110,6 +121,14 @@ export function flattenNoteSections(content: unknown): DocumentSection[] {
       text = String((val as { text?: unknown }).text ?? "").trim();
     }
     if (text) out.push({ key, label: titleCase(key), value: text });
+  }
+  const mapLines = bodyMapPrintLines(parseBodyMap(content));
+  if (mapLines.length > 0) {
+    out.push({
+      key: BODY_MAP_CONTENT_KEY,
+      label: "Body chart",
+      value: mapLines.join("\n"),
+    });
   }
   return out;
 }

@@ -1,13 +1,15 @@
 import type { NoteSection } from "@/modules/notes/templates";
 import type { SoapNoteContent } from "@/modules/ai/mock-pipeline";
+import { emptyBodyMap } from "@/modules/notes/body-map";
 
-export type OrganisedContent = Record<string, string | string[]> & {
+export type OrganisedContent = Record<string, unknown> & {
   clinician_review_flags: string[];
 };
 
 /**
  * Map a SOAP-shaped draft onto clinic template sections (physio / osteo / manual).
  * Pure — used by mock organise and unit tests.
+ * Body-map sections are left empty for the clinician to mark.
  */
 export function mapSoapToTemplateSections(
   soap: SoapNoteContent,
@@ -18,6 +20,10 @@ export function mapSoapToTemplateSections(
   };
 
   for (const section of sections) {
+    if (section.type === "body_map") {
+      content[section.id] = emptyBodyMap();
+      continue;
+    }
     const mapped = mapSection(soap, section.id);
     if (mapped != null) {
       content[section.id] = mapped;
@@ -158,16 +164,22 @@ function scoreTemplateMatch(appointmentLower: string, templateLower: string): nu
 }
 
 export function extractSectionsFromSchema(schema: unknown): NoteSection[] {
+  // Lazy import avoided — keep in sync with templates.parseTemplateSections
   if (
     schema &&
     typeof schema === "object" &&
     Array.isArray((schema as { sections?: unknown }).sections)
   ) {
-    return (schema as { sections: NoteSection[] }).sections;
+    const sections = (schema as { sections: NoteSection[] }).sections;
+    return sections.map((s) => ({
+      ...s,
+      type: s.type === "body_map" ? "body_map" : "markdown",
+    }));
   }
   return [
     { id: "subjective", title: "Subjective", type: "markdown" },
     { id: "objective", title: "Objective", type: "markdown" },
+    { id: "body_map", title: "Body chart", type: "body_map" },
     { id: "assessment", title: "Assessment", type: "markdown" },
     { id: "plan", title: "Plan", type: "markdown" },
   ];

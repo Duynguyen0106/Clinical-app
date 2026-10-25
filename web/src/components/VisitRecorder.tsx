@@ -21,6 +21,16 @@ import {
   orderedSectionIds,
   sectionLabel,
 } from "@/modules/ai/map-to-template";
+import {
+  BODY_MAP_CONTENT_KEY,
+  emptyBodyMap,
+  isBodyMapContent,
+  parseBodyMap,
+  withBodyMap,
+  type BodyMapContent,
+} from "@/modules/notes/body-map";
+import { BodyMapEditor } from "@/components/body-map/BodyMapEditor";
+
 
 type Phase =
   | "loading"
@@ -72,7 +82,7 @@ export function VisitRecorder({ visitId }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [visit, setVisit] = useState<VisitPayload | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
-  const [content, setContent] = useState<Record<string, string>>({});
+  const [content, setContent] = useState<Record<string, unknown>>({});
   const [flags, setFlags] = useState<string[]>([]);
   const [statusLine, setStatusLine] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -553,7 +563,16 @@ export function VisitRecorder({ visitId }: Props) {
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
 
-  const fields = orderedSectionIds(Object.keys(content), templateSections);
+  const fields = orderedSectionIds(Object.keys(content), templateSections).filter(
+    (key) => {
+      const section = templateSections?.find((s) => s.id === key);
+      return section?.type !== "body_map" && key !== BODY_MAP_CONTENT_KEY;
+    },
+  );
+  const showBodyMap =
+    Boolean(templateSections?.some((s) => s.type === "body_map")) ||
+    isBodyMapContent(content[BODY_MAP_CONTENT_KEY]);
+  const bodyMapValue = parseBodyMap(content);
 
 
   return (
@@ -887,7 +906,7 @@ export function VisitRecorder({ visitId }: Props) {
             </div>
           ) : null}
 
-          {fields.length > 0 && (
+          {(fields.length > 0 || showBodyMap) && (
             <div className="note-editor">
               {flags.length > 0 && (
                 <div className="flag-banner" role="status">
@@ -899,7 +918,11 @@ export function VisitRecorder({ visitId }: Props) {
                 <label key={key} className="note-field">
                   <span>{sectionLabel(key, templateSections)}</span>
                   <textarea
-                    value={content[key] ?? ""}
+                    value={
+                      typeof content[key] === "string"
+                        ? (content[key] as string)
+                        : ""
+                    }
                     onChange={(e) =>
                       setContent((c) => ({ ...c, [key]: e.target.value }))
                     }
@@ -908,6 +931,28 @@ export function VisitRecorder({ visitId }: Props) {
                   />
                 </label>
               ))}
+              {showBodyMap ? (
+                <div className="note-body-map">
+                  <div className="note-panel-head">
+                    <h4>Body chart</h4>
+                    {noteId && (phase === "review" || phase === "signed") ? (
+                      <Link
+                        href={`/app/notes/${noteId}`}
+                        className="btn-ghost btn-sm"
+                      >
+                        Open full chart
+                      </Link>
+                    ) : null}
+                  </div>
+                  <BodyMapEditor
+                    value={bodyMapValue}
+                    onChange={(map: BodyMapContent) =>
+                      setContent((c) => withBodyMap(c, map))
+                    }
+                    readOnly={phase === "signed"}
+                  />
+                </div>
+              ) : null}
               {phase === "review" && (
                 <button
                   type="button"
@@ -926,10 +971,18 @@ export function VisitRecorder({ visitId }: Props) {
 }
 
 function stringifyContent(raw: Record<string, unknown>) {
-  const out: Record<string, string> = {};
+  const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw)) {
     if (k === "clinician_review_flags") continue;
+    if (k === BODY_MAP_CONTENT_KEY || isBodyMapContent(v)) {
+      out[k] = isBodyMapContent(v) ? v : emptyBodyMap();
+      continue;
+    }
     out[k] = typeof v === "string" ? v : JSON.stringify(v);
+  }
+  if (!isBodyMapContent(out[BODY_MAP_CONTENT_KEY])) {
+    // Keep chart available on drafts even if older templates omit the section.
+    out[BODY_MAP_CONTENT_KEY] = emptyBodyMap();
   }
   return out;
 }

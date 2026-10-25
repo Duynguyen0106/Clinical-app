@@ -19,6 +19,96 @@ export async function listNoteTemplates(ctx: AuthContext) {
   });
 }
 
+const noteSectionSchema = z.object({
+  id: z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z][a-z0-9_]*$/i, "Section id must be alphanumeric"),
+  title: z.string().trim().min(1).max(120),
+  type: z.enum(["markdown", "body_map"]),
+  hint: z.string().trim().max(400).optional(),
+});
+
+export const noteTemplateUpsertSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  isDefault: z.boolean().optional(),
+  sections: z.array(noteSectionSchema).min(1).max(24),
+});
+
+export async function createNoteTemplate(
+  ctx: AuthContext,
+  input: z.infer<typeof noteTemplateUpsertSchema>,
+) {
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    if (input.isDefault) {
+      await tx.noteTemplate.updateMany({
+        where: { clinicId: ctx.clinicId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+    return tx.noteTemplate.create({
+      data: {
+        clinicId: ctx.clinicId,
+        name: input.name,
+        isDefault: input.isDefault ?? false,
+        schema: { sections: input.sections } as Prisma.InputJsonValue,
+      },
+    });
+  });
+}
+
+export async function updateNoteTemplate(
+  ctx: AuthContext,
+  id: string,
+  input: z.infer<typeof noteTemplateUpsertSchema>,
+) {
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    const existing = await tx.noteTemplate.findFirst({
+      where: { id, clinicId: ctx.clinicId },
+    });
+    if (!existing) throw notFound("Template not found");
+
+    if (input.isDefault) {
+      await tx.noteTemplate.updateMany({
+        where: {
+          clinicId: ctx.clinicId,
+          isDefault: true,
+          NOT: { id },
+        },
+        data: { isDefault: false },
+      });
+    }
+
+    return tx.noteTemplate.update({
+      where: { id },
+      data: {
+        name: input.name,
+        isDefault: input.isDefault ?? existing.isDefault,
+        schema: { sections: input.sections } as Prisma.InputJsonValue,
+      },
+    });
+  });
+}
+
+export async function deleteNoteTemplate(ctx: AuthContext, id: string) {
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    const existing = await tx.noteTemplate.findFirst({
+      where: { id, clinicId: ctx.clinicId },
+      include: { _count: { select: { notes: true } } },
+    });
+    if (!existing) throw notFound("Template not found");
+    if (existing._count.notes > 0) {
+      throw badRequest(
+        "Template is used by existing notes — set another default instead of deleting",
+      );
+    }
+    await tx.noteTemplate.delete({ where: { id } });
+    return { ok: true as const };
+  });
+}
+
 export async function listNotes(
   ctx: AuthContext,
   opts: { status?: NoteStatus; take?: number; practitionerId?: string } = {},

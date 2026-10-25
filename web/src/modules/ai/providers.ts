@@ -11,8 +11,8 @@ import {
 } from "./mock-pipeline";
 import { mapSoapToTemplateSections } from "./map-to-template";
 
-export type NoteContent = Record<string, string | string[]> & {
-  clinician_review_flags: string[];
+export type NoteContent = Record<string, unknown> & {
+  clinician_review_flags?: string[];
 };
 
 export type OrganiseWithTemplateInput = OrganiseNoteInput & {
