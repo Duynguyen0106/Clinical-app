@@ -13,6 +13,16 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // Consent tokens live in the path — never leak via Referer
+        source: "/book/intake/:path*",
+        headers: [
+          {
+            key: "Referrer-Policy",
+            value: "no-referrer",
+          },
+        ],
+      },
     ];
   },
 };

@@ -63,11 +63,12 @@ describe("intake consent schema", () => {
     assert.match(OSTEO_TREATMENT_CONSENT_TEXT, /stop at any time/i);
   });
 
-  it("matches signature names with spacing and order", () => {
+  it("matches signature names with spacing, order, and middle names", () => {
     const patient = { firstName: "Mina", lastName: "Patel" };
     assert.equal(signatureMatchesPatient("Mina Patel", patient), true);
     assert.equal(signatureMatchesPatient("  mina   patel ", patient), true);
     assert.equal(signatureMatchesPatient("Patel Mina", patient), true);
+    assert.equal(signatureMatchesPatient("Mina Jane Patel", patient), true);
     assert.equal(signatureMatchesPatient("Mina", patient), false);
     assert.equal(signatureMatchesPatient("Someone Else", patient), false);
     assert.equal(normalizePersonName("José  O'Neil"), "jose o neil");

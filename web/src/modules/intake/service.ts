@@ -43,28 +43,29 @@ export async function patientHasCompletedIntake(
 
 /**
  * Ensure a DRAFT (or reuse COMPLETED) submission for an appointment.
- * Returns a fresh sealed URL when a send is needed.
+ * Never orphans a COMPLETED pack. Prefers reusing a null-appointment DRAFT
+ * (staff send before book) by attaching it to this appointment.
  */
 export async function ensureIntakeForAppointment(opts: {
   clinicId: string;
   patientId: string;
   appointmentId: string;
-  /** Force a new DRAFT even if completed (staff resend after amend). */
-  forceNewDraft?: boolean;
 }) {
-  if (!opts.forceNewDraft) {
-    const completed = await prisma.patientIntakeSubmission.findFirst({
-      where: {
-        clinicId: opts.clinicId,
-        patientId: opts.patientId,
-        status: "COMPLETED",
-        formKey: OSTEO_CONSENT_FORM_KEY,
-      },
-      orderBy: { completedAt: "desc" },
-    });
-    if (completed) {
-      return { submission: completed, url: null as string | null, alreadyComplete: true };
-    }
+  const completed = await prisma.patientIntakeSubmission.findFirst({
+    where: {
+      clinicId: opts.clinicId,
+      patientId: opts.patientId,
+      status: "COMPLETED",
+      formKey: OSTEO_CONSENT_FORM_KEY,
+    },
+    orderBy: { completedAt: "desc" },
+  });
+  if (completed) {
+    return {
+      submission: completed,
+      url: null as string | null,
+      alreadyComplete: true,
+    };
   }
 
   const existingDraft = await prisma.patientIntakeSubmission.findFirst({
@@ -78,19 +79,37 @@ export async function ensureIntakeForAppointment(opts: {
     orderBy: { startedAt: "desc" },
   });
 
-  const submission =
-    existingDraft ??
-    (await prisma.patientIntakeSubmission.create({
-      data: {
+  let submission = existingDraft;
+  if (!submission) {
+    const orphanDraft = await prisma.patientIntakeSubmission.findFirst({
+      where: {
         clinicId: opts.clinicId,
         patientId: opts.patientId,
-        appointmentId: opts.appointmentId,
-        formKey: OSTEO_CONSENT_FORM_KEY,
-        formVersion: OSTEO_CONSENT_FORM_VERSION,
+        appointmentId: null,
         status: "DRAFT",
-        answers: {},
+        formKey: OSTEO_CONSENT_FORM_KEY,
       },
-    }));
+      orderBy: { startedAt: "desc" },
+    });
+    if (orphanDraft) {
+      submission = await prisma.patientIntakeSubmission.update({
+        where: { id: orphanDraft.id },
+        data: { appointmentId: opts.appointmentId },
+      });
+    } else {
+      submission = await prisma.patientIntakeSubmission.create({
+        data: {
+          clinicId: opts.clinicId,
+          patientId: opts.patientId,
+          appointmentId: opts.appointmentId,
+          formKey: OSTEO_CONSENT_FORM_KEY,
+          formVersion: OSTEO_CONSENT_FORM_VERSION,
+          status: "DRAFT",
+          answers: {},
+        },
+      });
+    }
+  }
 
   const token = createIntakeToken(
     submission.id,
@@ -146,19 +165,27 @@ export async function loadPublicIntake(token: string) {
     throw badRequest("This appointment is no longer active");
   }
 
-  // Minimize PHI on the public GET — no email/phone/DOB values.
-  // Answers may still hold emergencyPhone / dateOfBirth the patient already typed.
-  const answers = (submission.answers ?? {}) as IntakeAnswers;
+  // Minimize PHI on the public GET — no email/phone/DOB from patient record.
+  // Strip answers entirely once signed (token may be forwarded).
+  const rawAnswers = (submission.answers ?? {}) as IntakeAnswers;
+  const answers =
+    submission.status === "COMPLETED"
+      ? {
+          dateOfBirth: null,
+          emergencyPhone: null,
+          safetyNote: null,
+        }
+      : {
+          dateOfBirth: rawAnswers.dateOfBirth ?? null,
+          emergencyPhone: rawAnswers.emergencyPhone ?? null,
+          safetyNote: rawAnswers.safetyNote ?? null,
+        };
   return {
     status: submission.status,
     formKey: submission.formKey,
     formVersion: submission.formVersion,
     treatmentConsentText: OSTEO_TREATMENT_CONSENT_TEXT,
-    answers: {
-      dateOfBirth: answers.dateOfBirth ?? null,
-      emergencyPhone: answers.emergencyPhone ?? null,
-      safetyNote: answers.safetyNote ?? null,
-    },
+    answers,
     completedAt: submission.completedAt?.toISOString() ?? null,
     signedAt: submission.signedAt?.toISOString() ?? null,
     signatureName: submission.signatureName,
@@ -251,7 +278,7 @@ export async function completePublicIntake(opts: {
     })
   ) {
     throw badRequest(
-      `Please type your name exactly as registered: ${submission.patient.firstName} ${submission.patient.lastName}`,
+      `Please type your name as registered (include ${submission.patient.firstName} and ${submission.patient.lastName})`,
     );
   }
 
@@ -260,87 +287,102 @@ export async function completePublicIntake(opts: {
     : null;
   const now = new Date();
 
-  await withClinicTransaction(submission.clinicId, async (tx) => {
-    const patientPatch: {
-      dateOfBirth?: Date;
-      alerts?: string;
-    } = {};
-    if (!submission.patient.dateOfBirth && answers.dateOfBirth) {
-      patientPatch.dateOfBirth = new Date(`${answers.dateOfBirth}T12:00:00.000Z`);
-    }
-    // emergencyPhone stays in answers only — do not overwrite patient.phone
-    const safety = answers.safetyNote?.trim();
-    if (safety) {
-      const prefix = `Safety (intake): ${safety}`;
-      const existing = submission.patient.alerts?.trim();
-      patientPatch.alerts = existing
-        ? existing.includes(prefix)
-          ? existing
-          : `${prefix}\n${existing}`
-        : prefix;
-    }
-    if (Object.keys(patientPatch).length > 0) {
-      await tx.patient.update({
-        where: { id: submission.patientId },
-        data: patientPatch,
-      });
-    }
-
-    const consentMeta = {
-      intakeSubmissionId: submission.id,
-      formKey: OSTEO_CONSENT_FORM_KEY,
-      formVersion: OSTEO_CONSENT_FORM_VERSION,
-      signatureName,
-    };
-
-    await tx.patientConsent.createMany({
-      data: [
-        {
-          patientId: submission.patientId,
-          type: "PRIVACY_POLICY",
-          granted: true,
-          method: "online_form",
-          meta: consentMeta,
-        },
-        {
-          patientId: submission.patientId,
-          type: "TREATMENT",
-          granted: true,
-          method: "online_form",
+  const claimed = await withClinicTransaction(
+    submission.clinicId,
+    async (tx) => {
+      // Claim DRAFT → COMPLETED first so concurrent submits cannot both win.
+      const claim = await tx.patientIntakeSubmission.updateMany({
+        where: { id: submission.id, status: "DRAFT" },
+        data: {
+          status: "COMPLETED",
+          answers,
+          signatureName,
+          signedAt: now,
+          completedAt: now,
           meta: {
-            ...consentMeta,
-            textVersion: "osteo_treatment_v1",
+            userAgent: opts.userAgent?.slice(0, 300) ?? null,
+            ipHash,
           },
         },
-        ...(opts.marketingConsent
-          ? [
-              {
-                patientId: submission.patientId,
-                type: "MARKETING",
-                granted: true,
-                method: "online_form" as const,
-                meta: consentMeta,
-              },
-            ]
-          : []),
-      ],
-    });
+      });
+      if (claim.count === 0) {
+        return false;
+      }
 
-    await tx.patientIntakeSubmission.update({
-      where: { id: submission.id },
-      data: {
-        status: "COMPLETED",
-        answers,
+      const patientPatch: {
+        dateOfBirth?: Date;
+        alerts?: string;
+      } = {};
+      if (!submission.patient.dateOfBirth && answers.dateOfBirth) {
+        patientPatch.dateOfBirth = new Date(
+          `${answers.dateOfBirth}T12:00:00.000Z`,
+        );
+      }
+      // emergencyPhone stays in answers only — do not overwrite patient.phone
+      const safety = answers.safetyNote?.trim();
+      if (safety) {
+        const prefix = `Safety (intake): ${safety}`;
+        const existing = submission.patient.alerts?.trim();
+        patientPatch.alerts = existing
+          ? existing.includes(prefix)
+            ? existing
+            : `${prefix}\n${existing}`
+          : prefix;
+      }
+      if (Object.keys(patientPatch).length > 0) {
+        await tx.patient.update({
+          where: { id: submission.patientId },
+          data: patientPatch,
+        });
+      }
+
+      const consentMeta = {
+        intakeSubmissionId: submission.id,
+        formKey: OSTEO_CONSENT_FORM_KEY,
+        formVersion: OSTEO_CONSENT_FORM_VERSION,
         signatureName,
-        signedAt: now,
-        completedAt: now,
-        meta: {
-          userAgent: opts.userAgent?.slice(0, 300) ?? null,
-          ipHash,
-        },
-      },
-    });
-  });
+      };
+
+      await tx.patientConsent.createMany({
+        data: [
+          {
+            patientId: submission.patientId,
+            type: "PRIVACY_POLICY",
+            granted: true,
+            method: "online_form",
+            meta: consentMeta,
+          },
+          {
+            patientId: submission.patientId,
+            type: "TREATMENT",
+            granted: true,
+            method: "online_form",
+            meta: {
+              ...consentMeta,
+              textVersion: "osteo_treatment_v1",
+            },
+          },
+          ...(opts.marketingConsent
+            ? [
+                {
+                  patientId: submission.patientId,
+                  type: "MARKETING",
+                  granted: true,
+                  method: "online_form" as const,
+                  meta: consentMeta,
+                },
+              ]
+            : []),
+        ],
+      });
+
+      return true;
+    },
+  );
+
+  if (!claimed) {
+    return { alreadyComplete: true, submissionId: submission.id };
+  }
 
   return { alreadyComplete: false, submissionId: submission.id };
 }
@@ -477,7 +519,6 @@ export async function staffPrepareIntakeSend(
       clinicId: ctx.clinicId,
       patientId: patient.id,
       appointmentId,
-      forceNewDraft: false,
     });
     return {
       url: ensured.url,

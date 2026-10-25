@@ -294,7 +294,6 @@ export async function sendIntakeConsentEmail(
     clinicId: apt.clinicId,
     patientId: apt.patientId,
     appointmentId: apt.id,
-    forceNewDraft: false,
   });
   if (!ensured.url || ensured.alreadyComplete) return false;
 

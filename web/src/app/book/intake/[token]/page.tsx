@@ -392,7 +392,8 @@ export default function IntakeConsentPage({ params }: Props) {
                   />
                 </label>
                 <p id={`${baseId}-sig-hint`} className="muted">
-                  Sign as registered: {registeredName}
+                  Include your registered name ({registeredName}). Middle names
+                  are fine.
                 </p>
                 <div className="home-cta">
                   <button

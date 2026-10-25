@@ -52,14 +52,16 @@ export function signatureMatchesPatient(
   patient: { firstName: string; lastName: string },
 ) {
   const signed = normalizePersonName(signatureName);
-  const expected = normalizePersonName(
-    `${patient.firstName} ${patient.lastName}`,
+  const first = normalizePersonName(patient.firstName);
+  const last = normalizePersonName(patient.lastName);
+  if (!signed || !first || !last) return false;
+
+  const tokens = new Set(signed.split(" ").filter(Boolean));
+  const firstParts = first.split(" ").filter(Boolean);
+  const lastParts = last.split(" ").filter(Boolean);
+  // Require every registered name part; allow middle / extra tokens
+  return (
+    firstParts.every((p) => tokens.has(p)) &&
+    lastParts.every((p) => tokens.has(p))
   );
-  if (!signed || !expected) return false;
-  if (signed === expected) return true;
-  // Allow "Last First" order
-  const swapped = normalizePersonName(
-    `${patient.lastName} ${patient.firstName}`,
-  );
-  return signed === swapped;
 }

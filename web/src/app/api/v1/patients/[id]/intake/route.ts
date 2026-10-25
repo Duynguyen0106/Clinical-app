@@ -117,7 +117,7 @@ export const POST = withAuth(async (req, ctx, params) => {
     ok: true,
     sent: emailResult.delivered || emailResult.provider === "console",
     alreadyComplete: false,
-    url: prepared.url,
+    // Do not return the sealed intake URL to the staff browser
     submissionId: prepared.submissionId,
   });
 });
