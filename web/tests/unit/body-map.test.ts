@@ -15,6 +15,10 @@ import {
   withBodyMap,
   type BodyMapMark,
 } from "../../src/modules/notes/body-map";
+import {
+  parseSanitizedSvgInner,
+  sanitizedSvgRendersAsReact,
+} from "../../src/modules/notes/svg-allowlist";
 import { mapSoapToTemplateSections } from "../../src/modules/ai/map-to-template";
 import {
   MSK_TEMPLATE_PACK,
@@ -248,6 +252,31 @@ describe("body map model", () => {
     });
     assert.equal(cfg.customViews.length, 1);
     assert.equal(cfg.customViews[0]!.id, "custom_tmj");
+  });
+
+  it("allowlist output always parses for React (parity: digits + paired shapes)", () => {
+    const samples = [
+      '<svg viewBox="0 0 200 360"><path d="M10 10 L20 20"></path></svg>',
+      '<svg viewBox="0 0 200 360"><line x1="10" y1="20" x2="30" y2="40"/></svg>',
+      '<svg viewBox="0 0 200 360"><g><circle cx="50" cy="50" r="10"></circle><rect x="1" y="2" width="3" height="4"/></g></svg>',
+      '<svg VIEWBOX="0 0 200 360"><polygon points="0,0 10,0 5,10"/></svg>',
+    ];
+    for (const raw of samples) {
+      const safe = sanitizeAnatomySvg(raw);
+      assert.ok(safe, `sanitise failed: ${raw.slice(0, 50)}`);
+      assert.match(safe!, /<(path|line|circle|rect|polygon)\b[^>]*\/>/);
+      assert.equal(sanitizedSvgRendersAsReact(safe!), true, safe!);
+      const tree = parseSanitizedSvgInner(safe!);
+      assert.ok(tree);
+      assert.ok(tree!.length >= 1);
+      // Digit attrs preserved on lines
+      if (raw.includes("x1=")) {
+        const line = tree!.find((n) => n.tag === "line");
+        assert.ok(line);
+        assert.equal(line!.attrs.x1, "10");
+        assert.equal(line!.attrs.y2, "40");
+      }
+    }
   });
 
   it("normalises template schemas: insert, dedupe, lock body_map id", () => {

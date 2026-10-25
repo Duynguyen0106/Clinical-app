@@ -3,7 +3,7 @@
 import {
   BODY_MAP_VIEWS,
   isBuiltinView,
-  kindLabel,
+  markSummary,
   pointsToSvgPath,
   viewLabel,
   type BodyChartCustomView,
@@ -120,12 +120,7 @@ function PrintView({
       <ul className="body-map-print-legend">
         {marks.map((m, i) => (
           <li key={m.id}>
-            {i + 1}. {kindLabel(m.kind)}
-            {m.shape && m.shape !== "point" ? ` (${m.shape})` : ""}
-            {m.kind === "pain" && m.intensity != null
-              ? ` NRS ${m.intensity}`
-              : ""}
-            {m.region ? ` · ${m.region}` : ""}
+            {i + 1}. {markSummary(m, customViews)}
           </li>
         ))}
       </ul>

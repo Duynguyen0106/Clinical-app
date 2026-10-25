@@ -6,6 +6,10 @@ import {
   sanitizeAnatomySvg,
   type BodyMapViewId,
 } from "@/modules/notes/body-map";
+import {
+  parseSanitizedSvgInner,
+  type SanitizedSvgNode,
+} from "@/modules/notes/svg-allowlist";
 
 type Props = {
   view: BodyMapViewId;
@@ -95,73 +99,20 @@ function CustomOverlay({
   );
 }
 
+/**
+ * Convert allowlist output to React nodes via the shared parser so attrs
+ * like x1/y1 and forced self-closing shapes stay in lockstep with sanitize.
+ */
 function svgToReactNodes(svg: string): ReactNode[] | null {
-  const match = svg.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
-  const inner = match?.[1] ?? "";
-  if (!inner.trim()) return [];
-  type Frame = { tag: string; attrs: Record<string, string>; children: ReactNode[] };
-  const stack: Frame[] = [{ tag: "root", attrs: {}, children: [] }];
-  let i = 0;
+  const tree = parseSanitizedSvgInner(svg);
+  if (!tree) return null;
   let key = 0;
-  const selfTags = new Set([
-    "path",
-    "circle",
-    "ellipse",
-    "line",
-    "polyline",
-    "polygon",
-    "rect",
-  ]);
-  while (i < inner.length) {
-    const rest = inner.slice(i);
-    const open = rest.match(
-      /^<\s*([a-z]+)((?:\s+[a-z-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*(\/)?\s*>/i,
-    );
-    const close = rest.match(/^<\/\s*([a-z]+)\s*>/i);
-    if (close) {
-      const tag = close[1]!.toLowerCase();
-      if (stack.length <= 1) return null;
-      const frame = stack.pop()!;
-      if (frame.tag !== tag) return null;
-      const el = createEl(frame.tag, frame.attrs, frame.children, key++);
-      stack[stack.length - 1]!.children.push(el);
-      i += close[0].length;
-      continue;
-    }
-    if (open) {
-      const tag = open[1]!.toLowerCase();
-      const selfClosing = Boolean(open[3]) || selfTags.has(tag);
-      const attrs = parseAttrString(open[2] ?? "");
-      if (attrs === null) return null;
-      if (selfClosing) {
-        stack[stack.length - 1]!.children.push(createEl(tag, attrs, null, key++));
-      } else {
-        stack.push({ tag, attrs, children: [] });
-      }
-      i += open[0].length;
-      continue;
-    }
-    const textMatch = rest.match(/^\s+/);
-    if (textMatch) {
-      i += textMatch[0].length;
-      continue;
-    }
-    return null;
-  }
-  if (stack.length !== 1) return null;
-  return stack[0]!.children;
-}
-
-function parseAttrString(raw: string): Record<string, string> | null {
-  const attrs: Record<string, string> = {};
-  const re = /([a-z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(raw))) {
-    const name = m[1]!.toLowerCase();
-    if (name.startsWith("on") || name === "style" || name === "href") return null;
-    attrs[name] = m[2] ?? m[3] ?? "";
-  }
-  return attrs;
+  const walk = (nodes: SanitizedSvgNode[]): ReactNode[] =>
+    nodes.map((n) => {
+      const kids = n.children.length ? walk(n.children) : null;
+      return createEl(n.tag, n.attrs, kids, key++);
+    });
+  return walk(tree);
 }
 
 function createEl(

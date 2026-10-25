@@ -52,27 +52,29 @@ export async function upsertClinicCustomAnatomyView(
   };
 
   // Serializable transaction reduces lost-update races on JSON config
-  return prisma.$transaction(
-    async (tx) => {
-      const clinic = await tx.clinic.findUniqueOrThrow({
-        where: { id: ctx.clinicId },
-        select: { bodyChartConfig: true },
-      });
-      const current = parseBodyChartConfig(clinic.bodyChartConfig);
-      const others = current.customViews.filter((v) => v.id !== id);
-      if (others.length >= 12 && !current.customViews.some((v) => v.id === id)) {
-        throw badRequest("Maximum of 12 custom anatomy views");
-      }
-      const next: BodyChartConfig = {
-        customViews: [...others, view],
-      };
-      await tx.clinic.update({
-        where: { id: ctx.clinicId },
-        data: { bodyChartConfig: next as unknown as Prisma.InputJsonValue },
-      });
-      return next;
-    },
-    { isolationLevel: "Serializable" },
+  return withSerializableRetry(async () =>
+    prisma.$transaction(
+      async (tx) => {
+        const clinic = await tx.clinic.findUniqueOrThrow({
+          where: { id: ctx.clinicId },
+          select: { bodyChartConfig: true },
+        });
+        const current = parseBodyChartConfig(clinic.bodyChartConfig);
+        const others = current.customViews.filter((v) => v.id !== id);
+        if (others.length >= 12 && !current.customViews.some((v) => v.id === id)) {
+          throw badRequest("Maximum of 12 custom anatomy views");
+        }
+        const next: BodyChartConfig = {
+          customViews: [...others, view],
+        };
+        await tx.clinic.update({
+          where: { id: ctx.clinicId },
+          data: { bodyChartConfig: next as unknown as Prisma.InputJsonValue },
+        });
+        return next;
+      },
+      { isolationLevel: "Serializable" },
+    ),
   );
 }
 
@@ -81,22 +83,45 @@ export async function deleteClinicCustomAnatomyView(
   viewId: string,
 ) {
   requireRole(ctx, ["OWNER"]);
-  return prisma.$transaction(
-    async (tx) => {
-      const clinic = await tx.clinic.findUniqueOrThrow({
-        where: { id: ctx.clinicId },
-        select: { bodyChartConfig: true },
-      });
-      const current = parseBodyChartConfig(clinic.bodyChartConfig);
-      const next: BodyChartConfig = {
-        customViews: current.customViews.filter((v) => v.id !== viewId),
-      };
-      await tx.clinic.update({
-        where: { id: ctx.clinicId },
-        data: { bodyChartConfig: next as unknown as Prisma.InputJsonValue },
-      });
-      return next;
-    },
-    { isolationLevel: "Serializable" },
+  return withSerializableRetry(async () =>
+    prisma.$transaction(
+      async (tx) => {
+        const clinic = await tx.clinic.findUniqueOrThrow({
+          where: { id: ctx.clinicId },
+          select: { bodyChartConfig: true },
+        });
+        const current = parseBodyChartConfig(clinic.bodyChartConfig);
+        const next: BodyChartConfig = {
+          customViews: current.customViews.filter((v) => v.id !== viewId),
+        };
+        await tx.clinic.update({
+          where: { id: ctx.clinicId },
+          data: { bodyChartConfig: next as unknown as Prisma.InputJsonValue },
+        });
+        return next;
+      },
+      { isolationLevel: "Serializable" },
+    ),
   );
+}
+
+/** Retry Serializable conflicts (Prisma P2034) a few times. */
+async function withSerializableRetry<T>(
+  run: () => Promise<T>,
+  attempts = 4,
+): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await run();
+    } catch (err) {
+      last = err;
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code?: unknown }).code)
+          : "";
+      if (code !== "P2034" || i === attempts - 1) throw err;
+    }
+  }
+  throw last;
 }

@@ -1,6 +1,11 @@
 /**
  * Allowlist SVG sanitiser for clinic anatomy overlays.
  * Rebuilds markup from safe tags/attrs only — never trust blacklist filters.
+ *
+ * Output contract (React renderer depends on this):
+ * - shape tags always self-close: <path … />
+ * - only svg/g/title/desc may be paired containers
+ * - close tags must match the open stack
  */
 
 const ALLOWED_TAGS = new Set([
@@ -15,6 +20,17 @@ const ALLOWED_TAGS = new Set([
   "rect",
   "title",
   "desc",
+]);
+
+/** Shape tags are always emitted self-closing (no children). */
+const VOID_SHAPE_TAGS = new Set([
+  "path",
+  "circle",
+  "ellipse",
+  "line",
+  "polyline",
+  "polygon",
+  "rect",
 ]);
 
 const ALLOWED_ATTRS = new Set([
@@ -72,13 +88,12 @@ export function sanitizeAnatomySvgAllowlist(raw: string): string | null {
   if (!tokens) return null;
 
   const out: string[] = [];
-  let depth = 0;
+  const stack: string[] = [];
   let elementCount = 0;
   let sawRoot = false;
 
   for (const tok of tokens) {
     if (tok.type === "text") {
-      // Only allow whitespace text nodes (no CDATA / scripts as text)
       if (tok.value.trim()) return null;
       continue;
     }
@@ -87,8 +102,21 @@ export function sanitizeAnatomySvgAllowlist(raw: string): string | null {
     const tag = tok.name.toLowerCase();
     if (!ALLOWED_TAGS.has(tag)) return null;
 
-    if (tok.selfClosing || isVoid(tag)) {
+    if (tok.closing) {
+      // Exporters often emit </path> after <path/>; ignore redundant void closes
+      if (VOID_SHAPE_TAGS.has(tag)) continue;
+      if (stack.length === 0 || stack[stack.length - 1] !== tag) return null;
+      stack.pop();
+      out.push(`</${tag}>`);
+      continue;
+    }
+
+    // Opening or self-closing
+    if (VOID_SHAPE_TAGS.has(tag) || tok.selfClosing) {
       if (tag === "svg") return null;
+      if (!sawRoot || stack.length < 1) return null;
+      // title/desc must not be forced void via selfClosing unless empty — disallow
+      if (tag === "title" || tag === "desc") return null;
       elementCount += 1;
       if (elementCount > MAX_ELEMENTS) return null;
       const attrs = serializeAttrs(tok.attrs);
@@ -97,20 +125,12 @@ export function sanitizeAnatomySvgAllowlist(raw: string): string | null {
       continue;
     }
 
-    if (tok.closing) {
-      if (depth <= 0) return null;
-      out.push(`</${tag}>`);
-      depth -= 1;
-      continue;
-    }
-
-    // opening
+    // Container open: svg | g | title | desc
     if (tag === "svg") {
-      if (sawRoot || depth !== 0) return null;
+      if (sawRoot || stack.length !== 0) return null;
       sawRoot = true;
       const attrs = serializeAttrs(tok.attrs, true);
       if (attrs === null) return null;
-      // Force a safe viewBox default if missing
       const hasViewBox = Object.keys(tok.attrs).some(
         (k) => k.toLowerCase() === "viewbox",
       );
@@ -119,29 +139,85 @@ export function sanitizeAnatomySvgAllowlist(raw: string): string | null {
         ? ""
         : ' xmlns="http://www.w3.org/2000/svg"';
       out.push(`<svg${attrs}${vb}${ns}>`);
-
-      depth += 1;
+      stack.push("svg");
       elementCount += 1;
       continue;
     }
 
-    if (!sawRoot || depth < 1) return null;
+    if (!sawRoot || stack.length < 1) return null;
+    if (tag !== "g" && tag !== "title" && tag !== "desc") return null;
     elementCount += 1;
     if (elementCount > MAX_ELEMENTS) return null;
     const attrs = serializeAttrs(tok.attrs);
     if (attrs === null) return null;
     out.push(`<${tag}${attrs}>`);
-    depth += 1;
+    stack.push(tag);
   }
 
-  if (!sawRoot || depth !== 0) return null;
+  if (!sawRoot || stack.length !== 0) return null;
   const rebuilt = out.join("");
   if (rebuilt.length < 20 || rebuilt.length > MAX_SVG_CHARS) return null;
   return rebuilt;
 }
 
-function isVoid(_tag: string) {
-  return false; // we don't allow void HTML; SVG shapes use self-closing or paired
+/**
+ * True when a sanitised SVG string can be turned into React nodes with the
+ * same rules as CustomOverlay (used for parity tests).
+ */
+export function sanitizedSvgRendersAsReact(svg: string): boolean {
+  return parseSanitizedSvgInner(svg) !== null;
+}
+
+export type SanitizedSvgNode = {
+  tag: string;
+  attrs: AttrMap;
+  children: SanitizedSvgNode[];
+};
+
+/** Parse allowlist output into a simple element tree (no React dependency). */
+export function parseSanitizedSvgInner(svg: string): SanitizedSvgNode[] | null {
+  const match = svg.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
+  const inner = match?.[1] ?? "";
+  type Node = SanitizedSvgNode;
+  const stack: Node[] = [{ tag: "root", attrs: {}, children: [] }];
+  let i = 0;
+  while (i < inner.length) {
+    const rest = inner.slice(i);
+    const close = rest.match(/^<\/\s*([a-z0-9]+)\s*>/i);
+    const open = rest.match(
+      /^<\s*([a-z0-9]+)((?:\s+[a-z0-9-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'))?)*)\s*(\/)?\s*>/i,
+    );
+    if (close) {
+      const tag = close[1]!.toLowerCase();
+      if (stack.length <= 1) return null;
+      const frame = stack.pop()!;
+      if (frame.tag !== tag) return null;
+      stack[stack.length - 1]!.children.push(frame);
+      i += close[0].length;
+      continue;
+    }
+    if (open) {
+      const tag = open[1]!.toLowerCase();
+      const attrs = parseAttrsStrict(open[2] ?? "");
+      if (attrs === null) return null;
+      const selfClosing = Boolean(open[3]) || VOID_SHAPE_TAGS.has(tag);
+      if (selfClosing) {
+        stack[stack.length - 1]!.children.push({ tag, attrs, children: [] });
+      } else {
+        stack.push({ tag, attrs, children: [] });
+      }
+      i += open[0].length;
+      continue;
+    }
+    const ws = rest.match(/^\s+/);
+    if (ws) {
+      i += ws[0].length;
+      continue;
+    }
+    return null;
+  }
+  if (stack.length !== 1) return null;
+  return stack[0]!.children;
 }
 
 type Token =
@@ -188,32 +264,32 @@ function tokenize(input: string): Token[] | null {
     const m = body.match(/^([A-Za-z][\w:-]*)\s*([\s\S]*)$/);
     if (!m) return null;
     const name = m[1]!;
-    // Reject namespaced tags (html:script, svg:foreignObject tricks)
     if (name.includes(":")) return null;
     const attrStr = m[2] ?? "";
-    const attrs = closing ? {} : parseAttrs(attrStr);
+    const attrs = closing ? {} : parseAttrsStrict(attrStr);
     if (attrs === null) return null;
     tokens.push({ type: "tag", name, attrs, closing, selfClosing });
   }
   return tokens;
 }
 
-function parseAttrs(attrStr: string): AttrMap | null {
+/** Attr parser: must consume from the start; no leading junk. */
+function parseAttrsStrict(attrStr: string): AttrMap | null {
   const attrs: AttrMap = {};
-  if (!attrStr.trim()) return attrs;
-  // name="value" | name='value' | name=value
-  const re =
-    /([A-Za-z_:][\w:.-]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-  let match: RegExpExecArray | null;
-  let consumed = 0;
-  while ((match = re.exec(attrStr))) {
-    consumed = re.lastIndex;
-    const name = match[1]!.toLowerCase();
-    const value = match[2] ?? match[3] ?? match[4] ?? "";
-    if (name.includes(":") && name !== "xml:space") {
-      // disallow xlink:href etc.
-      if (name !== "xmlns") return null;
+  let rest = attrStr;
+  while (rest.length) {
+    const ws = rest.match(/^\s+/);
+    if (ws) {
+      rest = rest.slice(ws[0].length);
+      if (!rest) break;
     }
+    const m = rest.match(
+      /^([A-Za-z_][\w.-]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/,
+    );
+    if (!m) return null;
+    const name = m[1]!.toLowerCase();
+    const value = m[2] ?? m[3] ?? m[4] ?? "";
+    if (name.includes(":") && name !== "xmlns") return null;
     if (name.startsWith("on")) return null;
     if (
       name === "href" ||
@@ -228,9 +304,8 @@ function parseAttrs(attrStr: string): AttrMap | null {
     if (/[<>`]/.test(value)) return null;
     if (/javascript:|data:|vbscript:/i.test(value)) return null;
     attrs[name] = value;
+    rest = rest.slice(m[0].length);
   }
-  // Ensure we consumed the whole attr string (no stray junk)
-  if (attrStr.slice(consumed).trim()) return null;
   return attrs;
 }
 
@@ -243,7 +318,6 @@ function serializeAttrs(
     const n = name.toLowerCase();
     if (n.startsWith("on")) return null;
     if (!ALLOWED_ATTRS.has(n) && !(isSvgRoot && n === "xmlns")) return null;
-    // Numeric / path-safe values only for geometry; fill/stroke limited
     if ((n === "fill" || n === "stroke") && /url\s*\(/i.test(value)) {
       return null;
     }
