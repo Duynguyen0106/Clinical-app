@@ -94,6 +94,15 @@ function PatientsPageInner() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [intakeStatus, setIntakeStatus] = useState<{
+    status: string;
+    submission: {
+      signedAt: string | null;
+      signatureName: string | null;
+      answers: { safetyNote?: string | null };
+    } | null;
+  } | null>(null);
+  const [intakeBusy, setIntakeBusy] = useState(false);
 
   const clinicTz = me?.clinic.timezone ?? "Europe/London";
   const dayLabel = useMemo(
@@ -151,7 +160,68 @@ function PatientsPageInner() {
     if (deepLinkId) setSelectedId(deepLinkId);
   }, [deepLinkId]);
 
+  useEffect(() => {
+    if (!selectedId || creating || editing) {
+      setIntakeStatus(null);
+      return;
+    }
+    let cancelled = false;
+    void api<{
+      status: string;
+      submission: {
+        signedAt: string | null;
+        signatureName: string | null;
+        answers: { safetyNote?: string | null };
+      } | null;
+    }>(`/patients/${selectedId}/intake`)
+      .then((d) => {
+        if (!cancelled) setIntakeStatus(d);
+      })
+      .catch(() => {
+        if (!cancelled) setIntakeStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, creating, editing]);
+
   const selected = patients.find((p) => p.id === selectedId) ?? null;
+
+  async function resendConsent() {
+    if (!selectedId) return;
+    setIntakeBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const d = await api<{ sent: boolean; alreadyComplete?: boolean }>(
+        `/patients/${selectedId}/intake`,
+        {
+          method: "POST",
+          body: JSON.stringify({ action: "resend" }),
+        },
+      );
+      setMessage(
+        d.alreadyComplete
+          ? "Consent pack already signed — a fresh link was still emailed if needed."
+          : d.sent
+            ? "Consent forms emailed to the patient."
+            : "Could not send email (check patient email / provider).",
+      );
+      const refreshed = await api<{
+        status: string;
+        submission: {
+          signedAt: string | null;
+          signatureName: string | null;
+          answers: { safetyNote?: string | null };
+        } | null;
+      }>(`/patients/${selectedId}/intake`);
+      setIntakeStatus(refreshed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not send consent email");
+    } finally {
+      setIntakeBusy(false);
+    }
+  }
 
   function selectPatient(id: string) {
     setCreating(false);
@@ -609,6 +679,35 @@ function PatientsPageInner() {
                   .join(" · ")}
               </p>
             ) : null}
+            <div className="prep-intake">
+              <p>
+                <strong>Consent pack:</strong>{" "}
+                {intakeStatus?.status === "COMPLETED"
+                  ? `Signed${
+                      intakeStatus.submission?.signatureName
+                        ? ` · ${intakeStatus.submission.signatureName}`
+                        : ""
+                    }`
+                  : intakeStatus?.status === "DRAFT"
+                    ? "Started — not signed"
+                    : "Outstanding"}
+              </p>
+              {intakeStatus?.submission?.answers?.safetyNote ? (
+                <p className="alert-line">
+                  Safety note: {intakeStatus.submission.answers.safetyNote}
+                </p>
+              ) : null}
+              {!isPractitioner ? (
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  disabled={intakeBusy || !selected.email}
+                  onClick={() => void resendConsent()}
+                >
+                  {intakeBusy ? "Sending…" : "Email consent forms"}
+                </button>
+              ) : null}
+            </div>
             <PatientPrepPanel
               patientId={selected.id}
               source="patients"

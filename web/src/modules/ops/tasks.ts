@@ -89,10 +89,17 @@ export async function listOpsTasks(ctx: AuthContext): Promise<OpsTask[]> {
       },
       include: {
         patient: {
-          include: {
-            consents: {
-              where: { type: "PRIVACY_POLICY", granted: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            intakeSubmissions: {
+              where: {
+                status: "COMPLETED",
+                formKey: "osteo_consent_v1",
+              },
               take: 1,
+              select: { id: true },
             },
           },
         },
@@ -153,19 +160,15 @@ export async function listOpsTasks(ctx: AuthContext): Promise<OpsTask[]> {
   }
 
   for (const apt of upcoming) {
-    const hasPrivacy = apt.patient.consents.length > 0;
-    const hasIntakeNote =
-      Boolean(apt.notes?.toLowerCase().includes("intake")) ||
-      Boolean(apt.patient.alerts?.toLowerCase().includes("intake"));
-    if (hasPrivacy && hasIntakeNote) continue;
-    if (hasPrivacy) continue; // privacy is the hard gate for "missing intake"
+    const hasSignedConsent = apt.patient.intakeSubmissions.length > 0;
+    if (hasSignedConsent) continue;
 
     tasks.push({
       id: `intake-${apt.id}`,
       kind: "MISSING_INTAKE",
-      title: `Chase intake — ${apt.patient.firstName} ${apt.patient.lastName}`,
-      detail: `${apt.appointmentType.name} · no privacy consent on file`,
-      href: `/app/patients`,
+      title: `Chase consent forms — ${apt.patient.firstName} ${apt.patient.lastName}`,
+      detail: `${apt.appointmentType.name} · osteopathic consent pack outstanding`,
+      href: `/app/patients?id=${encodeURIComponent(apt.patient.id)}`,
       priority: 3,
       createdAt: apt.createdAt.toISOString(),
     });

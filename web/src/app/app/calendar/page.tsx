@@ -1530,6 +1530,47 @@ export default function CalendarPage() {
               })()}
             </div>
 
+            {canEditSchedule ? (
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                disabled={busy}
+                onClick={() =>
+                  void (async () => {
+                    setBusy(true);
+                    setError(null);
+                    try {
+                      const d = await api<{ sent: boolean }>(
+                        `/patients/${selected.patient.id}/intake`,
+                        {
+                          method: "POST",
+                          body: JSON.stringify({
+                            action: "resend",
+                            appointmentId: selected.id,
+                          }),
+                        },
+                      );
+                      setMessage(
+                        d.sent
+                          ? "Consent forms emailed to the patient."
+                          : "Consent email was not delivered — check patient email.",
+                      );
+                    } catch (e) {
+                      setError(
+                        e instanceof ApiError
+                          ? e.message
+                          : "Could not send consent email",
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  })()
+                }
+              >
+                Email consent forms
+              </button>
+            ) : null}
+
             {selected.notes ? (
               <p className="muted sheet-notes">{selected.notes}</p>
             ) : null}

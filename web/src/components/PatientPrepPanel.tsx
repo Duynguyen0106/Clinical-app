@@ -98,6 +98,15 @@ export function PatientPrepPanel({
   const [nowMs] = useState(() => Date.now());
   const loadedBodies = useRef<Set<string>>(new Set());
   const autoExpandedFor = useRef<string | null>(null);
+  const [intake, setIntake] = useState<{
+    status: string;
+    submission: {
+      signatureName: string | null;
+      signedAt: string | null;
+      completedAt: string | null;
+      answers: { safetyNote?: string | null };
+    } | null;
+  } | null>(null);
 
   useEffect(() => {
     if (defaultCollapsed) setCollapsed(true);
@@ -140,6 +149,7 @@ export function PatientPrepPanel({
     setError(null);
     setExpandedNoteId(null);
     setNoteBodies({});
+    setIntake(null);
     loadedBodies.current = new Set();
     autoExpandedFor.current = null;
     void api<{ prep: PatientPrep }>(
@@ -161,6 +171,17 @@ export function PatientPrepPanel({
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
+    void api<{
+      status: string;
+      submission: {
+        signatureName: string | null;
+        signedAt: string | null;
+        completedAt: string | null;
+        answers: { safetyNote?: string | null };
+      } | null;
+    }>(`/patients/${patientId}/intake`)
+      .then((d) => setIntake(d))
+      .catch(() => setIntake(null));
     // loadNoteBody closes over patientId/source; re-run when those change
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
   }, [patientId, source, autoExpandLatest]);
@@ -230,6 +251,34 @@ export function PatientPrepPanel({
             <p className="muted">
               {[prep.email, prep.phone].filter(Boolean).join(" · ") ||
                 "No contact on file"}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {intake ? (
+        <div className="prep-intake">
+          <p>
+            <strong>Consent pack:</strong>{" "}
+            {intake.status === "COMPLETED" ? (
+              <>
+                Signed
+                {intake.submission?.signedAt
+                  ? ` · ${format(new Date(intake.submission.signedAt), "d MMM yyyy HH:mm")}`
+                  : ""}
+                {intake.submission?.signatureName
+                  ? ` · ${intake.submission.signatureName}`
+                  : ""}
+              </>
+            ) : intake.status === "DRAFT" ? (
+              "Started — not signed yet"
+            ) : (
+              "Not sent / outstanding"
+            )}
+          </p>
+          {intake.submission?.answers?.safetyNote ? (
+            <p className="alert-line">
+              Safety note: {intake.submission.answers.safetyNote}
             </p>
           ) : null}
         </div>

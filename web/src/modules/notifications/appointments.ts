@@ -4,10 +4,15 @@ import { sendEmail } from "./email";
 import { sendSms } from "./sms";
 import { buildBookingConfirmationEmail } from "./booking-confirmation-email";
 import { buildClinicBookingNotificationEmail } from "./clinic-booking-notification-email";
+import { buildIntakeConsentEmail } from "./intake-consent-email";
 import { buildAppointmentIcs } from "./appointment-ics";
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { manageUrl } from "@/modules/scheduling/manage";
 import { getAppBaseUrl } from "@/server/env";
+import {
+  ensureIntakeForAppointment,
+  patientHasCompletedIntake,
+} from "@/modules/intake/service";
 
 function formatWhen(date: Date, timezone: string) {
   try {
@@ -248,6 +253,15 @@ export async function sendBookingConfirmation(
     });
   }
 
+  let intakeEmailSent = false;
+  try {
+    intakeEmailSent = Boolean(
+      await sendIntakeConsentEmail(apt.id, { force: false }),
+    );
+  } catch (err) {
+    console.error("Intake consent email failed", err);
+  }
+
   return {
     emailSent,
     emailDelivered,
@@ -256,7 +270,53 @@ export async function sendBookingConfirmation(
     clinicEmailSent,
     practitionerEmailSent,
     manageLink,
+    intakeEmailSent,
   };
+}
+
+/**
+ * Email the osteopathic consent pack when the patient has not completed one.
+ * Returns false when skipped (no email, already complete, etc.).
+ */
+export async function sendIntakeConsentEmail(
+  appointmentId: string,
+  opts: { force?: boolean } = {},
+) {
+  const apt = await loadNotifyAppointment(appointmentId);
+  if (!apt?.patient.email?.trim()) return false;
+
+  if (!opts.force) {
+    const done = await patientHasCompletedIntake(apt.clinicId, apt.patientId);
+    if (done) return false;
+  }
+
+  const ensured = await ensureIntakeForAppointment({
+    clinicId: apt.clinicId,
+    patientId: apt.patientId,
+    appointmentId: apt.id,
+    forceNewDraft: Boolean(opts.force),
+  });
+  if (!ensured.url || ensured.alreadyComplete) return false;
+
+  const when = formatWhen(apt.startsAt, apt.clinic.timezone);
+  const content = buildIntakeConsentEmail({
+    clinicName: apt.clinic.name,
+    clinicPhone: apt.clinic.phone,
+    patientFirstName: apt.patient.firstName,
+    intakeLink: ensured.url,
+    whenLabel: when,
+    practitionerName: apt.practitioner.displayName,
+    serviceName: apt.appointmentType.name,
+  });
+
+  const result = await sendEmail({
+    to: apt.patient.email,
+    subject: content.subject,
+    text: content.text,
+    html: content.html,
+    replyTo: apt.clinic.email,
+  });
+  return result.delivered || result.provider === "console";
 }
 
 export async function sendAppointmentRescheduled(opts: {

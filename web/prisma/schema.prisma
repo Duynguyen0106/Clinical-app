@@ -230,6 +230,7 @@ model Clinic {
   patientAccessEvents PatientAccessEvent[]
   appointmentAudits AppointmentAuditEvent[]
   leaveRequests    LeaveRequest[]
+  intakeSubmissions PatientIntakeSubmission[]
 }
 
 model Membership {
@@ -368,10 +369,39 @@ model Patient {
   invoices        Invoice[]
   waitlistEntries WaitlistEntry[]
   accessEvents    PatientAccessEvent[]
+  intakeSubmissions PatientIntakeSubmission[]
 
   @@index([clinicId, lastName, firstName])
   @@index([clinicId, archivedAt])
   @@index([clinicId, email])
+}
+
+/// Consent-first osteopathic pre-visit pack (emailed public link)
+model PatientIntakeSubmission {
+  id            String    @id @default(cuid())
+  clinicId      String
+  patientId     String
+  appointmentId String?
+  formKey       String    @default("osteo_consent_v1")
+  formVersion   Int       @default(1)
+  /// DRAFT | COMPLETED
+  status        String    @default("DRAFT")
+  answers       Json?
+  signatureName String?
+  signedAt      DateTime?
+  meta          Json?
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  clinic      Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, patientId, status])
+  @@index([appointmentId])
+  @@index([clinicId, status, completedAt])
 }
 
 /// Who opened a patient's prep / note history (UK access accountability)
@@ -525,6 +555,7 @@ model Appointment {
   visit           Visit?
   invoices        Invoice[]
   audits          AppointmentAuditEvent[]
+  intakeSubmissions PatientIntakeSubmission[]
 
   @@index([clinicId, startsAt])
   @@index([clinicId, status, startsAt])

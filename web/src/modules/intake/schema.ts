@@ -1,0 +1,37 @@
+import { z } from "zod";
+
+export const OSTEO_CONSENT_FORM_KEY = "osteo_consent_v1";
+export const OSTEO_CONSENT_FORM_VERSION = 1;
+
+/** Plain UK osteopathic treatment / examination consent copy. */
+export const OSTEO_TREATMENT_CONSENT_TEXT = `I consent to osteopathic assessment and treatment. This may include case history questions, observation, movement testing, soft-tissue techniques, joint mobilisation or manipulation, and advice on exercise or self-care.
+
+I understand that treatment can sometimes cause temporary soreness or stiffness, and that rare risks exist with hands-on care. I can ask questions, decline any technique, or stop at any time.
+
+I confirm the information I provide is accurate to the best of my knowledge.`;
+
+export const intakeAnswersSchema = z.object({
+  dateOfBirth: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD")
+    .nullable()
+    .optional(),
+  emergencyPhone: z.string().trim().max(40).nullable().optional(),
+  safetyNote: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const intakeCompleteSchema = z.object({
+  token: z.string().min(8),
+  answers: intakeAnswersSchema.default({}),
+  privacyConsent: z.literal(true),
+  treatmentConsent: z.literal(true),
+  marketingConsent: z.boolean().optional().default(false),
+  signatureName: z.string().trim().min(2).max(120),
+});
+
+export const intakeDraftSchema = z.object({
+  token: z.string().min(8),
+  answers: intakeAnswersSchema,
+});
+
+export type IntakeAnswers = z.infer<typeof intakeAnswersSchema>;

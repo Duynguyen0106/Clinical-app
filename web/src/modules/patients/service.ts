@@ -710,7 +710,7 @@ export async function deletePatient(
 }
 
 export const consentSchema = z.object({
-  type: z.enum(["RECORDING", "MARKETING", "PRIVACY_POLICY"]),
+  type: z.enum(["RECORDING", "MARKETING", "PRIVACY_POLICY", "TREATMENT"]),
   granted: z.boolean(),
   method: z.enum(["in_person", "online_form", "verbal"]),
   meta: z.record(z.string(), z.unknown()).optional(),

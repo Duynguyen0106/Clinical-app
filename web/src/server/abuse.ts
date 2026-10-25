@@ -18,6 +18,7 @@ export const AbuseLimits = {
   publicBookIp: { limit: 15, windowMs: 15 * MIN } satisfies RateLimitOpts,
   publicBookEmail: { limit: 8, windowMs: 15 * MIN } satisfies RateLimitOpts,
   publicManageIp: { limit: 40, windowMs: 15 * MIN } satisfies RateLimitOpts,
+  publicIntakeIp: { limit: 40, windowMs: 15 * MIN } satisfies RateLimitOpts,
   publicWaitlistIp: { limit: 30, windowMs: 15 * MIN } satisfies RateLimitOpts,
   publicDepositIp: { limit: 20, windowMs: 15 * MIN } satisfies RateLimitOpts,
   publicSlotsIp: { limit: 90, windowMs: MIN } satisfies RateLimitOpts,
@@ -108,6 +109,14 @@ export async function enforcePublicManageLimits(req: Request) {
     `public:manage:ip:${clientIp(req)}`,
     AbuseLimits.publicManageIp,
     "Too many manage requests. Try again shortly.",
+  );
+}
+
+export async function enforcePublicIntakeLimits(req: Request) {
+  await enforceKey(
+    `public:intake:ip:${clientIp(req)}`,
+    AbuseLimits.publicIntakeIp,
+    "Too many consent form requests. Try again shortly.",
   );
 }
 
