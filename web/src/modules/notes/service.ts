@@ -25,35 +25,72 @@ export async function listNoteTemplates(ctx: AuthContext) {
   });
 }
 
-/** Insert canonical body_map section into templates that lack one. */
+/**
+ * Normalise template schemas so each has exactly one canonical body_map section.
+ * Runs in a transaction to reduce duplicate-insert races from concurrent list calls.
+ */
 export async function ensureBodyMapSectionsOnTemplates(clinicId: string) {
-  const templates = await prisma.noteTemplate.findMany({
-    where: { clinicId },
-    select: { id: true, schema: true },
+  await prisma.$transaction(async (tx) => {
+    const templates = await tx.noteTemplate.findMany({
+      where: { clinicId },
+      select: { id: true, schema: true },
+    });
+    for (const tpl of templates) {
+      const nextSchema = normalizeTemplateSchemaWithBodyMap(tpl.schema);
+      if (!nextSchema) continue;
+      await tx.noteTemplate.update({
+        where: { id: tpl.id },
+        data: { schema: nextSchema as Prisma.InputJsonValue },
+      });
+    }
   });
-  for (const tpl of templates) {
-    const schema =
-      tpl.schema && typeof tpl.schema === "object" && !Array.isArray(tpl.schema)
-        ? (tpl.schema as { sections?: unknown })
-        : { sections: [] };
-    const sections = Array.isArray(schema.sections) ? [...schema.sections] : [];
-    const hasChart = sections.some(
-      (s) =>
-        s &&
-        typeof s === "object" &&
-        ((s as { type?: string }).type === "body_map" ||
-          (s as { id?: string }).id === BODY_MAP_CONTENT_KEY),
-    );
-    if (hasChart) continue;
+}
 
-    const chartSection = {
-      id: BODY_MAP_CONTENT_KEY,
-      title: "Body chart",
-      type: "body_map",
-      hint: "Mark pain, lesions, and somatic dysfunction on anatomy views",
-    };
-    // Prefer after objective / findings, else before plan, else append
-    let insertAt = sections.findIndex(
+/** Returns updated schema object when a write is needed; null if unchanged. */
+export function normalizeTemplateSchemaWithBodyMap(
+  schema: unknown,
+): { sections: unknown[] } | null {
+  const base =
+    schema && typeof schema === "object" && !Array.isArray(schema)
+      ? { ...(schema as Record<string, unknown>) }
+      : {};
+  const rawSections = Array.isArray(base.sections) ? [...base.sections] : [];
+  const chartSection = {
+    id: BODY_MAP_CONTENT_KEY,
+    title: "Body chart",
+    type: "body_map",
+    hint: "Mark pain, lesions, and somatic dysfunction on anatomy views",
+  };
+
+  const normalized: unknown[] = [];
+  let sawChart = false;
+  for (const s of rawSections) {
+    if (!s || typeof s !== "object") {
+      normalized.push(s);
+      continue;
+    }
+    const row = s as Record<string, unknown>;
+    const isChart =
+      row.type === "body_map" || row.id === BODY_MAP_CONTENT_KEY;
+    if (isChart) {
+      if (sawChart) continue; // drop duplicates
+      sawChart = true;
+      normalized.push({
+        ...row,
+        id: BODY_MAP_CONTENT_KEY,
+        type: "body_map",
+        title:
+          typeof row.title === "string" && row.title.trim()
+            ? row.title
+            : "Body chart",
+      });
+      continue;
+    }
+    normalized.push(s);
+  }
+
+  if (!sawChart) {
+    let insertAt = normalized.findIndex(
       (s) =>
         s &&
         typeof s === "object" &&
@@ -63,20 +100,22 @@ export async function ensureBodyMapSectionsOnTemplates(clinicId: string) {
     );
     if (insertAt >= 0) insertAt += 1;
     else {
-      insertAt = sections.findIndex(
+      insertAt = normalized.findIndex(
         (s) =>
           s &&
           typeof s === "object" &&
           String((s as { id?: string }).id ?? "") === "plan",
       );
-      if (insertAt < 0) insertAt = sections.length;
+      if (insertAt < 0) insertAt = normalized.length;
     }
-    sections.splice(insertAt, 0, chartSection);
-    await prisma.noteTemplate.update({
-      where: { id: tpl.id },
-      data: { schema: { ...schema, sections } as Prisma.InputJsonValue },
-    });
+    normalized.splice(insertAt, 0, chartSection);
   }
+
+  const next = { ...base, sections: normalized };
+  if (JSON.stringify(base.sections ?? []) === JSON.stringify(normalized)) {
+    return null;
+  }
+  return next as { sections: unknown[] };
 }
 
 const noteSectionSchema = z.object({

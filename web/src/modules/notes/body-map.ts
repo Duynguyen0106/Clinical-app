@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import { sanitizeAnatomySvgAllowlist } from "@/modules/notes/svg-allowlist";
 
 export const BODY_MAP_CONTENT_KEY = "body_map" as const;
 
@@ -403,32 +404,9 @@ export function withBodyMap(
   return { ...content, [BODY_MAP_CONTENT_KEY]: sanitizeBodyMap(map) };
 }
 
-/** Strip dangerous SVG constructs; keep basic drawing primitives. */
+/** Allowlist rebuild of anatomy SVG overlays (rejects scripts / handlers / href). */
 export function sanitizeAnatomySvg(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed || trimmed.length > 80_000) return null;
-  if (!/^<svg[\s>]/i.test(trimmed)) return null;
-  const lower = trimmed.toLowerCase();
-  const banned = [
-    "<script",
-    "javascript:",
-    "onerror",
-    "onload",
-    "onclick",
-    "onmouse",
-    "<foreignobject",
-    "<iframe",
-    "<object",
-    "<embed",
-    "<image",
-    "<use",
-    "xlink:href",
-    "data:text/html",
-  ];
-  if (banned.some((b) => lower.includes(b))) return null;
-  // Require a closing svg tag
-  if (!/<\/svg>\s*$/i.test(trimmed)) return null;
-  return trimmed;
+  return sanitizeAnatomySvgAllowlist(raw);
 }
 
 export function parseBodyChartConfig(value: unknown): BodyChartConfig {

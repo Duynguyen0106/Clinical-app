@@ -26,10 +26,23 @@ type Props = {
 
 /** Static print-friendly figures for each view that has marks. */
 export function BodyMapPrintFigure({ map, customViews = [] }: Props) {
-  const views = [
+  const known = new Set<string>([
     ...BODY_MAP_VIEWS,
     ...customViews.map((v) => v.id),
-  ].filter((v, i, arr) => arr.indexOf(v) === i && map.marks.some((m) => m.view === v));
+  ]);
+  const views: BodyMapViewId[] = [];
+  for (const m of map.marks) {
+    if (!views.includes(m.view)) views.push(m.view);
+  }
+  // Prefer builtin order, then customs, then orphans
+  views.sort((a, b) => {
+    const ai = BODY_MAP_VIEWS.indexOf(a as (typeof BODY_MAP_VIEWS)[number]);
+    const bi = BODY_MAP_VIEWS.indexOf(b as (typeof BODY_MAP_VIEWS)[number]);
+    if (ai >= 0 && bi >= 0) return ai - bi;
+    if (ai >= 0) return -1;
+    if (bi >= 0) return 1;
+    return String(a).localeCompare(String(b));
+  });
   if (views.length === 0) return null;
 
   return (
@@ -41,6 +54,7 @@ export function BodyMapPrintFigure({ map, customViews = [] }: Props) {
             view={view}
             map={map}
             customViews={customViews}
+            orphan={!known.has(view) && !isBuiltinView(view)}
           />
         ))}
       </div>
@@ -52,23 +66,27 @@ function PrintView({
   view,
   map,
   customViews,
+  orphan,
 }: {
   view: BodyMapViewId;
   map: BodyMapContent;
   customViews: BodyChartCustomView[];
+  orphan: boolean;
 }) {
   const marks = map.marks.filter((m) => m.view === view);
   const customSvg = customViews.find((v) => v.id === view)?.svg;
   return (
     <figure className="body-map-print-view">
       <figcaption>
-        {viewLabel(view, customViews)} ({marks.length})
+        {viewLabel(view, customViews)}
+        {orphan ? " (removed)" : ""} ({marks.length})
       </figcaption>
       <svg viewBox="0 0 200 360" className="body-map-print-svg" aria-hidden>
         <rect width="200" height="360" fill="#f6f3ee" rx="8" />
         <AnatomySilhouette
-          view={isBuiltinView(view) || customSvg ? view : "posterior"}
+          view={view}
           customSvg={customSvg}
+          orphan={orphan}
         />
         {marks.map((m, i) => {
           const colour = MARK_COLOUR[m.kind];
@@ -84,12 +102,7 @@ function PrintView({
                 />
               ) : null}
               <g transform={`translate(${m.x * 200} ${m.y * 360})`}>
-                <circle
-                  r={7}
-                  fill={colour}
-                  stroke="#fff"
-                  strokeWidth={1.5}
-                />
+                <circle r={7} fill={colour} stroke="#fff" strokeWidth={1.5} />
                 <text
                   y={3.5}
                   textAnchor="middle"

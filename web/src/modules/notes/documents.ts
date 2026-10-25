@@ -105,7 +105,10 @@ function asRecord(content: unknown): Record<string, unknown> {
   return {};
 }
 
-export function flattenNoteSections(content: unknown): DocumentSection[] {
+export function flattenNoteSections(
+  content: unknown,
+  customViews?: BodyChartCustomView[],
+): DocumentSection[] {
   const raw = asRecord(content);
   const nested =
     raw.sections && typeof raw.sections === "object" && !Array.isArray(raw.sections)
@@ -128,7 +131,7 @@ export function flattenNoteSections(content: unknown): DocumentSection[] {
     }
     if (text) out.push({ key, label: titleCase(key), value: text });
   }
-  const mapLines = bodyMapPrintLines(parseBodyMap(content));
+  const mapLines = bodyMapPrintLines(parseBodyMap(content), customViews);
   if (mapLines.length > 0) {
     out.push({
       key: BODY_MAP_CONTENT_KEY,
@@ -329,7 +332,10 @@ export async function getClinicalDocument(
 ): Promise<ClinicalDocument> {
   const { note, clinic, signedByName, logoDataUrl } =
     await loadSignedNoteForDocuments(ctx, noteId);
-  const sections = flattenNoteSections(note.content);
+  const customViews = parseBodyChartConfig(
+    "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
+  ).customViews;
+  const sections = flattenNoteSections(note.content, customViews);
   const practitioner = mapPractitioner(note.visit?.appointment.practitioner);
 
   await prisma.noteAuditEvent.create({
@@ -377,9 +383,7 @@ export async function getClinicalDocument(
       const map = parseBodyMap(note.content);
       return map.marks.length > 0 ? map : null;
     })(),
-    bodyChartCustomViews: parseBodyChartConfig(
-      "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
-    ).customViews,
+    bodyChartCustomViews: customViews,
     printedAt: new Date().toISOString(),
   };
 }
@@ -390,7 +394,10 @@ export async function getGpLetterDocument(
 ): Promise<GpLetterDocument> {
   const { note, clinic, signedByName, logoDataUrl } =
     await loadSignedNoteForDocuments(ctx, noteId);
-  const sections = flattenNoteSections(note.content);
+  const customViews = parseBodyChartConfig(
+    "bodyChartConfig" in clinic ? clinic.bodyChartConfig : null,
+  ).customViews;
+  const sections = flattenNoteSections(note.content, customViews);
   const practitioner =
     mapPractitioner(note.visit?.appointment.practitioner) ?? {
       displayName: "Treating clinician",

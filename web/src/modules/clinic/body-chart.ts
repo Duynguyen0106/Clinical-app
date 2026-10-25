@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Prisma } from "@/generated/prisma/client";
 import type { AuthContext } from "@/server/auth";
 import { requireRole } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -38,10 +39,9 @@ export async function upsertClinicCustomAnatomyView(
   const svg = sanitizeAnatomySvg(input.svg);
   if (!svg) {
     throw badRequest(
-      "SVG rejected — use a plain <svg> with path/shape elements only (no scripts or images)",
+      "SVG rejected — use a plain <svg> with path/shape elements only (no scripts, handlers, or images)",
     );
   }
-  const current = await getClinicBodyChartConfig(ctx);
   const id =
     input.id ??
     `custom_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -50,18 +50,30 @@ export async function upsertClinicCustomAnatomyView(
     label: input.label,
     svg,
   };
-  const others = current.customViews.filter((v) => v.id !== id);
-  if (others.length >= 12 && !current.customViews.some((v) => v.id === id)) {
-    throw badRequest("Maximum of 12 custom anatomy views");
-  }
-  const next: BodyChartConfig = {
-    customViews: [...others, view],
-  };
-  await prisma.clinic.update({
-    where: { id: ctx.clinicId },
-    data: { bodyChartConfig: next },
-  });
-  return next;
+
+  // Serializable transaction reduces lost-update races on JSON config
+  return prisma.$transaction(
+    async (tx) => {
+      const clinic = await tx.clinic.findUniqueOrThrow({
+        where: { id: ctx.clinicId },
+        select: { bodyChartConfig: true },
+      });
+      const current = parseBodyChartConfig(clinic.bodyChartConfig);
+      const others = current.customViews.filter((v) => v.id !== id);
+      if (others.length >= 12 && !current.customViews.some((v) => v.id === id)) {
+        throw badRequest("Maximum of 12 custom anatomy views");
+      }
+      const next: BodyChartConfig = {
+        customViews: [...others, view],
+      };
+      await tx.clinic.update({
+        where: { id: ctx.clinicId },
+        data: { bodyChartConfig: next as unknown as Prisma.InputJsonValue },
+      });
+      return next;
+    },
+    { isolationLevel: "Serializable" },
+  );
 }
 
 export async function deleteClinicCustomAnatomyView(
@@ -69,13 +81,22 @@ export async function deleteClinicCustomAnatomyView(
   viewId: string,
 ) {
   requireRole(ctx, ["OWNER"]);
-  const current = await getClinicBodyChartConfig(ctx);
-  const next: BodyChartConfig = {
-    customViews: current.customViews.filter((v) => v.id !== viewId),
-  };
-  await prisma.clinic.update({
-    where: { id: ctx.clinicId },
-    data: { bodyChartConfig: next },
-  });
-  return next;
+  return prisma.$transaction(
+    async (tx) => {
+      const clinic = await tx.clinic.findUniqueOrThrow({
+        where: { id: ctx.clinicId },
+        select: { bodyChartConfig: true },
+      });
+      const current = parseBodyChartConfig(clinic.bodyChartConfig);
+      const next: BodyChartConfig = {
+        customViews: current.customViews.filter((v) => v.id !== viewId),
+      };
+      await tx.clinic.update({
+        where: { id: ctx.clinicId },
+        data: { bodyChartConfig: next as unknown as Prisma.InputJsonValue },
+      });
+      return next;
+    },
+    { isolationLevel: "Serializable" },
+  );
 }

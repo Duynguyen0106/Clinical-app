@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { createElement, useMemo, type ReactNode } from "react";
 import {
   isBuiltinView,
+  sanitizeAnatomySvg,
   type BodyMapViewId,
 } from "@/modules/notes/body-map";
 
@@ -11,12 +12,25 @@ type Props = {
   className?: string;
   /** Sanitised custom SVG markup for clinic overlays */
   customSvg?: string;
+  /** When custom view was deleted but marks remain */
+  orphan?: boolean;
 };
 
 /** Stylised MSK silhouettes — click targets live in the parent SVG overlay. */
-export function AnatomySilhouette({ view, className, customSvg }: Props) {
+export function AnatomySilhouette({
+  view,
+  className,
+  customSvg,
+  orphan,
+}: Props) {
+  if (orphan) {
+    return <OrphanPlaceholder className={className} />;
+  }
   if (!isBuiltinView(view) && customSvg) {
     return <CustomOverlay svg={customSvg} className={className} />;
+  }
+  if (!isBuiltinView(view)) {
+    return <OrphanPlaceholder className={className} />;
   }
   switch (view) {
     case "anterior":
@@ -38,6 +52,29 @@ export function AnatomySilhouette({ view, className, customSvg }: Props) {
   }
 }
 
+function OrphanPlaceholder({ className }: { className?: string }) {
+  return (
+    <g className={className} fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="24" y="40" width="152" height="280" rx="12" opacity="0.35" />
+      <text
+        x="100"
+        y="180"
+        textAnchor="middle"
+        fontSize="11"
+        fill="currentColor"
+        stroke="none"
+        opacity="0.55"
+      >
+        Custom view removed
+      </text>
+    </g>
+  );
+}
+
+/**
+ * Render allowlisted SVG children as React elements (no raw HTML injection).
+ * Re-sanitises on the client as defense in depth.
+ */
 function CustomOverlay({
   svg,
   className,
@@ -45,21 +82,112 @@ function CustomOverlay({
   svg: string;
   className?: string;
 }) {
-  const inner = useMemo(() => {
-    const match = svg.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
-    return match?.[1]?.trim() ?? "";
+  const nodes = useMemo(() => {
+    const safe = sanitizeAnatomySvg(svg);
+    if (!safe) return null;
+    return svgToReactNodes(safe);
   }, [svg]);
-  if (!inner) return <Posterior className={className} />;
+  if (!nodes) return <OrphanPlaceholder className={className} />;
   return (
-    <g
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      // Sanitised server-side before persist; strip wrappers only here
-      dangerouslySetInnerHTML={{ __html: inner }}
-    />
+    <g className={className} fill="none" stroke="currentColor" strokeWidth="2">
+      {nodes}
+    </g>
   );
+}
+
+function svgToReactNodes(svg: string): ReactNode[] | null {
+  const match = svg.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
+  const inner = match?.[1] ?? "";
+  if (!inner.trim()) return [];
+  type Frame = { tag: string; attrs: Record<string, string>; children: ReactNode[] };
+  const stack: Frame[] = [{ tag: "root", attrs: {}, children: [] }];
+  let i = 0;
+  let key = 0;
+  const selfTags = new Set([
+    "path",
+    "circle",
+    "ellipse",
+    "line",
+    "polyline",
+    "polygon",
+    "rect",
+  ]);
+  while (i < inner.length) {
+    const rest = inner.slice(i);
+    const open = rest.match(
+      /^<\s*([a-z]+)((?:\s+[a-z-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*(\/)?\s*>/i,
+    );
+    const close = rest.match(/^<\/\s*([a-z]+)\s*>/i);
+    if (close) {
+      const tag = close[1]!.toLowerCase();
+      if (stack.length <= 1) return null;
+      const frame = stack.pop()!;
+      if (frame.tag !== tag) return null;
+      const el = createEl(frame.tag, frame.attrs, frame.children, key++);
+      stack[stack.length - 1]!.children.push(el);
+      i += close[0].length;
+      continue;
+    }
+    if (open) {
+      const tag = open[1]!.toLowerCase();
+      const selfClosing = Boolean(open[3]) || selfTags.has(tag);
+      const attrs = parseAttrString(open[2] ?? "");
+      if (attrs === null) return null;
+      if (selfClosing) {
+        stack[stack.length - 1]!.children.push(createEl(tag, attrs, null, key++));
+      } else {
+        stack.push({ tag, attrs, children: [] });
+      }
+      i += open[0].length;
+      continue;
+    }
+    const textMatch = rest.match(/^\s+/);
+    if (textMatch) {
+      i += textMatch[0].length;
+      continue;
+    }
+    return null;
+  }
+  if (stack.length !== 1) return null;
+  return stack[0]!.children;
+}
+
+function parseAttrString(raw: string): Record<string, string> | null {
+  const attrs: Record<string, string> = {};
+  const re = /([a-z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw))) {
+    const name = m[1]!.toLowerCase();
+    if (name.startsWith("on") || name === "style" || name === "href") return null;
+    attrs[name] = m[2] ?? m[3] ?? "";
+  }
+  return attrs;
+}
+
+function createEl(
+  tag: string,
+  attrs: Record<string, string>,
+  children: ReactNode[] | null,
+  key: number,
+): ReactNode {
+  const props: Record<string, unknown> = { key };
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") props.className = v;
+    else if (k === "stroke-width") props.strokeWidth = v;
+    else if (k === "stroke-linecap") props.strokeLinecap = v;
+    else if (k === "stroke-linejoin") props.strokeLinejoin = v;
+    else if (k === "stroke-dasharray") props.strokeDasharray = v;
+    else if (k === "fill-opacity") props.fillOpacity = v;
+    else if (k === "stroke-opacity") props.strokeOpacity = v;
+    else if (k === "fill-rule") props.fillRule = v;
+    else if (k === "clip-rule") props.clipRule = v;
+    else if (k === "viewbox") props.viewBox = v;
+    else props[k] = v;
+  }
+  if (children && children.length) {
+    return createElement(tag, props, ...children);
+  }
+  return createElement(tag, props);
 }
 
 function Anterior({ className }: { className?: string }) {
@@ -92,7 +220,6 @@ function Posterior({ className }: { className?: string }) {
       <path d="M118 168 L122 250 L128 320" />
       <path d="M72 320 L58 340" />
       <path d="M128 320 L142 340" />
-      {/* spine line */}
       <path d="M100 58 L100 168" strokeDasharray="3 3" opacity="0.5" />
       <path d="M100 168 L100 250" strokeDasharray="3 3" opacity="0.45" />
     </g>
@@ -203,24 +330,10 @@ function Plantar({ className }: { className?: string }) {
       <ellipse cx="130" cy="180" rx="28" ry="70" />
       <path d="M55 130 C50 100 55 70 70 55 C85 70 90 100 85 130" opacity="0.5" />
       <path d="M115 130 C110 100 115 70 130 55 C145 70 150 100 145 130" opacity="0.5" />
-      <text
-        x="58"
-        y="280"
-        fontSize="11"
-        fill="currentColor"
-        stroke="none"
-        opacity="0.5"
-      >
+      <text x="58" y="280" fontSize="11" fill="currentColor" stroke="none" opacity="0.5">
         L
       </text>
-      <text
-        x="122"
-        y="280"
-        fontSize="11"
-        fill="currentColor"
-        stroke="none"
-        opacity="0.5"
-      >
+      <text x="122" y="280" fontSize="11" fill="currentColor" stroke="none" opacity="0.5">
         R
       </text>
     </g>

@@ -16,11 +16,13 @@ Want **downloadable installers** (Windows/Mac/.apk/App Store)? After this web de
 4. `web/vercel.json` already sets Prisma generate + build.
 5. Add env vars (below) → Deploy.
 6. Set `APP_BASE_URL` to the `https://…vercel.app` URL → Redeploy.
-7. From a computer, run schema against production DB:
+7. From a computer, apply migrations against production DB **before** (or immediately with) the new deploy. Prefer migrate deploy so columns like `Clinic.bodyChartConfig` exist:
 
 ```bash
 cd web
-DATABASE_URL="postgresql://…" npx prisma db push
+DATABASE_URL="postgresql://…" npx prisma migrate deploy
+# fallback for greenfield only:
+# DATABASE_URL="postgresql://…" npx prisma db push
 DATABASE_URL="postgresql://…" npm run db:seed   # staging demo only
 ```
 

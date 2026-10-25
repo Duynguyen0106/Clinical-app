@@ -108,12 +108,13 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   );
 
   function scheduleAutosave(next: Record<string, unknown>) {
+    contentRef.current = next;
     setContent(next);
     setDirty(true);
     if (readOnly) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
-      void save(next);
+      void save(contentRef.current);
     }, 800);
   }
 
@@ -124,11 +125,12 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   }, []);
 
   function updateMarkdown(id: string, value: string) {
-    scheduleAutosave({ ...content, [id]: value });
+    const next = { ...contentRef.current, [id]: value };
+    scheduleAutosave(next);
   }
 
   function updateBodyMap(map: BodyMapContent) {
-    scheduleAutosave(withBodyMap(content, map));
+    scheduleAutosave(withBodyMap(contentRef.current, map));
   }
 
   async function sign() {

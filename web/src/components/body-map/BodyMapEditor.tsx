@@ -1,15 +1,17 @@
 "use client";
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   BODY_MAP_MARK_KINDS,
   BODY_MAP_VIEWS,
   LESION_TYPES,
   SOMATIC_FINDINGS,
   BODY_SIDES,
+  MAX_BODY_MAP_MARKS,
   MAX_MARK_POINTS,
   centroid,
   emptyBodyMap,
+  isBuiltinView,
   kindLabel,
   markSummary,
   newMarkId,
@@ -51,6 +53,13 @@ export function BodyMapEditor({
 }: Props) {
   const uid = useId();
   const map = value?.version === 1 ? value : emptyBodyMap();
+  const marksRef = useRef(map.marks);
+  const activeViewRef = useRef(map.activeView);
+  useEffect(() => {
+    marksRef.current = map.marks;
+    activeViewRef.current = map.activeView;
+  }, [map.marks, map.activeView]);
+
   const [tool, setTool] = useState<BodyMapMarkKind>("pain");
   const [drawMode, setDrawMode] = useState<DrawMode>("point");
   const [intensity, setIntensity] = useState(5);
@@ -69,20 +78,44 @@ export function BodyMapEditor({
     setDraftPoints(next);
   }
 
-  const allViews: BodyMapViewId[] = useMemo(
-    () => [...BODY_MAP_VIEWS, ...customViews.map((v) => v.id)],
-    [customViews],
-  );
+  const orphanViewIds = useMemo(() => {
+    const known = new Set<string>([
+      ...BODY_MAP_VIEWS,
+      ...customViews.map((v) => v.id),
+    ]);
+    const orphans = new Set<string>();
+    for (const m of map.marks) {
+      if (!isBuiltinView(m.view) && !known.has(m.view)) orphans.add(m.view);
+    }
+    return orphans;
+  }, [map.marks, customViews]);
+
+  const allViews: BodyMapViewId[] = useMemo(() => {
+    const base: BodyMapViewId[] = [
+      ...BODY_MAP_VIEWS,
+      ...customViews.map((v) => v.id),
+    ];
+    for (const id of orphanViewIds) {
+      if (!base.includes(id)) base.push(id);
+    }
+    return base;
+  }, [customViews, orphanViewIds]);
 
   const viewMarks = useMemo(
     () => map.marks.filter((m) => m.view === map.activeView),
     [map.marks, map.activeView],
   );
 
+  const activeIsOrphan = orphanViewIds.has(map.activeView);
+
   function setView(activeView: BodyMapViewId) {
     setDraft([]);
     drawingRef.current = false;
-    onChange({ ...map, activeView });
+    onChange({
+      version: 1,
+      activeView,
+      marks: marksRef.current,
+    });
   }
 
   function attrsForNewMark(): Partial<BodyMapMark> {
@@ -101,10 +134,11 @@ export function BodyMapEditor({
 
   function commitMark(shape: BodyMapShape, points: BodyMapPoint[], x: number, y: number) {
     if (readOnly) return;
+    if (marksRef.current.length >= MAX_BODY_MAP_MARKS) return;
     const mark: BodyMapMark = {
       id: newMarkId(),
       kind: tool,
-      view: map.activeView,
+      view: activeViewRef.current,
       x,
       y,
       shape,
@@ -112,7 +146,13 @@ export function BodyMapEditor({
       ...attrsForNewMark(),
     };
     if (points.length) mark.points = points;
-    onChange({ ...map, marks: [...map.marks, mark] });
+    const nextMarks = [...marksRef.current, mark];
+    marksRef.current = nextMarks;
+    onChange({
+      version: 1,
+      activeView: activeViewRef.current,
+      marks: nextMarks,
+    });
     setSelectedId(mark.id);
     setNote("");
     setDraft([]);
@@ -197,7 +237,13 @@ export function BodyMapEditor({
 
   function removeMark(id: string) {
     if (readOnly) return;
-    onChange({ ...map, marks: map.marks.filter((m) => m.id !== id) });
+    const nextMarks = marksRef.current.filter((m) => m.id !== id);
+    marksRef.current = nextMarks;
+    onChange({
+      version: 1,
+      activeView: activeViewRef.current,
+      marks: nextMarks,
+    });
     if (selectedId === id) setSelectedId(null);
   }
 
@@ -210,9 +256,14 @@ export function BodyMapEditor({
       return;
     }
     setDraft([]);
+    const nextMarks = marksRef.current.filter(
+      (m) => m.view !== activeViewRef.current,
+    );
+    marksRef.current = nextMarks;
     onChange({
-      ...map,
-      marks: map.marks.filter((m) => m.view !== map.activeView),
+      version: 1,
+      activeView: activeViewRef.current,
+      marks: nextMarks,
     });
   }
 
@@ -234,6 +285,7 @@ export function BodyMapEditor({
               onClick={() => setView(v)}
             >
               {viewLabel(v, customViews)}
+              {orphanViewIds.has(v) ? " (removed)" : ""}
             </button>
           ))}
         </div>
@@ -411,8 +463,21 @@ export function BodyMapEditor({
           <AnatomySilhouette
             view={map.activeView}
             customSvg={customSvg}
+            orphan={activeIsOrphan}
             className="body-map-silhouette"
           />
+          {marksRef.current.length >= MAX_BODY_MAP_MARKS ? (
+            <text
+              x="100"
+              y="20"
+              textAnchor="middle"
+              fontSize="10"
+              fill="#a33"
+              stroke="none"
+            >
+              Mark limit reached
+            </text>
+          ) : null}
           {viewMarks.map((m, i) => (
             <MarkGraphic
               key={m.id}

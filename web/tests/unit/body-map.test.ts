@@ -21,7 +21,10 @@ import {
   parseTemplateSections,
 } from "../../src/modules/notes/templates";
 import { flattenNoteSections } from "../../src/modules/notes/documents";
-import { noteTemplateUpsertSchema } from "../../src/modules/notes/service";
+import {
+  noteTemplateUpsertSchema,
+  normalizeTemplateSchemaWithBodyMap,
+} from "../../src/modules/notes/service";
 import { hashNoteContent } from "../../src/modules/notes/hash";
 import type { SoapNoteContent } from "../../src/modules/ai/mock-pipeline";
 
@@ -213,27 +216,78 @@ describe("body map model", () => {
     assert.match(markSummary(clean.marks[0]!), /path/);
   });
 
-  it("sanitises custom anatomy SVG and rejects scripts", () => {
+  it("sanitises custom anatomy SVG with allowlist (XSS corpus)", () => {
     const ok = sanitizeAnatomySvg(
       '<svg viewBox="0 0 200 360"><path d="M10 10 L20 20"/></svg>',
     );
     assert.ok(ok);
-    assert.equal(
-      sanitizeAnatomySvg("<svg><script>alert(1)</script></svg>"),
-      null,
-    );
+    assert.match(ok!, /<path /);
+
+    const rejects = [
+      '<svg viewBox="0 0 1 1"><script>alert(1)</script></svg>',
+      '<svg viewBox="0 0 1 1"><circle cx="1" cy="1" r="1" onfocus="alert(1)"/></svg>',
+      '<svg viewBox="0 0 1 1"><rect width="1" height="1" onpointerdown="x"/></svg>',
+      "<svg viewBox=\"0 0 1 1\">&#60;script&#62;x&#60;/script&#62;</svg>",
+      '<svg viewBox="0 0 1 1"><html:script xmlns:html="http://www.w3.org/1999/xhtml">x</html:script></svg>',
+      '<svg viewBox="0 0 1 1"><g style="x"><path d="M0 0"/></g></svg>',
+      '<svg viewBox="0 0 1 1"><style>@import url(x)</style></svg>',
+      '<svg viewBox="0 0 1 1"><animate onbegin="alert(1)"/></svg>',
+      '<svg viewBox="0 0 1 1"><a href="javascript:alert(1)"><path d="M0 0"/></a></svg>',
+      '<svg viewBox="0 0 1 1"><image href="x"/></svg>',
+      '<svg viewBox="0 0 1 1"><foreignObject/></svg>',
+    ];
+    for (const svg of rejects) {
+      assert.equal(sanitizeAnatomySvg(svg), null, svg.slice(0, 60));
+    }
+
     const cfg = parseBodyChartConfig({
       customViews: [
-        {
-          id: "custom_tmj",
-          label: "TMJ",
-          svg: ok!,
-        },
+        { id: "custom_tmj", label: "TMJ", svg: ok! },
         { id: "bad", label: "Nope", svg: "<div/>" },
       ],
     });
     assert.equal(cfg.customViews.length, 1);
     assert.equal(cfg.customViews[0]!.id, "custom_tmj");
+  });
+
+  it("normalises template schemas: insert, dedupe, lock body_map id", () => {
+    const inserted = normalizeTemplateSchemaWithBodyMap({
+      sections: [
+        { id: "subjective", title: "S", type: "markdown" },
+        { id: "plan", title: "P", type: "markdown" },
+      ],
+    });
+    assert.ok(inserted);
+    assert.equal(
+      inserted!.sections.filter(
+        (s) => (s as { type?: string }).type === "body_map",
+      ).length,
+      1,
+    );
+
+    const deduped = normalizeTemplateSchemaWithBodyMap({
+      sections: [
+        { id: "chart_a", title: "A", type: "body_map" },
+        { id: "objective", title: "O", type: "markdown" },
+        { id: "chart_b", title: "B", type: "body_map" },
+      ],
+    });
+    assert.ok(deduped);
+    const charts = deduped!.sections.filter(
+      (s) => (s as { type?: string }).type === "body_map",
+    );
+    assert.equal(charts.length, 1);
+    assert.equal((charts[0] as { id: string }).id, BODY_MAP_CONTENT_KEY);
+
+    assert.equal(
+      normalizeTemplateSchemaWithBodyMap({
+        sections: [
+          { id: BODY_MAP_CONTENT_KEY, title: "Body chart", type: "body_map" },
+          { id: "plan", title: "P", type: "markdown" },
+        ],
+      }),
+      null,
+    );
   });
 
   it("locks body_map section id in template upsert schema", () => {
