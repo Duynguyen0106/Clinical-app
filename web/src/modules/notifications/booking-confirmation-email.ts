@@ -14,11 +14,17 @@ export type BookingConfirmationContentInput = {
   cancelNoticeHours?: number;
 };
 
+export function mapsDirectionsUrl(address: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address.trim())}`;
+}
+
 export function buildBookingConfirmationEmail(
   input: BookingConfirmationContentInput,
 ) {
   const notice = input.cancelNoticeHours ?? 24;
   const subject = `Booking confirmed — ${input.clinicName}`;
+  const address = input.clinicAddress?.trim() || null;
+  const directionsUrl = address ? mapsDirectionsUrl(address) : null;
 
   const lines = [
     `Hi ${input.patientFirstName},`,
@@ -29,7 +35,8 @@ export function buildBookingConfirmationEmail(
     `With: ${input.practitionerName}`,
     `Service: ${input.serviceName}`,
     input.roomName ? `Room: ${input.roomName}` : null,
-    input.clinicAddress ? `Where: ${input.clinicAddress}` : null,
+    address ? `Clinic address: ${address}` : null,
+    directionsUrl ? `Get directions: ${directionsUrl}` : null,
     input.clinicPhone ? `Phone: ${input.clinicPhone}` : null,
     "",
     "A calendar invite (.ics) is attached — add it to Apple, Google, or Outlook.",
@@ -49,15 +56,18 @@ export function buildBookingConfirmationEmail(
     ["With", input.practitionerName],
     ["Service", input.serviceName],
     input.roomName ? ["Room", input.roomName] : null,
-    input.clinicAddress ? ["Where", input.clinicAddress] : null,
+    address ? ["Clinic address", address] : null,
     input.clinicPhone ? ["Phone", input.clinicPhone] : null,
   ].filter((row): row is [string, string] => Boolean(row));
 
   const rowsHtml = detailRows
-    .map(
-      ([label, value]) =>
-        `<tr><td style="padding:6px 12px 6px 0;color:#5b6b66;vertical-align:top;">${escapeHtml(label)}</td><td style="padding:6px 0;color:#14201c;font-weight:600;">${escapeHtml(value)}</td></tr>`,
-    )
+    .map(([label, value]) => {
+      const valueHtml =
+        label === "Clinic address" && directionsUrl
+          ? `${escapeHtml(value)}<br /><a href="${escapeHtml(directionsUrl)}" style="color:#1E3F37;font-weight:600;text-decoration:underline;">Get directions</a>`
+          : escapeHtml(value);
+      return `<tr><td style="padding:6px 12px 6px 0;color:#5b6b66;vertical-align:top;">${escapeHtml(label)}</td><td style="padding:6px 0;color:#14201c;font-weight:600;">${valueHtml}</td></tr>`;
+    })
     .join("");
 
   const html = `<!DOCTYPE html>
