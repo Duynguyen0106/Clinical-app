@@ -61,6 +61,44 @@ describe("buildBookingConfirmationEmail", () => {
     assert.doesNotMatch(msg.html, /maps\.google|google\.com\/maps/i);
   });
 
+  it("includes Before you arrive when patientPrepText is set", () => {
+    const msg = buildBookingConfirmationEmail({
+      clinicName: "Northbank Manual Therapy",
+      patientFirstName: "Alex",
+      whenLabel: "Wednesday 4 November 2026 at 10:00",
+      timezone: "Europe/London",
+      practitionerName: "Alex Nguyen",
+      serviceName: "Initial assessment",
+      manageLink: "https://example.com/manage",
+      patientPrepText:
+        "Wear loose clothing.\nArrive a few minutes early.",
+    });
+
+    assert.match(msg.text, /Before you arrive:/);
+    assert.match(msg.text, /Wear loose clothing\./);
+    assert.match(msg.text, /Arrive a few minutes early\./);
+    assert.match(msg.html, /Before you arrive/i);
+    assert.match(msg.html, /Wear loose clothing\./);
+    assert.match(msg.html, /Arrive a few minutes early\./);
+    assert.match(msg.html, /Wear loose clothing\.<br \/>Arrive/);
+  });
+
+  it("omits Before you arrive when patientPrepText is missing", () => {
+    const msg = buildBookingConfirmationEmail({
+      clinicName: "Northbank Manual Therapy",
+      patientFirstName: "Alex",
+      whenLabel: "Wednesday 4 November 2026 at 10:00",
+      timezone: "Europe/London",
+      practitionerName: "Alex Nguyen",
+      serviceName: "Initial assessment",
+      manageLink: "https://example.com/manage",
+      patientPrepText: "   ",
+    });
+
+    assert.doesNotMatch(msg.text, /Before you arrive/);
+    assert.doesNotMatch(msg.html, /Before you arrive/i);
+  });
+
   it("escapes HTML in clinic and patient fields", () => {
     const msg = buildBookingConfirmationEmail({
       clinicName: `Test <script>alert(1)</script>`,
@@ -71,12 +109,15 @@ describe("buildBookingConfirmationEmail", () => {
       practitionerName: "Dr > Name",
       serviceName: "Initial",
       manageLink: "https://example.com/manage",
+      patientPrepText: `Wear <script>x</script> & bring forms`,
     });
     assert.doesNotMatch(msg.html, /<script>alert/);
+    assert.doesNotMatch(msg.html, /<script>x<\/script>/);
     assert.doesNotMatch(msg.html, /<b>Quayside<\/b>/);
     assert.match(msg.html, /Sam &amp; Co/);
     assert.match(msg.html, /Dr &gt; Name/);
     assert.match(msg.html, /12 &lt;b&gt;Quayside&lt;\/b&gt; &amp; Co/);
+    assert.match(msg.html, /Wear &lt;script&gt;x&lt;\/script&gt; &amp; bring forms/);
     assert.match(msg.html, /Get directions/);
   });
 });
