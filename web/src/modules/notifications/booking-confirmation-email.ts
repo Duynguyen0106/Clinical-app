@@ -14,6 +14,8 @@ export type BookingConfirmationContentInput = {
   cancelNoticeHours?: number;
   /** When set, confirmation includes the consent-pack CTA (no second email). */
   intakeLink?: string | null;
+  /** Clothes / what to bring — clinic-level prep tips. */
+  patientPrepText?: string | null;
 };
 
 export function mapsDirectionsUrl(address: string) {
@@ -27,6 +29,7 @@ export function buildBookingConfirmationEmail(
   const subject = `Booking confirmed — ${input.clinicName}`;
   const address = input.clinicAddress?.trim() || null;
   const directionsUrl = address ? mapsDirectionsUrl(address) : null;
+  const prepText = input.patientPrepText?.trim() || null;
 
   const lines = [
     `Hi ${input.patientFirstName},`,
@@ -41,6 +44,9 @@ export function buildBookingConfirmationEmail(
     directionsUrl ? `Get directions: ${directionsUrl}` : null,
     input.clinicPhone ? `Phone: ${input.clinicPhone}` : null,
     "",
+    ...(prepText
+      ? ["Before you arrive:", prepText, ""]
+      : []),
     "A calendar invite (.ics) is attached — add it to Apple, Google, or Outlook.",
     "",
     "Manage your booking (cancel or reschedule):",
@@ -108,6 +114,16 @@ export function buildBookingConfirmationEmail(
               </table>
             </td>
           </tr>
+          ${
+            prepText
+              ? `<tr>
+            <td style="padding-top:18px;font-family:system-ui,-apple-system,sans-serif;">
+              <div style="font-size:13px;letter-spacing:0.06em;text-transform:uppercase;color:#1E3F37;font-weight:700;">Before you arrive</div>
+              <div style="padding-top:8px;font-size:15px;line-height:1.5;color:#24332e;">${escapeHtml(prepText).replaceAll("\n", "<br />")}</div>
+            </td>
+          </tr>`
+              : ""
+          }
           <tr>
             <td style="padding-top:22px;" align="center">
               <a href="${escapeHtml(input.manageLink)}" style="display:inline-block;background:#1E3F37;color:#ffffff;text-decoration:none;font-family:system-ui,-apple-system,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:999px;">

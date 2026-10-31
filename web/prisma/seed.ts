@@ -60,6 +60,8 @@ async function main() {
       audioRetentionDays: 14,
       privacyNoticeVersion: "2026-08-uk-v1",
       dataRegion: "uk-eu",
+      patientPrepText:
+        "Please wear loose, comfortable clothing that allows movement of the area being treated. Arrive a few minutes early. Bring any referral letters or imaging reports if you have them.",
     },
   });
 

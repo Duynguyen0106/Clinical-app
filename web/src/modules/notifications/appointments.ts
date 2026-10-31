@@ -191,6 +191,7 @@ export async function sendBookingConfirmation(
       manageLink,
       cancelNoticeHours: apt.clinic.cancelMinNoticeHours ?? 24,
       intakeLink,
+      patientPrepText: apt.clinic.patientPrepText,
     });
 
     const ics = patientCalendarInvite(apt, {

@@ -45,6 +45,7 @@ type BookingPolicy = {
   depositBankSortCode?: string | null;
   depositBankAccountNumber?: string | null;
   bookingPolicyText: string;
+  patientPrepText?: string | null;
 };
 
 type PatientEmailSettings = {
@@ -848,6 +849,26 @@ export default function SettingsPage() {
                     })
                   }
                 />
+              </label>
+              <label className="field">
+                <span>What to prepare</span>
+                <textarea
+                  rows={4}
+                  disabled={!isOwner}
+                  maxLength={1000}
+                  placeholder="Wear loose, comfortable clothing that allows movement of the area being treated. Arrive a few minutes early. Bring any referral letters or imaging if you have them."
+                  value={booking.patientPrepText ?? ""}
+                  onChange={(e) =>
+                    setBooking({
+                      ...booking,
+                      patientPrepText: e.target.value,
+                    })
+                  }
+                />
+                <span className="muted">
+                  Shown on the booking confirmation email (clothes, what to
+                  bring).
+                </span>
               </label>
               {isOwner ? (
                 <button

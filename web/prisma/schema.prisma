@@ -186,6 +186,8 @@ model Clinic {
   depositBankAccountNumber String?
   /// Shown on public booking / manage pages
   bookingPolicyText String @default("Please give at least 24 hours’ notice to cancel or reschedule online. Late cancels and no-shows may forfeit the deposit.")
+  /// Clothes / what to bring — shown on booking confirmation email when set
+  patientPrepText String?
   /// Diary display: FULL_NAME or INITIALS (open-desk privacy)
   calendarPrivacyMode CalendarPrivacyMode @default(FULL_NAME)
   /// Custom body-chart anatomy overlays: { customViews: [{ id, label, svg }] }

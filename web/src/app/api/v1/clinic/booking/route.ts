@@ -16,6 +16,7 @@ const bookingSelect = {
   depositBankSortCode: true,
   depositBankAccountNumber: true,
   bookingPolicyText: true,
+  patientPrepText: true,
 } as const;
 
 function maskSortCode(raw: string | null | undefined) {
@@ -70,12 +71,22 @@ const patchSchema = z.object({
   depositBankSortCode: optionalBankText,
   depositBankAccountNumber: optionalBankText,
   bookingPolicyText: z.string().min(1).max(2000).optional(),
+  patientPrepText: z
+    .union([z.string().max(1000), z.literal(""), z.null()])
+    .optional(),
 });
 
 function normalizeBankField(value: string | null | undefined) {
   if (value === undefined) return undefined;
   if (value === null || value === "") return null;
   return value.trim();
+}
+
+function normalizePrepText(value: string | null | undefined) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
 }
 
 export const PATCH = withAuth(async (req, ctx) => {
@@ -85,6 +96,7 @@ export const PATCH = withAuth(async (req, ctx) => {
     depositBankAccountName,
     depositBankSortCode,
     depositBankAccountNumber,
+    patientPrepText,
     ...rest
   } = body;
   const booking = await prisma.clinic.update({
@@ -108,6 +120,9 @@ export const PATCH = withAuth(async (req, ctx) => {
               depositBankAccountNumber,
             )?.replace(/\D/g, ""),
           }
+        : {}),
+      ...(patientPrepText !== undefined
+        ? { patientPrepText: normalizePrepText(patientPrepText) }
         : {}),
     },
     select: bookingSelect,

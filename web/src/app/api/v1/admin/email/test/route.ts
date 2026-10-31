@@ -41,6 +41,8 @@ export const POST = withPublic(async (req) => {
     roomName: "Couch 1",
     manageLink: "https://treow-clinic.vercel.app/book/manage/demo",
     cancelNoticeHours: 24,
+    patientPrepText:
+      "Please wear loose, comfortable clothing that allows movement of the area being treated. Arrive a few minutes early. Bring any referral letters or imaging reports if you have them.",
   });
   const startsAt = new Date("2026-11-09T09:00:00.000Z");
   const endsAt = new Date("2026-11-09T09:30:00.000Z");
