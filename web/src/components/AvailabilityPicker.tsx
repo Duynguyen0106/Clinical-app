@@ -61,7 +61,7 @@ export function AvailabilityPicker({
   onSelect,
   emptyMessage = "No open slots in the booking window.",
   legend = "Choose a day",
-  initialVisiblePerPeriod = 4,
+  initialVisiblePerPeriod = 8,
   timeZone,
 }: Props) {
   const days = useMemo(() => {
@@ -104,16 +104,10 @@ export function AvailabilityPicker({
   useEffect(() => {
     setExpandedMorning(false);
     setExpandedAfternoon(false);
-    const hour = timeZone
-      ? Number(formatInTimeZone(new Date(), timeZone, "H"))
-      : new Date().getHours();
-    if (hour < 12) {
-      setShowMorning(true);
-      setShowAfternoon(false);
-    } else {
-      setShowMorning(false);
-      setShowAfternoon(true);
-    }
+    // Always offer both periods when the day has times — hiding afternoon
+    // before noon made PM slots look unavailable even when the API returned them.
+    setShowMorning(true);
+    setShowAfternoon(true);
   }, [selectedDay, timeZone]);
 
   const daySlots = useMemo(() => {
