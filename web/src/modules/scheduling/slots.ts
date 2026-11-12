@@ -17,6 +17,9 @@ import { publicSlotWindow } from "./public-slot-window";
 
 export { publicSlotWindow } from "./public-slot-window";
 
+/** Bookable start-time grid for patients and staff (1:00, 1:15, 1:30, 1:45, …). */
+export const SLOT_STEP_MINUTES = 15;
+
 type SlotType = {
   id: string;
   durationMinutes: number;
@@ -103,7 +106,7 @@ async function generateSlotsForPractitioner(args: {
       for (
         let minute = rule.startMinute;
         minute + args.durationMinutes <= rule.endMinute;
-        minute += 15
+        minute += SLOT_STEP_MINUTES
       ) {
         if (
           !isWindowAvailable({

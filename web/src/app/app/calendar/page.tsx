@@ -342,16 +342,49 @@ export default function CalendarPage() {
   );
 
   useEffect(() => {
-    if (!bookOpen || !bookTypeId || !bookPractitionerId || bookSlotFixed) return;
+    if (!bookOpen || !bookTypeId || !bookPractitionerId) return;
+    const pinnedSlot = bookSlotFixed ? bookSlot : "";
     void api<{ slots: string[] }>(
       `/slots?appointmentTypeId=${bookTypeId}&practitionerId=${bookPractitionerId}&durationMinutes=${bookDuration}&days=14`,
     )
       .then((d) => {
         setBookSlots(d.slots);
+        if (pinnedSlot) {
+          // Keep diary-hour context: prefer exact pin, else first 15‑min start
+          // in the same clinic hour, else first open slot that day.
+          const pinned = new Date(pinnedSlot);
+          const pinnedKey = clinicDateKey(pinned, timeZone);
+          const pinnedHour = Math.floor(
+            clinicMinutesFromMidnight(pinned, timeZone) / 60,
+          );
+          const sameHour = d.slots.filter((s) => {
+            const t = new Date(s);
+            return (
+              clinicDateKey(t, timeZone) === pinnedKey &&
+              Math.floor(clinicMinutesFromMidnight(t, timeZone) / 60) ===
+                pinnedHour
+            );
+          });
+          if (sameHour.includes(pinnedSlot)) {
+            setBookSlot(pinnedSlot);
+            return;
+          }
+          if (sameHour[0]) {
+            setBookSlot(sameHour[0]);
+            return;
+          }
+          const sameDay = d.slots.find(
+            (s) => clinicDateKey(new Date(s), timeZone) === pinnedKey,
+          );
+          setBookSlot(sameDay ?? d.slots[0] ?? "");
+          return;
+        }
         setBookSlot(d.slots[0] ?? "");
       })
       .catch((e: Error) => setError(e.message));
-  }, [bookOpen, bookTypeId, bookPractitionerId, bookDuration, bookSlotFixed]);
+    // bookSlot intentionally omitted — only re-fetch when sheet inputs change
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pinned snapshot via bookSlotFixed
+  }, [bookOpen, bookTypeId, bookPractitionerId, bookDuration, bookSlotFixed, timeZone]);
 
   useEffect(() => {
     if (!selected) return;
@@ -445,6 +478,8 @@ export default function CalendarPage() {
     setBookRoomId("");
     setBookOptionsOpen(false);
     if (opts?.day != null && opts.hour != null) {
+      // Pin the diary hour as a preference, but still load 15‑minute open
+      // starts (e.g. 13:00 / 13:15 / 13:30 / 13:45) so staff can refine.
       const startsAt = clinicLocalDateTime(
         clinicDateKey(opts.day, timeZone),
         opts.hour * 60,
@@ -1879,24 +1914,18 @@ export default function CalendarPage() {
               </button>
             </div>
             {bookSlotFixed && bookSlot ? (
-              <p className="alert-line">
-                Slot: {format(new Date(bookSlot), "EEE d MMM HH:mm")}
+              <p className="muted book-fineprint">
+                Diary hour selected — choose an exact start (15‑minute steps).
+                Other practitioners can be booked at the same time if free.
                 <button
                   type="button"
                   className="btn-ghost btn-sm"
                   onClick={() => {
                     setBookSlotFixed(false);
-                    setBookSlot("");
                   }}
                 >
-                  Change slot
+                  Show all open slots
                 </button>
-              </p>
-            ) : null}
-            {bookSlotFixed && bookSlot ? (
-              <p className="muted book-fineprint">
-                Other practitioners can be booked at the same time if they are
-                free. Busy practitioners are disabled below.
               </p>
             ) : null}
             <PatientLookup
@@ -2015,25 +2044,46 @@ export default function CalendarPage() {
                 onChange={(e) => setBookDuration(Number(e.target.value))}
               />
             </label>
-            {!bookSlotFixed ? (
-              <label className="field">
-                <span>Slot</span>
-                <select
-                  value={bookSlot}
-                  onChange={(e) => setBookSlot(e.target.value)}
-                >
-                  {bookSlots.length === 0 ? (
-                    <option value="">No open slots</option>
-                  ) : (
-                    bookSlots.map((s) => (
-                      <option key={s} value={s}>
-                        {format(new Date(s), "EEE d MMM HH:mm")}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </label>
-            ) : null}
+            <label className="field">
+              <span>Slot</span>
+              <select
+                value={bookSlot}
+                onChange={(e) => setBookSlot(e.target.value)}
+              >
+                {(() => {
+                  const pinned = bookSlotFixed && bookSlot ? new Date(bookSlot) : null;
+                  const pinnedKey = pinned
+                    ? clinicDateKey(pinned, timeZone)
+                    : null;
+                  const pinnedHour = pinned
+                    ? Math.floor(
+                        clinicMinutesFromMidnight(pinned, timeZone) / 60,
+                      )
+                    : null;
+                  const options =
+                    pinnedKey != null && pinnedHour != null
+                      ? bookSlots.filter((s) => {
+                          const t = new Date(s);
+                          return (
+                            clinicDateKey(t, timeZone) === pinnedKey &&
+                            Math.floor(
+                              clinicMinutesFromMidnight(t, timeZone) / 60,
+                            ) === pinnedHour
+                          );
+                        })
+                      : bookSlots;
+                  const list = options.length > 0 ? options : bookSlots;
+                  if (list.length === 0) {
+                    return <option value="">No open slots</option>;
+                  }
+                  return list.map((s) => (
+                    <option key={s} value={s}>
+                      {format(new Date(s), "EEE d MMM HH:mm")}
+                    </option>
+                  ));
+                })()}
+              </select>
+            </label>
             {bookWeeklyCount > 1 ? (
               <div className="sheet-actions" style={{ marginBottom: "0.5rem" }}>
                 <label className="field" style={{ flex: 1, minWidth: "8rem" }}>
