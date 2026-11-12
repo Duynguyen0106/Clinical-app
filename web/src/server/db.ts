@@ -31,14 +31,24 @@ function createPrisma() {
   }
 
   if (isNeonConnection(connectionString) || mustUseServerlessDriver()) {
-    // Neon serverless HTTP — works on Cloudflare Workers (no TCP pg pool).
+    // Neon serverless WebSocket driver — required for interactive transactions
+    // ($transaction / withClinicTransaction / withScheduleLocks). HTTP mode
+    // throws "Transactions are not supported in HTTP mode" on Workers.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { PrismaNeonHttp } =
+    const { PrismaNeon } =
       require("@prisma/adapter-neon") as typeof import("@prisma/adapter-neon");
-    const adapter = new PrismaNeonHttp(connectionString, {
-      arrayMode: false,
-      fullResults: true,
-    });
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const neon = require("@neondatabase/serverless") as typeof import("@neondatabase/serverless");
+    if (typeof WebSocket === "undefined") {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const ws = require("ws") as typeof import("ws");
+        neon.neonConfig.webSocketConstructor = ws.default ?? ws;
+      } catch {
+        /* Cloudflare Workers provide WebSocket */
+      }
+    }
+    const adapter = new PrismaNeon({ connectionString });
     return new PrismaClient({ adapter });
   }
 

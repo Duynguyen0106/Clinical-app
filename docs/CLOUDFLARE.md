@@ -10,7 +10,7 @@ Prisma client is generated with `runtime = "cloudflare"` so Workers do not compi
 ## Prerequisites
 
 1. Cloudflare account API token with Workers Scripts Edit + Account read  
-2. **Neon** `DATABASE_URL` (Europe) — Workers cannot use TCP `pg` pools; the app uses `@prisma/adapter-neon` automatically for `neon.tech` URLs and when `CLOUDFLARE_WORKERS=1`  
+2. **Neon** `DATABASE_URL` (Europe) — Workers cannot use TCP `pg` pools; the app uses `@prisma/adapter-neon` **WebSocket** mode (`PrismaNeon`) for `neon.tech` URLs / `CLOUDFLARE_WORKERS=1`. Do not use `PrismaNeonHttp` — booking and other paths need `$transaction`.  
 3. **Enable R2** in the Cloudflare dashboard (Account → R2), then create:
    - `treow-clinic-cache` — OpenNext incremental cache (optional but recommended)
    - `treow-clinic-media` — encrypted visit audio (S3-compatible)
