@@ -1,0 +1,14 @@
+# Copied to .dev.vars for `wrangler` / OpenNext local preview (not committed)
+NEXTJS_ENV=development
+CLOUDFLARE_WORKERS=1
+USE_NEON_ADAPTER=1
+DATABASE_URL=postgresql://neondb_owner:…@…neon.tech/neondb?sslmode=require
+AUTH_SECRET=replace-me
+AUDIO_ENCRYPTION_KEY=replace-me
+CRON_SECRET=replace-me
+APP_BASE_URL=http://localhost:8787
+SUPPORT_EMAIL=ops@example.com
+AI_PROVIDER=mock
+EMAIL_PROVIDER=console
+SMS_PROVIDER=console
+PAYMENT_PROVIDER=console

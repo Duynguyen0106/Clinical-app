@@ -1,0 +1,32 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "treow-clinic",
+	"compatibility_date": "2026-11-12",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			// Self-reference service binding — must match worker name
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "treow-clinic"
+		}
+	],
+	"images": {
+		"binding": "IMAGES"
+	},
+	// Cron triggers invoke the Worker scheduled handler (OpenNext).
+	// Job routes still require CRON_SECRET via the GitHub Actions workflow
+	// hitting https://treow-clinic.<subdomain>.workers.dev/api/v1/jobs/*.
+	"vars": {
+		"CLOUDFLARE_WORKERS": "1",
+		"USE_NEON_ADAPTER": "1",
+		"NODE_ENV": "production"
+	}
+}
