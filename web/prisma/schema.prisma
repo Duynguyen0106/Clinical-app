@@ -5,6 +5,9 @@
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
+  // Avoid runtime WASM compile (blocked on Cloudflare Workers / workerd).
+  // See prisma/prisma#28657 — required for OpenNext Workers deploy.
+  runtime  = "cloudflare"
 }
 
 datasource db {

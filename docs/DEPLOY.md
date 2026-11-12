@@ -8,7 +8,11 @@ Want **downloadable installers** (Windows/Mac/.apk/App Store)? After this web de
 
 **Selling Treow Clinic** (full clinic system + embed + provision + monthly Stripe): see `docs/SELL.md`.
 
-## 0. Vercel + Neon (click path)
+## 0. Cloudflare Workers (preferred)
+
+See [`docs/CLOUDFLARE.md`](CLOUDFLARE.md) for OpenNext + Workers deploy (`treow-clinic` worker).
+
+## 0b. Vercel + Neon (legacy click path)
 
 1. Create **Neon** project in Europe → copy `DATABASE_URL`.
 2. Vercel → Import GitHub repo `Clinical-app`.

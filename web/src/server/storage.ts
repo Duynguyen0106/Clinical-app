@@ -12,6 +12,19 @@ const ROOT = path.join(process.cwd(), "storage", "audio");
 const BRAND_ROOT = path.join(process.cwd(), "storage", "brand");
 const ENC_SUFFIX = ".enc";
 
+/** Workers have no durable local disk — require S3/R2-compatible object storage. */
+function requireObjectStorageForLocalFallback() {
+  const onWorkers =
+    process.env.CLOUDFLARE_WORKERS === "1" ||
+    typeof (globalThis as { WebSocketPair?: unknown }).WebSocketPair !==
+      "undefined";
+  if (onWorkers && !s3Configured()) {
+    throw new Error(
+      "Object storage is required on Cloudflare Workers. Set S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY (and S3_ENDPOINT for R2).",
+    );
+  }
+}
+
 function encryptionKey() {
   const secret =
     process.env.AUDIO_ENCRYPTION_KEY ??
@@ -80,6 +93,8 @@ export async function saveAudioUpload(
     await s3PutObject(storageKey, encrypted);
     return storageKey;
   }
+
+  requireObjectStorageForLocalFallback();
 
   const dir = path.join(ROOT, clinicId, visitId);
   await mkdir(dir, { recursive: true });
@@ -203,6 +218,8 @@ export async function saveClinicLogo(
     await s3PutObject(storageKey, bytes, mimeType);
     return { storageKey, mimeType };
   }
+
+  requireObjectStorageForLocalFallback();
 
   const dir = path.join(BRAND_ROOT, clinicId);
   await mkdir(dir, { recursive: true });
