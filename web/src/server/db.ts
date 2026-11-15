@@ -50,8 +50,7 @@ function createPrisma() {
     }
     // maxUses: 1 — Workers hang/1101 when a pooled Neon WS client is reused
     // across requests in the same isolate (pg-pool release + borrow).
-    const pool = new neon.Pool({ connectionString, maxUses: 1 });
-    const adapter = new PrismaNeon(pool);
+    const adapter = new PrismaNeon({ connectionString, maxUses: 1 });
     return new PrismaClient({ adapter });
   }
 
