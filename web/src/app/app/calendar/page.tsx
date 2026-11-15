@@ -232,38 +232,55 @@ export default function CalendarPage() {
       ? `&practitionerId=${encodeURIComponent(filterPractitionerId)}`
       : "";
     const aptPath = `/appointments?from=${from.toISOString()}&to=${to.toISOString()}${pracQs}`;
-    // Cloudflare Workers occasionally returns isolate 1101 on Neon WS — retry once.
-    const loadAppointments = () =>
-      api<{ appointments: Appointment[] }>(aptPath).catch((err: unknown) => {
-        if (err instanceof ApiError && err.status >= 500) {
-          return api<{ appointments: Appointment[] }>(aptPath);
+    const blocksPath = `/blocks?from=${clinicDateKey(from, timeZone)}&to=${clinicDateKey(
+      viewMode === "day" ? dayFocus : addDays(weekStart, 6),
+      timeZone,
+    )}${pracQs}`;
+
+    // Workers isolate 1101 on Neon WS is intermittent — retry with backoff.
+    const withRetry = async <T,>(fn: () => Promise<T>, attempts = 3): Promise<T> => {
+      let last: unknown;
+      for (let i = 0; i < attempts; i++) {
+        try {
+          return await fn();
+        } catch (err) {
+          last = err;
+          if (!(err instanceof ApiError) || err.status < 500 || i === attempts - 1) {
+            throw err;
+          }
+          await new Promise((r) => setTimeout(r, 200 * (i + 1)));
         }
-        throw err;
-      });
-    void Promise.all([
-      loadAppointments(),
-      api<{ blocks: Block[] }>(
-        `/blocks?from=${clinicDateKey(from, timeZone)}&to=${clinicDateKey(
-          viewMode === "day" ? dayFocus : addDays(weekStart, 6),
-          timeZone,
-        )}${pracQs}`,
-      ),
-      // Refresh open hours so Team → Save hours updates the diary without a hard reload
-      api<Catalog>("/clinic/catalog"),
-    ])
-      .then(([a, b, c]) => {
+      }
+      throw last;
+    };
+
+    void (async () => {
+      // Load independently so a flaky /blocks or /catalog 1101 does not blank the diary.
+      const aptJob = withRetry(() =>
+        api<{ appointments: Appointment[] }>(aptPath),
+      );
+      const blockJob = withRetry(() => api<{ blocks: Block[] }>(blocksPath)).catch(
+        () => ({ blocks: [] as Block[] }),
+      );
+      const catalogJob = withRetry(() => api<Catalog>("/clinic/catalog")).catch(
+        () => null,
+      );
+
+      try {
+        const [a, b, c] = await Promise.all([aptJob, blockJob, catalogJob]);
         setAppointments(a.appointments);
         setBlocks(b.blocks);
-        setCatalog(c);
+        if (c) setCatalog(c);
         setError(null);
-        // Keep sheet in sync when status changes elsewhere (Today Done, visit end)
         setSelected((prev) => {
           if (!prev) return null;
           const fresh = a.appointments.find((x) => x.id === prev.id);
           return fresh ?? prev;
         });
-      })
-      .catch((e: Error) => setError(e.message || "Could not load diary"));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load diary");
+      }
+    })();
   }, [weekStart, viewMode, dayFocus, filterPractitionerId, timeZone]);
 
   useEffect(() => {
