@@ -522,9 +522,16 @@ export default function CalendarPage() {
   }
 
   async function reschedule(id: string, day: Date, hour: number) {
+    // Hour-grid drop: keep the booking's :00/:15/:30/:45 offset so a 12:15
+    // does not snap to 14:00 when moved onto the 14:00 row.
+    const existing = appointments.find((a) => a.id === id);
+    const priorMinutes = existing
+      ? clinicMinutesFromMidnight(new Date(existing.startsAt), timeZone) % 60
+      : 0;
+    const quarter = Math.min(45, Math.round(priorMinutes / 15) * 15);
     const startsAt = clinicLocalDateTime(
       clinicDateKey(day, timeZone),
-      hour * 60,
+      hour * 60 + quarter,
       timeZone,
     );
     if (seriesMove) {
