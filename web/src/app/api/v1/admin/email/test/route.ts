@@ -34,7 +34,7 @@ export const POST = withPublic(async (req) => {
   const content = buildBookingConfirmationEmail({
     clinicName: "Nguyen's Osteopathic Clinic",
     clinicPhone: "+447882843513",
-    clinicAddress: "52 Powis Street, Woolwich, London, SE18 6LQ",
+    clinicAddress: "Village Pharmacy\n9 The Village, Charlton, SE7 8UG",
     patientFirstName: "Test",
     whenLabel: "Monday 9 November 2026 at 09:00",
     timezone: "Europe/London",
@@ -54,7 +54,7 @@ export const POST = withPublic(async (req) => {
     clinicName: "Nguyen's Osteopathic Clinic",
     clinicEmail: "nguyensosteopathy@gmail.com",
     clinicPhone: "+447882843513",
-    clinicAddress: "52 Powis Street, Woolwich, London, SE18 6LQ",
+    clinicAddress: "Village Pharmacy\n9 The Village, Charlton, SE7 8UG",
     patientFirstName: "Test",
     patientEmail: parsed.data.to,
     practitionerName: "Austin Nguyen",
