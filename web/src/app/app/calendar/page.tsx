@@ -231,10 +231,17 @@ export default function CalendarPage() {
     const pracQs = filterPractitionerId
       ? `&practitionerId=${encodeURIComponent(filterPractitionerId)}`
       : "";
+    const aptPath = `/appointments?from=${from.toISOString()}&to=${to.toISOString()}${pracQs}`;
+    // Cloudflare Workers occasionally returns isolate 1101 on Neon WS — retry once.
+    const loadAppointments = () =>
+      api<{ appointments: Appointment[] }>(aptPath).catch((err: unknown) => {
+        if (err instanceof ApiError && err.status >= 500) {
+          return api<{ appointments: Appointment[] }>(aptPath);
+        }
+        throw err;
+      });
     void Promise.all([
-      api<{ appointments: Appointment[] }>(
-        `/appointments?from=${from.toISOString()}&to=${to.toISOString()}${pracQs}`,
-      ),
+      loadAppointments(),
       api<{ blocks: Block[] }>(
         `/blocks?from=${clinicDateKey(from, timeZone)}&to=${clinicDateKey(
           viewMode === "day" ? dayFocus : addDays(weekStart, 6),
@@ -248,6 +255,7 @@ export default function CalendarPage() {
         setAppointments(a.appointments);
         setBlocks(b.blocks);
         setCatalog(c);
+        setError(null);
         // Keep sheet in sync when status changes elsewhere (Today Done, visit end)
         setSelected((prev) => {
           if (!prev) return null;
@@ -255,7 +263,7 @@ export default function CalendarPage() {
           return fresh ?? prev;
         });
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => setError(e.message || "Could not load diary"));
   }, [weekStart, viewMode, dayFocus, filterPractitionerId, timeZone]);
 
   useEffect(() => {

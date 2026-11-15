@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -67,12 +68,11 @@ function writeMeCache(me: Me | null) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [me, setMe] = useState<Me | null>(() =>
-    hasSessionHint() ? readMeCache() : null,
-  );
-  const [loading, setLoading] = useState(
-    () => !(typeof window !== "undefined" && hasSessionHint() && readMeCache()),
-  );
+  // Always start logged-out on server + first client paint so SSR HTML matches
+  // hydration. Reading sessionStorage in useState caused React #418 and broke
+  // client-side App Router navigation (Calendar link bounced back to Today).
+  const [me, setMe] = useState<Me | null>(null);
+  const [loading, setLoading] = useState(true);
   const aliveRef = useRef(true);
   const refreshGen = useRef(0);
 
@@ -119,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const cached = hasSessionHint() ? readMeCache() : null;
     if (cached) {
       setMe(cached);
