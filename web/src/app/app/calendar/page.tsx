@@ -322,16 +322,25 @@ export default function CalendarPage() {
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 720px)");
+    // Only force day view when crossing into narrow — do not reset weekStart
+    // on every match (that made → week arrows look broken on soft resizes).
+    let wasNarrow = mq.matches;
     const apply = () => {
       const narrow = mq.matches;
       setIsNarrow(narrow);
-      if (narrow) {
+      if (narrow && !wasNarrow) {
         setViewMode("day");
         setDayFocus(new Date());
         setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
       }
+      wasNarrow = narrow;
     };
-    apply();
+    setIsNarrow(wasNarrow);
+    if (wasNarrow) {
+      setViewMode("day");
+      setDayFocus(new Date());
+      setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+    }
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
