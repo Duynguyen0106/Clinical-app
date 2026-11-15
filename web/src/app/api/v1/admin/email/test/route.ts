@@ -4,6 +4,7 @@ import { jsonOk } from "@/server/http";
 import { unauthorized, badRequest } from "@/server/errors";
 import { isAdminProvisionAuthorized } from "@/server/admin-auth";
 import { enforceAdminEmailTestLimits } from "@/server/abuse";
+import { getAppBaseUrl } from "@/server/env";
 import { sendEmail } from "@/modules/notifications/email";
 import { loadEmailRuntimeConfig } from "@/modules/notifications/email-config";
 import { buildBookingConfirmationEmail } from "@/modules/notifications/booking-confirmation-email";
@@ -29,6 +30,7 @@ export const POST = withPublic(async (req) => {
   if (!parsed.success) throw badRequest("Valid 'to' email required");
 
   const cfg = await loadEmailRuntimeConfig({ bypassCache: true });
+  const manageLink = `${getAppBaseUrl()}/book/manage/demo`;
   const content = buildBookingConfirmationEmail({
     clinicName: "Nguyen's Osteopathic Clinic",
     clinicPhone: "+447882843513",
@@ -39,7 +41,7 @@ export const POST = withPublic(async (req) => {
     practitionerName: "Austin Nguyen",
     serviceName: "Follow-up Osteopathic Treatment",
     roomName: "Couch 1",
-    manageLink: "https://treow-clinic.vercel.app/book/manage/demo",
+    manageLink,
     cancelNoticeHours: 24,
     patientPrepText:
       "Please wear loose, comfortable clothing that allows movement of the area being treated. Arrive a few minutes early. Bring any referral letters or imaging reports if you have them.",
@@ -60,7 +62,7 @@ export const POST = withPublic(async (req) => {
     roomName: "Couch 1",
     startsAt,
     endsAt,
-    manageLink: "https://treow-clinic.vercel.app/book/manage/demo",
+    manageLink,
     method: "REQUEST",
     sequence: 0,
   });
