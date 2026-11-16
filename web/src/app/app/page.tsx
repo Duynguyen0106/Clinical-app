@@ -62,6 +62,8 @@ export default function TodayPage() {
   const router = useRouter();
   const { me, loading: authLoading } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  /** When today is empty, next few upcoming diary rows (next 14 days). */
+  const [upcoming, setUpcoming] = useState<Appointment[]>([]);
   const [drafts, setDrafts] = useState<DraftNote[]>([]);
   const [pulse, setPulse] = useState<Pulse | null>(null);
   const [tasks, setTasks] = useState<OpsTask[]>([]);
@@ -121,7 +123,39 @@ export default function TodayPage() {
 
     const jobs: Promise<unknown>[] = [
       api<{ appointments: Appointment[] }>(`/appointments?${aptQs}`).then(
-        (a) => setAppointments(a.appointments),
+        async (a) => {
+          setAppointments(a.appointments);
+          if (a.appointments.length > 0) {
+            setUpcoming([]);
+            return;
+          }
+          // Empty day board — surface the next booked visits so staff don't
+          // think the diary is broken when today simply has no patients.
+          const soonFrom = new Date();
+          const soonTo = new Date();
+          soonTo.setDate(soonTo.getDate() + 14);
+          soonTo.setHours(23, 59, 59, 999);
+          const soonQs = new URLSearchParams({
+            from: soonFrom.toISOString(),
+            to: soonTo.toISOString(),
+          });
+          if (!isPractitioner && isPractitionerHome && myPractitionerId) {
+            soonQs.set("practitionerId", myPractitionerId);
+          }
+          try {
+            const soon = await api<{ appointments: Appointment[] }>(
+              `/appointments?${soonQs}`,
+            );
+            const active = soon.appointments.filter(
+              (x) =>
+                !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(x.status) &&
+                new Date(x.endsAt).getTime() >= Date.now(),
+            );
+            setUpcoming(active.slice(0, 5));
+          } catch {
+            setUpcoming([]);
+          }
+        },
       ),
     ];
 
@@ -492,11 +526,53 @@ export default function TodayPage() {
               ))}
             </ul>
             {!loading && appointments.length === 0 ? (
-              <p className="muted">
-                {isPractitionerHome
-                  ? "Nothing on your diary today."
-                  : "No appointments today."}
-              </p>
+              <div className="empty-day">
+                <p className="muted">
+                  {isPractitionerHome
+                    ? "Nothing on your diary today."
+                    : "No appointments today."}
+                </p>
+                {upcoming.length > 0 ? (
+                  <>
+                    <p className="empty-day-next-label">Coming up</p>
+                    <ul className="apt-list">
+                      {upcoming.map((apt) => (
+                        <li key={apt.id} className="apt-row">
+                          <div className="apt-time">
+                            <strong>
+                              {format(new Date(apt.startsAt), "EEE d")}
+                            </strong>
+                            <span>
+                              {format(new Date(apt.startsAt), "HH:mm")}
+                            </span>
+                          </div>
+                          <div className="apt-body">
+                            <p className="apt-name">
+                              {patientDiaryLabel(apt.patient, privacyMode)}
+                            </p>
+                            <p className="muted">
+                              {apt.appointmentType.name}
+                              {!isPractitionerHome && apt.practitioner
+                                ? ` · ${apt.practitioner.displayName}`
+                                : ""}
+                            </p>
+                          </div>
+                          <div className="apt-actions">
+                            <span
+                              className={`status status-${apt.status.toLowerCase()}`}
+                            >
+                              {humanStatusLabel(apt.status)}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                <Link href="/app/calendar" className="btn-secondary btn-sm">
+                  Open calendar →
+                </Link>
+              </div>
             ) : null}
           </section>
         </div>

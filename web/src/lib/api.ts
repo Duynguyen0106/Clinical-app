@@ -84,12 +84,24 @@ export async function api<T>(
     headers,
     credentials: init.credentials ?? "same-origin",
   });
-  const data = await res.json().catch(() => ({}));
+  const raw = await res.text();
+  let data: { error?: { message?: string; code?: string } } = {};
+  if (raw) {
+    try {
+      data = JSON.parse(raw) as typeof data;
+    } catch {
+      data = {};
+    }
+  }
 
   if (!res.ok) {
+    const fallback =
+      res.status >= 500
+        ? "Server temporarily unavailable — try again"
+        : res.statusText;
     throw new ApiError(
       res.status,
-      data?.error?.message ?? res.statusText,
+      data?.error?.message || fallback,
       data?.error?.code,
     );
   }

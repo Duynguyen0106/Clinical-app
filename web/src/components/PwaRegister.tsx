@@ -3,8 +3,9 @@
 import { useEffect } from "react";
 
 /**
- * Register the shell SW for the staff app. Skip inside clinic-website iframes
- * so embed loads are never poisoned by a cache-first shell.
+ * Register the shell SW for the staff app. Clears legacy treow-shell-v1 caches
+ * that stored /app HTML cache-first. Skip inside clinic-website iframes so
+ * embed loads are never poisoned by a cache-first shell.
  */
 export function PwaRegister() {
   useEffect(() => {

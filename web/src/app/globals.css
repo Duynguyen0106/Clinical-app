@@ -1500,6 +1500,21 @@ h3 {
   gap: 0.65rem;
 }
 
+.empty-day {
+  display: grid;
+  gap: 0.85rem;
+  padding-top: 0.25rem;
+}
+
+.empty-day-next-label {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .apt-row,
 .patient-row {
   display: grid;

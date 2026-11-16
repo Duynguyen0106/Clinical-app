@@ -31,6 +31,7 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return;
 
   // Document navigations + RSC flight must always hit the network.
+  // Cache-first HTML/RSC after a Worker deploy serves stale flight and kills Link soft-nav.
   const isRsc =
     request.headers.get("RSC") === "1" || url.searchParams.has("_rsc");
   const isDocument =

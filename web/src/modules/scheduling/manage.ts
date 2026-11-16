@@ -12,6 +12,7 @@ import { prisma } from "@/server/db";
 import { badRequest, conflict, forbidden, notFound } from "@/server/errors";
 import { getAppBaseUrl } from "@/server/env";
 import { listClinicSlots } from "./slots";
+import { publicSlotWindow } from "./public-slot-window";
 import { assertWithinAvailability } from "./availability";
 
 /** Floor TTL so patients can still manage within a week of booking. */
@@ -180,11 +181,20 @@ export async function listManagedSlots(token: string) {
     throw badRequest("This appointment can no longer be changed online");
   }
 
+  // Match public booking window — default listClinicSlots limit is 48 (~2 days
+  // of 15‑minute starts), which made patient reschedule jump to near-term slots
+  // and look like the booking vanished from the future diary week.
+  const { days, limit, maxPerDay } = publicSlotWindow({
+    maxAdvanceDays: 60,
+    days: 21,
+  });
   const slots = await listClinicSlots({
     clinicId: appointment.clinicId,
     appointmentTypeId: appointment.appointmentTypeId,
     practitionerId: appointment.practitionerId,
-    days: 21,
+    days,
+    limit,
+    maxPerDay,
     onlineBookableOnly: true,
     durationMinutes:
       (appointment.endsAt.getTime() - appointment.startsAt.getTime()) / 60_000,
@@ -290,11 +300,17 @@ export async function rescheduleManagedAppointment(
   const endsAt = new Date(startsAt.getTime() + durationMs);
   const durationMinutes = durationMs / 60_000;
 
+  const { days, limit, maxPerDay } = publicSlotWindow({
+    maxAdvanceDays: 60,
+    days: 21,
+  });
   const slots = await listClinicSlots({
     clinicId: appointment.clinicId,
     appointmentTypeId: appointment.appointmentTypeId,
     practitionerId: appointment.practitionerId,
-    days: 21,
+    days,
+    limit,
+    maxPerDay,
     onlineBookableOnly: true,
     durationMinutes,
     excludeAppointmentId: appointment.id,
@@ -346,9 +362,10 @@ export async function rescheduleManagedAppointment(
         data: {
           startsAt,
           endsAt,
-          status: AppointmentStatus.BOOKED,
+          // Keep CONFIRMED (and other active states) — only reset reminder flags
           reminderSentAt: null,
           smsReminderSentAt: null,
+          sameDayReminderSentAt: null,
         },
         include: appointmentInclude,
       });
