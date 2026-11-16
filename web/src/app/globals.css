@@ -2614,13 +2614,17 @@ h3 {
 }
 
 .book-page-embed {
-  min-height: 100%;
+  /* Content-sized — never 100vh (iframe height feedback loop with parent). */
+  min-height: 0;
   padding: 0.75rem;
   background: transparent;
 }
 
 .embed-root {
-  min-height: 100vh;
+  /* Content-sized shell for iframe hosts. Using min-height: 100vh made the
+     parent grow the frame, which grew 100vh, which grew the reported height
+     until the widget looked blank (~10k+ px). */
+  min-height: 0;
   background:
     radial-gradient(800px 400px at 10% -10%, rgba(163, 177, 138, 0.25) 0%, transparent 55%),
     linear-gradient(165deg, #eef2ec, #e2e9e3);
