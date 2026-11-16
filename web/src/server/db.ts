@@ -48,7 +48,9 @@ function createPrisma() {
         /* Cloudflare Workers provide WebSocket */
       }
     }
-    const adapter = new PrismaNeon({ connectionString });
+    // maxUses: 1 — Workers hang/1101 when a pooled Neon WS client is reused
+    // across requests in the same isolate (pg-pool release + borrow).
+    const adapter = new PrismaNeon({ connectionString, maxUses: 1 });
     return new PrismaClient({ adapter });
   }
 
@@ -67,8 +69,8 @@ function createPrisma() {
 /**
  * Lazy Prisma accessor so Next.js can collect page data during builds
  * without requiring DATABASE_URL at module import time.
- * Cached on globalThis in all environments to avoid connection churn.
- * Neon hosts (and Cloudflare Workers) use the serverless driver.
+ * Cached on globalThis to avoid connection churn outside Workers;
+ * Neon Pool uses maxUses:1 so isolate reuse cannot hang on a borrowed client.
  */
 export const prisma = new Proxy({} as PrismaClient, {
   get(_target, prop, receiver) {

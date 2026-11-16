@@ -231,31 +231,56 @@ export default function CalendarPage() {
     const pracQs = filterPractitionerId
       ? `&practitionerId=${encodeURIComponent(filterPractitionerId)}`
       : "";
-    void Promise.all([
-      api<{ appointments: Appointment[] }>(
-        `/appointments?from=${from.toISOString()}&to=${to.toISOString()}${pracQs}`,
-      ),
-      api<{ blocks: Block[] }>(
-        `/blocks?from=${clinicDateKey(from, timeZone)}&to=${clinicDateKey(
-          viewMode === "day" ? dayFocus : addDays(weekStart, 6),
-          timeZone,
-        )}${pracQs}`,
-      ),
-      // Refresh open hours so Team → Save hours updates the diary without a hard reload
-      api<Catalog>("/clinic/catalog"),
-    ])
-      .then(([a, b, c]) => {
+    const aptPath = `/appointments?from=${from.toISOString()}&to=${to.toISOString()}${pracQs}`;
+    const blocksPath = `/blocks?from=${clinicDateKey(from, timeZone)}&to=${clinicDateKey(
+      viewMode === "day" ? dayFocus : addDays(weekStart, 6),
+      timeZone,
+    )}${pracQs}`;
+
+    // Workers isolate 1101 on Neon WS is intermittent — retry with backoff.
+    const withRetry = async <T,>(fn: () => Promise<T>, attempts = 3): Promise<T> => {
+      let last: unknown;
+      for (let i = 0; i < attempts; i++) {
+        try {
+          return await fn();
+        } catch (err) {
+          last = err;
+          if (!(err instanceof ApiError) || err.status < 500 || i === attempts - 1) {
+            throw err;
+          }
+          await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+        }
+      }
+      throw last;
+    };
+
+    void (async () => {
+      // Load independently so a flaky /blocks or /catalog 1101 does not blank the diary.
+      const aptJob = withRetry(() =>
+        api<{ appointments: Appointment[] }>(aptPath),
+      );
+      const blockJob = withRetry(() => api<{ blocks: Block[] }>(blocksPath)).catch(
+        () => ({ blocks: [] as Block[] }),
+      );
+      const catalogJob = withRetry(() => api<Catalog>("/clinic/catalog")).catch(
+        () => null,
+      );
+
+      try {
+        const [a, b, c] = await Promise.all([aptJob, blockJob, catalogJob]);
         setAppointments(a.appointments);
         setBlocks(b.blocks);
-        setCatalog(c);
-        // Keep sheet in sync when status changes elsewhere (Today Done, visit end)
+        if (c) setCatalog(c);
+        setError(null);
         setSelected((prev) => {
           if (!prev) return null;
           const fresh = a.appointments.find((x) => x.id === prev.id);
           return fresh ?? prev;
         });
-      })
-      .catch((e: Error) => setError(e.message));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load diary");
+      }
+    })();
   }, [weekStart, viewMode, dayFocus, filterPractitionerId, timeZone]);
 
   useEffect(() => {
@@ -314,16 +339,25 @@ export default function CalendarPage() {
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 720px)");
+    // Only force day view when crossing into narrow — do not reset weekStart
+    // on every match (that made → week arrows look broken on soft resizes).
+    let wasNarrow = mq.matches;
     const apply = () => {
       const narrow = mq.matches;
       setIsNarrow(narrow);
-      if (narrow) {
+      if (narrow && !wasNarrow) {
         setViewMode("day");
         setDayFocus(new Date());
         setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
       }
+      wasNarrow = narrow;
     };
-    apply();
+    setIsNarrow(wasNarrow);
+    if (wasNarrow) {
+      setViewMode("day");
+      setDayFocus(new Date());
+      setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+    }
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
@@ -514,9 +548,16 @@ export default function CalendarPage() {
   }
 
   async function reschedule(id: string, day: Date, hour: number) {
+    // Hour-grid drop: keep the booking's :00/:15/:30/:45 offset so a 12:15
+    // does not snap to 14:00 when moved onto the 14:00 row.
+    const existing = appointments.find((a) => a.id === id);
+    const priorMinutes = existing
+      ? clinicMinutesFromMidnight(new Date(existing.startsAt), timeZone) % 60
+      : 0;
+    const quarter = Math.min(45, Math.round(priorMinutes / 15) * 15);
     const startsAt = clinicLocalDateTime(
       clinicDateKey(day, timeZone),
-      hour * 60,
+      hour * 60 + quarter,
       timeZone,
     );
     if (seriesMove) {

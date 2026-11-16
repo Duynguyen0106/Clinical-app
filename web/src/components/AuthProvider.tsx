@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -67,12 +68,11 @@ function writeMeCache(me: Me | null) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [me, setMe] = useState<Me | null>(() =>
-    hasSessionHint() ? readMeCache() : null,
-  );
-  const [loading, setLoading] = useState(
-    () => !(typeof window !== "undefined" && hasSessionHint() && readMeCache()),
-  );
+  // Always start logged-out on server + first client paint so SSR HTML matches
+  // hydration. Reading sessionStorage in useState caused React #418 and broke
+  // client-side App Router navigation (Calendar link bounced back to Today).
+  const [me, setMe] = useState<Me | null>(null);
+  const [loading, setLoading] = useState(true);
   const aliveRef = useRef(true);
   const refreshGen = useRef(0);
 
@@ -119,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const cached = hasSessionHint() ? readMeCache() : null;
     if (cached) {
       setMe(cached);
@@ -199,13 +199,13 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }, [loading, booting]);
 
   if ((loading || booting) && !me) {
-    const bootName =
-      readMeCache()?.clinic.name?.trim() || "Treow";
+    // Keep this tree identical on server + first client paint — do not read
+    // sessionStorage here (that caused React #418 and broke soft navigation).
     return (
       <div className="book-page auth-boot">
         <div className="auth-boot-card" role="status" aria-live="polite">
           <span className="auth-boot-spinner" aria-hidden />
-          <p className="brand-word">{bootName}</p>
+          <p className="brand-word">Treow</p>
           <p className="muted">Loading clinic…</p>
         </div>
       </div>
