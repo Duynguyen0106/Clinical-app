@@ -3,12 +3,14 @@
 import { useEffect } from "react";
 
 /**
- * Register the shell SW. Clears legacy treow-shell-v1 caches that stored /app
- * HTML cache-first and broke App Router soft navigation after Worker deploys.
+ * Register the shell SW for the staff app. Clears legacy treow-shell-v1 caches
+ * that stored /app HTML cache-first. Skip inside clinic-website iframes so
+ * embed loads are never poisoned by a cache-first shell.
  */
 export function PwaRegister() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
+    if (window.parent !== window) return;
     let cancelled = false;
     void (async () => {
       try {

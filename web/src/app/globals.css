@@ -2628,14 +2628,20 @@ h3 {
   font-size: 0.92rem;
 }
 
-.book-page-embed {
-  min-height: 100%;
+.book-page.book-page-embed {
+  /* Override .book-page min-height: 100vh — that value inside an iframe
+     feedback-loops with parent resize postMessages and blanked the widget. */
+  min-height: 0;
+  place-items: start stretch;
   padding: 0.75rem;
   background: transparent;
 }
 
 .embed-root {
-  min-height: 100vh;
+  /* Content-sized shell for iframe hosts. Using min-height: 100vh made the
+     parent grow the frame, which grew 100vh, which grew the reported height
+     until the widget looked blank (~10k+ px). */
+  min-height: 0;
   background:
     radial-gradient(800px 400px at 10% -10%, rgba(163, 177, 138, 0.25) 0%, transparent 55%),
     linear-gradient(165deg, #eef2ec, #e2e9e3);

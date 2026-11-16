@@ -1,4 +1,4 @@
-/* Treow PWA SW — static assets only. Never cache-first HTML/RSC (breaks App Router soft-nav). */
+/* Treow PWA SW — static assets only. Never cache-first HTML/RSC (breaks App Router soft-nav + embeds). */
 const CACHE = "treow-shell-v2";
 
 self.addEventListener("install", (event) => {
