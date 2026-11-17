@@ -16,6 +16,12 @@ export const GET = withAuth(async (req, ctx) => {
   const durationRaw = url.searchParams.get("durationMinutes");
   const durationMinutes = durationRaw ? Number(durationRaw) : undefined;
   const fromRaw = url.searchParams.get("from");
+  // Diary cell clicks pin a day/hour later in the week — a tiny limit made the
+  // sheet fall back to the first near-term slot instead of the clicked hour.
+  const limitRaw = Number(url.searchParams.get("limit") ?? "200");
+  const limit = Number.isFinite(limitRaw)
+    ? Math.min(400, Math.max(24, Math.floor(limitRaw)))
+    : 200;
 
   const slots = await listClinicSlots({
     clinicId: ctx.clinicId,
@@ -27,7 +33,7 @@ export const GET = withAuth(async (req, ctx) => {
       durationMinutes && Number.isFinite(durationMinutes)
         ? durationMinutes
         : undefined,
-    limit: 64,
+    limit,
   });
   return jsonOk({ slots });
 });
