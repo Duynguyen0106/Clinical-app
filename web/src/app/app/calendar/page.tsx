@@ -14,8 +14,12 @@ import {
   diaryHoursFromRules,
   humanStatusLabel,
   isHourWithinRules,
+  quarterMinuteFromCellRatio,
+  QUARTER_MINUTES,
   rulesForPractitioner,
+  snapQuarterMinute,
   type AvailabilityRule,
+  type QuarterMinute,
 } from "@/modules/scheduling/calendar-ui";
 import {
   clinicDateKey,
@@ -137,6 +141,12 @@ export default function CalendarPage() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   /** When set with draggingId, slot tap shifts the whole series from that appointment */
   const [seriesMove, setSeriesMove] = useState(false);
+  /** Highlighted :00/:15/:30/:45 under the pointer while dragging */
+  const [dropQuarter, setDropQuarter] = useState<{
+    dayKey: string;
+    hour: number;
+    minute: QuarterMinute;
+  } | null>(null);
 
   const [selected, setSelected] = useState<Appointment | null>(null);
   /** Appointment sheet: secondary actions behind More */
@@ -558,14 +568,33 @@ export default function CalendarPage() {
     openBookSheet({ day, hour, practitionerId: free });
   }
 
-  async function reschedule(id: string, day: Date, hour: number) {
-    // Hour-grid drop: keep the booking's :00/:15/:30/:45 offset so a 12:15
-    // does not snap to 14:00 when moved onto the 14:00 row.
-    const existing = appointments.find((a) => a.id === id);
-    const priorMinutes = existing
-      ? clinicMinutesFromMidnight(new Date(existing.startsAt), timeZone) % 60
-      : 0;
-    const quarter = Math.min(45, Math.round(priorMinutes / 15) * 15);
+  function quarterFromPointer(
+    e: { clientY: number },
+    el: HTMLElement,
+  ): QuarterMinute {
+    const rect = el.getBoundingClientRect();
+    if (rect.height <= 0) return 0;
+    return quarterMinuteFromCellRatio((e.clientY - rect.top) / rect.height);
+  }
+
+  async function reschedule(
+    id: string,
+    day: Date,
+    hour: number,
+    minuteOfHour?: number,
+  ) {
+    // Prefer the drop/tap quarter (:00/:15/:30/:45). If unknown (keyboard),
+    // keep the booking's prior offset so a 12:15 does not snap to :00.
+    let quarter: QuarterMinute;
+    if (minuteOfHour != null) {
+      quarter = snapQuarterMinute(minuteOfHour);
+    } else {
+      const existing = appointments.find((a) => a.id === id);
+      const priorMinutes = existing
+        ? clinicMinutesFromMidnight(new Date(existing.startsAt), timeZone) % 60
+        : 0;
+      quarter = snapQuarterMinute(priorMinutes);
+    }
     const startsAt = clinicLocalDateTime(
       clinicDateKey(day, timeZone),
       hour * 60 + quarter,
@@ -1190,6 +1219,7 @@ export default function CalendarPage() {
                 const canBookHere = Boolean(canEditSchedule && freePracId);
                 const canDropMove =
                   Boolean(canEditSchedule && !closed && draggingId);
+                const hourLabel = String(hour).padStart(2, "0");
                 return (
                   <div
                     key={`${day.toISOString()}-${hour}`}
@@ -1200,15 +1230,33 @@ export default function CalendarPage() {
                     tabIndex={canBookHere || canDropMove ? 0 : -1}
                     aria-label={
                       closed
-                        ? `Closed ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
+                        ? `Closed ${format(day, "EEE d MMM")} at ${hourLabel}:00`
                         : draggingId
-                          ? `Move appointment to ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
+                          ? `Move appointment to ${format(day, "EEE d MMM")} ${hourLabel}:00–${hourLabel}:45 (15-minute steps)`
                           : canBookHere
-                            ? `Book ${format(day, "EEE d MMM")} at ${String(hour).padStart(2, "0")}:00`
-                            : `${format(day, "EEE d MMM")} ${String(hour).padStart(2, "0")}:00`
+                            ? `Book ${format(day, "EEE d MMM")} at ${hourLabel}:00`
+                            : `${format(day, "EEE d MMM")} ${hourLabel}:00`
                     }
                     onDragOver={(e) => {
-                      if (canEditSchedule && !closed) e.preventDefault();
+                      if (!canEditSchedule || closed) return;
+                      e.preventDefault();
+                      const minute = quarterFromPointer(e, e.currentTarget);
+                      const next = { dayKey, hour, minute };
+                      setDropQuarter((prev) =>
+                        prev &&
+                        prev.dayKey === next.dayKey &&
+                        prev.hour === next.hour &&
+                        prev.minute === next.minute
+                          ? prev
+                          : next,
+                      );
+                    }}
+                    onDragLeave={() => {
+                      setDropQuarter((prev) =>
+                        prev?.dayKey === dayKey && prev.hour === hour
+                          ? null
+                          : prev,
+                      );
                     }}
                     onDrop={(e) => {
                       if (!canEditSchedule || closed) return;
@@ -1216,14 +1264,19 @@ export default function CalendarPage() {
                       const id =
                         e.dataTransfer.getData("text/appointment-id") ||
                         draggingId;
-                      if (id) void reschedule(id, day, hour);
+                      const minute = quarterFromPointer(e, e.currentTarget);
+                      if (id) void reschedule(id, day, hour, minute);
                       setDraggingId(null);
+                      setDropQuarter(null);
                     }}
-                    onClick={() => {
-                      // Touch-friendly move: tap appointment (sets draggingId), then tap slot
+                    onClick={(e) => {
+                      // Touch-friendly move: tap appointment, then tap where
+                      // in the hour cell you want (:00 / :15 / :30 / :45).
                       if (draggingId && !closed) {
-                        void reschedule(draggingId, day, hour);
+                        const minute = quarterFromPointer(e, e.currentTarget);
+                        void reschedule(draggingId, day, hour, minute);
                         setDraggingId(null);
+                        setDropQuarter(null);
                         return;
                       }
                       if (!canBookHere) return;
@@ -1235,12 +1288,33 @@ export default function CalendarPage() {
                       if (draggingId && !closed) {
                         void reschedule(draggingId, day, hour);
                         setDraggingId(null);
+                        setDropQuarter(null);
                         return;
                       }
                       if (!canBookHere) return;
                       openBookSheet({ day, hour });
                     }}
                   >
+                    {canDropMove ? (
+                      <div className="cal-drop-quarters" aria-hidden>
+                        {QUARTER_MINUTES.map((minute) => {
+                          const active =
+                            dropQuarter?.dayKey === dayKey &&
+                            dropQuarter.hour === hour &&
+                            dropQuarter.minute === minute;
+                          return (
+                            <div
+                              key={minute}
+                              className={`cal-drop-quarter ${active ? "is-active" : ""}`}
+                            >
+                              <span>
+                                {hourLabel}:{String(minute).padStart(2, "0")}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                     {closed &&
                     cellAppts.length === 0 &&
                     cellBlocks.length === 0 ? (
@@ -1287,7 +1361,11 @@ export default function CalendarPage() {
                       <button
                         key={apt.id}
                         type="button"
-                        className={`cal-event week-event ${calendarEventStatusClass(apt.status)}`}
+                        className={`cal-event week-event ${calendarEventStatusClass(apt.status)} ${
+                          draggingId && draggingId !== apt.id
+                            ? "cal-event-drop-dim"
+                            : ""
+                        }`}
                         draggable={canEditSchedule}
                         onDragStart={(e) => {
                           if (!canEditSchedule) return;
@@ -1297,7 +1375,10 @@ export default function CalendarPage() {
                           );
                           setDraggingId(apt.id);
                         }}
-                        onDragEnd={() => setDraggingId(null)}
+                        onDragEnd={() => {
+                          setDraggingId(null);
+                          setDropQuarter(null);
+                        }}
                         onClick={(e) => {
                           e.stopPropagation();
                           setMessage(null);
@@ -1306,7 +1387,7 @@ export default function CalendarPage() {
                         }}
                         title={
                           canEditSchedule
-                            ? "Click for actions · drag to reschedule"
+                            ? "Click for actions · drag onto a :00/:15/:30/:45 band to reschedule"
                             : "View appointment"
                         }
                       >
@@ -1572,7 +1653,7 @@ export default function CalendarPage() {
                             setDraggingId(selected.id);
                             setSelectedAppt(null);
                             setMessage(
-                              "Tap a diary slot to move this appointment (or drag on desktop).",
+                              "Tap a diary hour band (:00 / :15 / :30 / :45) to move, or drag on desktop.",
                             );
                           }}
                         >
@@ -1706,7 +1787,7 @@ export default function CalendarPage() {
                     setDraggingId(selected.id);
                     setSelectedAppt(null);
                     setMessage(
-                      "Tap a diary slot to move this and later series appointments by the same amount.",
+                      "Tap a diary hour band (:00 / :15 / :30 / :45) to move this and later series appointments.",
                     );
                   }}
                 >

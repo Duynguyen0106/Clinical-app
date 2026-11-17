@@ -3597,6 +3597,49 @@ button.cal-block-btn:focus-visible {
 
 .week-cell.droppable {
   background: rgba(15, 107, 92, 0.06);
+  position: relative;
+}
+
+/* Let the hour cell receive the drop/tap Y so we can snap to :00/:15/:30/:45. */
+.week-cell.droppable .cal-event,
+.week-cell.droppable .cal-block,
+.week-cell.droppable .cal-slot-hint {
+  pointer-events: none;
+}
+
+.cal-drop-quarters {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: repeat(4, 1fr);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.cal-drop-quarter {
+  border-top: 1px dashed rgba(15, 107, 92, 0.18);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 0.05rem 0.2rem;
+  font-size: 0.65rem;
+  line-height: 1;
+  color: rgba(15, 107, 92, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-drop-quarter:first-child {
+  border-top: none;
+}
+
+.cal-drop-quarter.is-active {
+  background: rgba(15, 107, 92, 0.16);
+  color: var(--brand, #0f6b5c);
+  font-weight: 600;
+}
+
+.cal-event-drop-dim {
+  opacity: 0.45;
 }
 
 .week-event {
