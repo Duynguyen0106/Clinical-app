@@ -6,6 +6,8 @@ import {
   clinicDayOfWeek,
   clinicLocalDateTime,
   clinicMinutesFromMidnight,
+  startOfClinicDay,
+  startOfClinicWeek,
 } from "../../src/modules/scheduling/clinic-time";
 import { isWindowAvailable } from "../../src/modules/scheduling/availability";
 
@@ -42,6 +44,28 @@ describe("clinic-time helpers (Europe/London BST)", () => {
     // Raw ms +7d would still be 10:00 GMT = 11:00 BST
     const naive = new Date(first.getTime() + 7 * 24 * 60 * 60_000);
     assert.equal(clinicMinutesFromMidnight(naive, TZ), 11 * 60);
+  });
+
+  it("startOfClinicDay is midnight even when the instant is afternoon", () => {
+    const afternoon = clinicLocalDateTime("2026-11-17", 15 * 60, TZ);
+    const start = startOfClinicDay(afternoon, TZ);
+    assert.equal(clinicDateKey(start, TZ), "2026-11-17");
+    assert.equal(clinicMinutesFromMidnight(start, TZ), 0);
+    assert.equal(start.toISOString(), "2026-11-17T00:00:00.000Z");
+  });
+
+  it("startOfClinicWeek is Monday 00:00 for a Wednesday afternoon", () => {
+    const wed = clinicLocalDateTime("2026-11-18", 14 * 60, TZ);
+    const monday = startOfClinicWeek(wed, TZ);
+    assert.equal(clinicDateKey(monday, TZ), "2026-11-16");
+    assert.equal(clinicDayOfWeek(monday, TZ), 1);
+    assert.equal(clinicMinutesFromMidnight(monday, TZ), 0);
+  });
+
+  it("startOfClinicWeek treats Sunday as end of the Mon–Sun week", () => {
+    const sun = clinicLocalDateTime("2026-11-22", 10 * 60, TZ);
+    const monday = startOfClinicWeek(sun, TZ);
+    assert.equal(clinicDateKey(monday, TZ), "2026-11-16");
   });
 });
 
