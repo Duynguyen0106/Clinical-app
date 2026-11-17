@@ -378,20 +378,26 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!bookOpen || !bookTypeId || !bookPractitionerId) return;
     const pinnedSlot = bookSlotFixed ? bookSlot : "";
+    const pinned = pinnedSlot ? new Date(pinnedSlot) : null;
+    const pinnedKey = pinned ? clinicDateKey(pinned, timeZone) : null;
+    // Anchor the search on the clicked diary day so mid/late-week cells are
+    // not missing from a near-term-only slot window.
+    const fromQs =
+      pinnedKey != null
+        ? `&from=${encodeURIComponent(
+            clinicLocalDateTime(pinnedKey, 0, timeZone).toISOString(),
+          )}`
+        : "";
     void api<{ slots: string[] }>(
-      `/slots?appointmentTypeId=${bookTypeId}&practitionerId=${bookPractitionerId}&durationMinutes=${bookDuration}&days=14`,
+      `/slots?appointmentTypeId=${bookTypeId}&practitionerId=${bookPractitionerId}&durationMinutes=${bookDuration}&days=${pinnedKey ? 3 : 14}&limit=200${fromQs}`,
     )
       .then((d) => {
-        setBookSlots(d.slots);
-        if (pinnedSlot) {
-          // Keep diary-hour context: prefer exact pin, else first 15‑min start
-          // in the same clinic hour, else first open slot that day.
-          const pinned = new Date(pinnedSlot);
-          const pinnedKey = clinicDateKey(pinned, timeZone);
+        let slots = d.slots;
+        if (pinnedSlot && pinnedKey != null && pinned) {
           const pinnedHour = Math.floor(
             clinicMinutesFromMidnight(pinned, timeZone) / 60,
           );
-          const sameHour = d.slots.filter((s) => {
+          const sameHour = slots.filter((s) => {
             const t = new Date(s);
             return (
               clinicDateKey(t, timeZone) === pinnedKey &&
@@ -399,21 +405,26 @@ export default function CalendarPage() {
                 pinnedHour
             );
           });
-          if (sameHour.includes(pinnedSlot)) {
-            setBookSlot(pinnedSlot);
+          // Prefer exact :00 pin when free; else first free :15/:30/:45 in that hour.
+          const chosen =
+            sameHour.find((s) => s === pinnedSlot) ?? sameHour[0] ?? null;
+          if (chosen) {
+            if (!slots.includes(chosen)) slots = [chosen, ...slots];
+            setBookSlots(slots);
+            setBookSlot(chosen);
             return;
           }
-          if (sameHour[0]) {
-            setBookSlot(sameHour[0]);
-            return;
+          // No open start in the clicked hour — keep the pin visible in the
+          // dropdown rather than jumping to an unrelated first slot.
+          if (!slots.includes(pinnedSlot)) {
+            slots = [pinnedSlot, ...slots];
           }
-          const sameDay = d.slots.find(
-            (s) => clinicDateKey(new Date(s), timeZone) === pinnedKey,
-          );
-          setBookSlot(sameDay ?? d.slots[0] ?? "");
+          setBookSlots(slots);
+          setBookSlot(pinnedSlot);
           return;
         }
-        setBookSlot(d.slots[0] ?? "");
+        setBookSlots(slots);
+        setBookSlot(slots[0] ?? "");
       })
       .catch((e: Error) => setError(e.message));
     // bookSlot intentionally omitted — only re-fetch when sheet inputs change
@@ -2113,7 +2124,14 @@ export default function CalendarPage() {
                           );
                         })
                       : bookSlots;
-                  const list = options.length > 0 ? options : bookSlots;
+                  // Always include the current value so a diary pin is visible
+                  // even when the hour is fully booked (select would otherwise blank).
+                  const list =
+                    bookSlot && !options.includes(bookSlot)
+                      ? [bookSlot, ...options]
+                      : options.length > 0
+                        ? options
+                        : bookSlots;
                   if (list.length === 0) {
                     return <option value="">No open slots</option>;
                   }
