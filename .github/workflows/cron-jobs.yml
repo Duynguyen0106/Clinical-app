@@ -1,7 +1,7 @@
 # Hourly patient jobs for Vercel Hobby (sub-daily Vercel cron needs Pro).
 # Requires repo secrets:
 #   CRON_SECRET  — same as Vercel production CRON_SECRET
-#   APP_BASE_URL — optional, defaults to https://treow-clinic.vercel.app
+#   APP_BASE_URL — optional, defaults to Cloudflare Worker URL
 name: Cron jobs
 
 on:
@@ -38,7 +38,7 @@ jobs:
             echo "Missing repo secret CRON_SECRET — add it under Settings → Secrets → Actions" >&2
             exit 1
           fi
-          BASE="${APP_BASE_URL:-https://treow-clinic.vercel.app}"
+          BASE="${APP_BASE_URL:-https://treow-clinic.duydichdanh.workers.dev}"
           BASE="${BASE%/}"
           hit() {
             local path="$1"

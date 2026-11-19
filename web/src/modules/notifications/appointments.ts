@@ -594,6 +594,32 @@ export async function sendUpcomingReminders(
       take: 100,
     });
 
+    const { withClinicTransaction } = await import("@/server/clinic-rls");
+
+    const claim = async (
+      appointmentId: string,
+      field: "reminderSentAt" | "smsReminderSentAt",
+    ) =>
+      withClinicTransaction(clinic.id, async (tx) => {
+        const result = await tx.appointment.updateMany({
+          where: { id: appointmentId, [field]: null },
+          data: { [field]: new Date() },
+        });
+        return result.count === 1;
+      });
+
+    const unclaim = async (
+      appointmentId: string,
+      field: "reminderSentAt" | "smsReminderSentAt",
+    ) => {
+      await withClinicTransaction(clinic.id, async (tx) => {
+        await tx.appointment.update({
+          where: { id: appointmentId },
+          data: { [field]: null },
+        });
+      });
+    };
+
     for (const apt of due) {
       const when = formatWhen(apt.startsAt, apt.clinic.timezone);
       const roomBit = apt.room ? ` Room ${apt.room.name}.` : "";
@@ -601,53 +627,63 @@ export async function sendUpcomingReminders(
       const manageLink = await manageUrl(apt.id);
 
       if (!apt.reminderSentAt && apt.patient.email) {
-        const emailResult = await sendEmail({
-          to: apt.patient.email,
-          subject: `Reminder — ${apt.clinic.name}`,
-          text: [
-            `Hi ${apt.patient.firstName},`,
-            "",
-            `Reminder for your upcoming appointment.`,
-            `When: ${when}`,
-            `With: ${apt.practitioner.displayName}`,
-            `Service: ${apt.appointmentType.name}`,
-            apt.room ? `Room: ${apt.room.name}` : null,
-            "",
-            "Need to change it?",
-            manageLink,
-            "",
-            `— ${apt.clinic.name}`,
-          ]
-            .filter((line) => line !== null)
-            .join("\n"),
-          replyTo: apt.clinic.email,
-        });
-        if (emailResult.delivered) {
-          const { withClinicTransaction } = await import("@/server/clinic-rls");
-          await withClinicTransaction(apt.clinicId, async (tx) => {
-            await tx.appointment.update({
-              where: { id: apt.id },
-              data: { reminderSentAt: new Date() },
+        const claimed = await claim(apt.id, "reminderSentAt");
+        if (!claimed) {
+          /* another worker already claimed */
+        } else {
+          try {
+            const emailResult = await sendEmail({
+              to: apt.patient.email,
+              subject: `Reminder — ${apt.clinic.name}`,
+              text: [
+                `Hi ${apt.patient.firstName},`,
+                "",
+                `Reminder for your upcoming appointment.`,
+                `When: ${when}`,
+                `With: ${apt.practitioner.displayName}`,
+                `Service: ${apt.appointmentType.name}`,
+                apt.room ? `Room: ${apt.room.name}` : null,
+                "",
+                "Need to change it?",
+                manageLink,
+                "",
+                `— ${apt.clinic.name}`,
+              ]
+                .filter((line) => line !== null)
+                .join("\n"),
+              replyTo: apt.clinic.email,
             });
-          });
-          emailIds.push(apt.id);
+            if (emailResult.delivered) {
+              emailIds.push(apt.id);
+            } else {
+              await unclaim(apt.id, "reminderSentAt");
+            }
+          } catch (err) {
+            console.error("Advance reminder email failed", apt.id, err);
+            await unclaim(apt.id, "reminderSentAt");
+          }
         }
       }
 
       if (!apt.smsReminderSentAt && apt.patient.phone) {
-        const smsResult = await sendSms({
-          to: apt.patient.phone,
-          body: `${apt.clinic.name} reminder: ${when} with ${apt.practitioner.displayName}.${roomBit} Manage: ${manageLink}`.trim(),
-        });
-        if (smsResult.delivered) {
-          const { withClinicTransaction } = await import("@/server/clinic-rls");
-          await withClinicTransaction(apt.clinicId, async (tx) => {
-            await tx.appointment.update({
-              where: { id: apt.id },
-              data: { smsReminderSentAt: new Date() },
+        const claimed = await claim(apt.id, "smsReminderSentAt");
+        if (!claimed) {
+          /* another worker already claimed */
+        } else {
+          try {
+            const smsResult = await sendSms({
+              to: apt.patient.phone,
+              body: `${apt.clinic.name} reminder: ${when} with ${apt.practitioner.displayName}.${roomBit} Manage: ${manageLink}`.trim(),
             });
-          });
-          smsIds.push(apt.id);
+            if (smsResult.delivered) {
+              smsIds.push(apt.id);
+            } else {
+              await unclaim(apt.id, "smsReminderSentAt");
+            }
+          } catch (err) {
+            console.error("Advance reminder SMS failed", apt.id, err);
+            await unclaim(apt.id, "smsReminderSentAt");
+          }
         }
       }
     }

@@ -359,6 +359,8 @@ export async function sendDuePatientEmails(opts: {
         if (!claimed) continue;
         try {
           const when = formatWhen(apt.startsAt, clinic.timezone);
+          const { manageUrl } = await import("@/modules/scheduling/manage");
+          const manageLink = await manageUrl(apt.id);
           let delivered = false;
           if (apt.patient.email) {
             const send = await sendEmail({
@@ -372,6 +374,9 @@ export async function sendDuePatientEmails(opts: {
                 `With: ${apt.practitioner.displayName}`,
                 `Service: ${apt.appointmentType.name}`,
                 "",
+                "Need to change it?",
+                manageLink,
+                "",
                 `— ${clinic.name}`,
               ].join("\n"),
               replyTo: clinic.email,
@@ -381,7 +386,7 @@ export async function sendDuePatientEmails(opts: {
           if (apt.patient.phone) {
             const sms = await sendSms({
               to: apt.patient.phone,
-              body: `${clinic.name}: reminder today ${when} with ${apt.practitioner.displayName}.`,
+              body: `${clinic.name}: reminder today ${when} with ${apt.practitioner.displayName}. Manage: ${manageLink}`,
             });
             delivered = delivered || sms.delivered;
           }
