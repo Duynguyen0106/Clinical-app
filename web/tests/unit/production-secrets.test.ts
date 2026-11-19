@@ -14,6 +14,9 @@ describe("production secrets", () => {
     AUDIO_ENCRYPTION_KEY: env.AUDIO_ENCRYPTION_KEY,
     DATABASE_URL: env.DATABASE_URL,
     CRON_SECRET: env.CRON_SECRET,
+    TURNSTILE_SECRET_KEY: env.TURNSTILE_SECRET_KEY,
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+    ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA: env.ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA,
   };
 
   afterEach(() => {
@@ -41,9 +44,27 @@ describe("production secrets", () => {
     env.AUDIO_ENCRYPTION_KEY = "b".repeat(32);
     env.DATABASE_URL = "postgres://example";
     env.CRON_SECRET = "c".repeat(24);
+    env.TURNSTILE_SECRET_KEY = "ts-secret";
+    env.NEXT_PUBLIC_TURNSTILE_SITE_KEY = "ts-site";
+    delete env.ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA;
     assert.doesNotThrow(() => assertProductionSecrets());
 
     env.AUTH_SECRET = "short";
     assert.throws(() => assertProductionSecrets(), /AUTH_SECRET/);
+  });
+
+  it("assertProductionSecrets requires Turnstile unless explicitly opted out", () => {
+    env.NODE_ENV = "production";
+    env.AUTH_SECRET = "a".repeat(32);
+    env.AUDIO_ENCRYPTION_KEY = "b".repeat(32);
+    env.DATABASE_URL = "postgres://example";
+    env.CRON_SECRET = "c".repeat(24);
+    delete env.TURNSTILE_SECRET_KEY;
+    delete env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+    delete env.ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA;
+    assert.throws(() => assertProductionSecrets(), /TURNSTILE/);
+
+    env.ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA = "1";
+    assert.doesNotThrow(() => assertProductionSecrets());
   });
 });
