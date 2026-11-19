@@ -24,11 +24,50 @@ function mustUseServerlessDriver() {
   );
 }
 
+/** Neon WS / Worker isolate blips that usually succeed on a short retry. */
+export function isTransientDbError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code: unknown }).code)
+      : "";
+  if (
+    code === "P1001" ||
+    code === "P1008" ||
+    code === "P1017" ||
+    code === "P2024"
+  ) {
+    return true;
+  }
+  return /1101|Network connection lost|Connection reset|WebSocket|ECONNRESET|ETIMEDOUT|timed out|Too many connections|server closed the connection|Connection terminated/i.test(
+    msg,
+  );
+}
+
+export async function withNeonRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 3,
+): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (!isTransientDbError(err) || i === attempts - 1) throw err;
+      await new Promise((r) => setTimeout(r, 40 * Math.pow(2, i)));
+    }
+  }
+  throw last;
+}
+
 function createPrisma() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set");
   }
+
+  let base: PrismaClient;
 
   if (isNeonConnection(connectionString) || mustUseServerlessDriver()) {
     // Neon serverless WebSocket driver — required for interactive transactions
@@ -51,19 +90,29 @@ function createPrisma() {
     // maxUses: 1 — Workers hang/1101 when a pooled Neon WS client is reused
     // across requests in the same isolate (pg-pool release + borrow).
     const adapter = new PrismaNeon({ connectionString, maxUses: 1 });
-    return new PrismaClient({ adapter });
+    base = new PrismaClient({ adapter });
+  } else {
+    // Local / classic Postgres via TCP pool
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PrismaPg } =
+      require("@prisma/adapter-pg") as typeof import("@prisma/adapter-pg");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pg = require("pg") as typeof import("pg");
+    const pool = new pg.Pool({
+      connectionString,
+      max: 10,
+    });
+    base = new PrismaClient({ adapter: new PrismaPg(pool) });
   }
 
-  // Local / classic Postgres via TCP pool
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { PrismaPg } = require("@prisma/adapter-pg") as typeof import("@prisma/adapter-pg");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pg = require("pg") as typeof import("pg");
-  const pool = new pg.Pool({
-    connectionString,
-    max: 10,
-  });
-  return new PrismaClient({ adapter: new PrismaPg(pool) });
+  // Retry transient Neon/Worker failures on every query (including nested model ops).
+  return base.$extends({
+    query: {
+      $allOperations({ args, query }) {
+        return withNeonRetry(() => query(args));
+      },
+    },
+  }) as unknown as PrismaClient;
 }
 
 /**

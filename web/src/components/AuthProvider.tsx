@@ -87,8 +87,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     const gen = ++refreshGen.current;
     // Cookie session may exist even without a local hint (first paint) — always try /me
-    try {
-      const data = await Promise.race([
+    const fetchMe = () =>
+      Promise.race([
         api<Me>("/auth/me"),
         new Promise<never>((_, reject) => {
           window.setTimeout(
@@ -97,26 +97,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           );
         }),
       ]);
-      if (!aliveRef.current || gen !== refreshGen.current) return;
-      writeMeCache(data);
-      setMe(data);
-      setSession(data.clinic.id);
-    } catch (e) {
-      if (!aliveRef.current || gen !== refreshGen.current) return;
-      const status = e instanceof ApiError ? e.status : 0;
-      if (status === 401 || status === 403) {
-        clearSession();
-        writeMeCache(null);
-        setMe(null);
-      } else {
-        const cached = readMeCache();
-        if (cached) setMe(cached);
-      }
-    } finally {
-      if (aliveRef.current && gen === refreshGen.current) {
-        setLoading(false);
+
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const data = await fetchMe();
+        if (!aliveRef.current || gen !== refreshGen.current) return;
+        writeMeCache(data);
+        setMe(data);
+        setSession(data.clinic.id);
+        if (aliveRef.current && gen === refreshGen.current) setLoading(false);
+        return;
+      } catch (e) {
+        lastErr = e;
+        if (!aliveRef.current || gen !== refreshGen.current) return;
+        const status = e instanceof ApiError ? e.status : 0;
+        // Auth failure — clear and stop. Transient 5xx/timeout — retry then keep cache.
+        if (status === 401 || status === 403) {
+          clearSession();
+          writeMeCache(null);
+          setMe(null);
+          if (aliveRef.current && gen === refreshGen.current) setLoading(false);
+          return;
+        }
+        if (attempt < 2 && (status === 0 || status === 408 || status >= 500)) {
+          await new Promise((r) => setTimeout(r, 200 * Math.pow(2, attempt)));
+          continue;
+        }
+        break;
       }
     }
+
+    if (!aliveRef.current || gen !== refreshGen.current) return;
+    // Non-auth failure after retries: keep last-good me (do not bounce to login).
+    const cached = readMeCache();
+    if (cached) setMe(cached);
+    void lastErr;
+    if (aliveRef.current && gen === refreshGen.current) setLoading(false);
   }, []);
 
   useLayoutEffect(() => {
@@ -175,19 +192,31 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   const { me, loading, refresh } = useAuth();
   const router = useRouter();
   const retryRef = useRef(false);
+  const softRetries = useRef(0);
   const [booting, setBooting] = useState(false);
 
   useEffect(() => {
     if (loading || booting) return;
     if (me) {
       retryRef.current = false;
+      softRetries.current = 0;
       return;
     }
+    // Session cookie/hint present but /me flaked (Neon 1101) — retry and stay
+    // on the boot screen instead of bouncing to /login.
     if (hasSessionHint() && !retryRef.current) {
       retryRef.current = true;
       setBooting(true);
       void refresh().finally(() => setBooting(false));
       return;
+    }
+    if (hasSessionHint() && softRetries.current < 4) {
+      softRetries.current += 1;
+      setBooting(true);
+      const t = window.setTimeout(() => {
+        void refresh().finally(() => setBooting(false));
+      }, 1500);
+      return () => window.clearTimeout(t);
     }
     router.replace("/login");
   }, [loading, booting, me, router, refresh]);
