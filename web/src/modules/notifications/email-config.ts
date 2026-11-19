@@ -95,41 +95,49 @@ export async function loadEmailRuntimeConfig(
     return cache.value;
   }
 
-  let dbKey: string | null = null;
-  let dbFrom: string | null = null;
-  let dbProvider: string | null = null;
-  try {
-    await ensureSettingsTable();
-    const sealed = (await readSetting("RESEND_API_KEY"))?.trim() || null;
-    if (sealed) {
-      try {
-        dbKey = openSettingSecret(sealed).trim() || null;
-        // Upgrade legacy plaintext rows to sealed form
-        if (dbKey && !sealed.startsWith(ENC_PREFIX)) {
-          await writeSetting("RESEND_API_KEY", sealSettingSecret(dbKey));
-        }
-      } catch (err) {
-        console.error("Failed to decrypt RESEND_API_KEY from DB", err);
-        dbKey = null;
-      }
-    }
-    dbFrom = (await readSetting("EMAIL_FROM"))?.trim() || null;
-    dbProvider =
-      (await readSetting("EMAIL_PROVIDER"))?.toLowerCase().trim() || null;
-  } catch (err) {
-    console.error("Failed to load email settings from DB", err);
-  }
-
   const envKey = process.env.RESEND_API_KEY?.trim() || null;
   const envFrom = process.env.EMAIL_FROM?.trim() || null;
   const envProvider = (process.env.EMAIL_PROVIDER ?? "").toLowerCase().trim();
 
-  // DB overrides win so we can enable sending without a Vercel redeploy.
-  const apiKey = dbKey || envKey;
-  const from = dbFrom || envFrom;
-  const requested = (dbProvider ||
-    envProvider ||
-    (apiKey ? "resend" : "console")) as "resend" | "console" | string;
+  let dbKey: string | null = null;
+  let dbFrom: string | null = null;
+  let dbProvider: string | null = null;
+  // On Workers, env secrets are authoritative when present — skip decrypting a
+  // possibly stale DB row (wrong AUTH_SECRET) and save Neon subrequests.
+  const preferEnvOnWorkers =
+    process.env.CLOUDFLARE_WORKERS?.trim() === "1" && Boolean(envKey);
+  try {
+    if (!preferEnvOnWorkers) {
+      await ensureSettingsTable();
+      const sealed = (await readSetting("RESEND_API_KEY"))?.trim() || null;
+      if (sealed) {
+        try {
+          dbKey = openSettingSecret(sealed).trim() || null;
+          // Upgrade legacy plaintext rows to sealed form
+          if (dbKey && !sealed.startsWith(ENC_PREFIX)) {
+            await writeSetting("RESEND_API_KEY", sealSettingSecret(dbKey));
+          }
+        } catch (err) {
+          console.error("Failed to decrypt RESEND_API_KEY from DB", err);
+          dbKey = null;
+        }
+      }
+      dbFrom = (await readSetting("EMAIL_FROM"))?.trim() || null;
+      dbProvider =
+        (await readSetting("EMAIL_PROVIDER"))?.toLowerCase().trim() || null;
+    }
+  } catch (err) {
+    console.error("Failed to load email settings from DB", err);
+  }
+
+  // DB overrides win off-Workers so admin runtime settings apply without redeploy.
+  const apiKey = preferEnvOnWorkers ? envKey : dbKey || envKey;
+  const from = preferEnvOnWorkers ? envFrom || dbFrom : dbFrom || envFrom;
+  const requested = (preferEnvOnWorkers
+    ? envProvider || (apiKey ? "resend" : "console")
+    : dbProvider ||
+      envProvider ||
+      (apiKey ? "resend" : "console")) as "resend" | "console" | string;
 
   const provider: "resend" | "console" =
     apiKey && requested !== "console" ? "resend" : "console";

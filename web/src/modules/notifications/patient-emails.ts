@@ -8,7 +8,6 @@
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { formatInTimeZone } from "date-fns-tz";
 import { prisma } from "@/server/db";
-import { withClinicTransaction } from "@/server/clinic-rls";
 import { getAppBaseUrl } from "@/server/env";
 import { clinicDateKey } from "@/modules/scheduling/clinic-time";
 import { sendEmail } from "./email";
@@ -18,6 +17,10 @@ import {
   buildReviewRequestEmail,
   buildThankYouEmail,
 } from "./patient-lifecycle-email";
+import {
+  createEmailPrefsToken,
+  emailPrefsUrlForToken,
+} from "./email-prefs-token";
 import {
   NO_SHOW_LOOKBACK_MS,
   REVIEW_LOOKBACK_MS,
@@ -36,6 +39,10 @@ function formatWhen(date: Date, timezone: string) {
 
 function bookUrl(slug: string) {
   return `${getAppBaseUrl()}/book/${slug}`;
+}
+
+function prefsUrlFor(patientId: string, clinicId: string) {
+  return emailPrefsUrlForToken(createEmailPrefsToken(patientId, clinicId));
 }
 
 const aptInclude = {
@@ -63,6 +70,11 @@ export type PatientEmailJobResult = {
   errors: number;
 };
 
+/**
+ * Claim/unclaim without per-row $transaction + RLS GUCs.
+ * Cron already sweeps with app-layer clinicId filters; each interactive
+ * transaction burns Neon WebSocket subrequests and trips Workers limits.
+ */
 async function claimMarker(
   clinicId: string,
   appointmentId: string,
@@ -72,13 +84,11 @@ async function claimMarker(
     | "noShowFollowUpSentAt"
     | "sameDayReminderSentAt",
 ) {
-  return withClinicTransaction(clinicId, async (tx) => {
-    const result = await tx.appointment.updateMany({
-      where: { id: appointmentId, [field]: null },
-      data: { [field]: new Date() },
-    });
-    return result.count === 1;
+  const result = await prisma.appointment.updateMany({
+    where: { id: appointmentId, clinicId, [field]: null },
+    data: { [field]: new Date() },
   });
+  return result.count === 1;
 }
 
 async function unclaimMarker(
@@ -90,11 +100,9 @@ async function unclaimMarker(
     | "noShowFollowUpSentAt"
     | "sameDayReminderSentAt",
 ) {
-  await withClinicTransaction(clinicId, async (tx) => {
-    await tx.appointment.update({
-      where: { id: appointmentId },
-      data: { [field]: null },
-    });
+  await prisma.appointment.updateMany({
+    where: { id: appointmentId, clinicId },
+    data: { [field]: null },
   });
 }
 
@@ -132,7 +140,44 @@ export async function sendDuePatientEmails(opts: {
   };
 
   for (const clinic of clinics) {
-    const now = new Date();
+    try {
+      await sendClinicPatientEmails(clinic, result);
+    } catch (err) {
+      result.errors += 1;
+      console.error("Patient email clinic sweep failed", clinic.id, err);
+    }
+  }
+
+  result.sent =
+    result.thankYou +
+    result.reviewRequest +
+    result.noShowFollowUp +
+    result.sameDayReminder;
+  return result;
+}
+
+async function sendClinicPatientEmails(
+  clinic: {
+    id: string;
+    name: string;
+    slug: string;
+    phone: string | null;
+    email: string | null;
+    timezone: string;
+    sameDayReminderEnabled: boolean;
+    sameDayReminderHours: number;
+    thankYouEnabled: boolean;
+    thankYouDelayHours: number;
+    reviewRequestEnabled: boolean;
+    reviewRequestDelayDays: number;
+    reviewUrl: string | null;
+    noShowFollowUpEnabled: boolean;
+    noShowFollowUpDelayHours: number;
+  },
+  result: PatientEmailJobResult,
+) {
+  const now = new Date();
+  const BATCH = 20;
 
     if (clinic.thankYouEnabled) {
       const cutoff = new Date(
@@ -151,7 +196,7 @@ export async function sendDuePatientEmails(opts: {
           },
         },
         include: aptInclude,
-        take: 50,
+        take: BATCH,
         orderBy: { endsAt: "asc" },
       });
       for (const apt of due) {
@@ -168,6 +213,7 @@ export async function sendDuePatientEmails(opts: {
             serviceName: apt.appointmentType.name,
             whenLabel: formatWhen(apt.startsAt, clinic.timezone),
             bookAgainUrl: bookUrl(clinic.slug),
+            prefsUrl: prefsUrlFor(apt.patient.id, clinic.id),
           });
           const send = await sendEmail({
             to: apt.patient.email,
@@ -206,7 +252,7 @@ export async function sendDuePatientEmails(opts: {
           },
         },
         include: aptInclude,
-        take: 50,
+        take: BATCH,
         orderBy: { endsAt: "asc" },
       });
       for (const apt of due) {
@@ -224,6 +270,7 @@ export async function sendDuePatientEmails(opts: {
             patientFirstName: apt.patient.firstName,
             practitionerName: apt.practitioner.displayName,
             reviewUrl: clinic.reviewUrl.trim(),
+            prefsUrl: prefsUrlFor(apt.patient.id, clinic.id),
           });
           const send = await sendEmail({
             to: apt.patient.email,
@@ -262,7 +309,7 @@ export async function sendDuePatientEmails(opts: {
           },
         },
         include: aptInclude,
-        take: 50,
+        take: BATCH,
         orderBy: { startsAt: "asc" },
       });
       for (const apt of due) {
@@ -332,7 +379,7 @@ export async function sendDuePatientEmails(opts: {
           },
         },
         include: aptInclude,
-        take: 50,
+        take: BATCH,
         orderBy: { startsAt: "asc" },
       });
       for (const apt of due) {
@@ -402,12 +449,4 @@ export async function sendDuePatientEmails(opts: {
         }
       }
     }
-  }
-
-  result.sent =
-    result.thankYou +
-    result.reviewRequest +
-    result.noShowFollowUp +
-    result.sameDayReminder;
-  return result;
 }
