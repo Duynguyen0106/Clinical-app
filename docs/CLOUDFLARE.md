@@ -49,10 +49,15 @@ npx wrangler secret put NEXT_PUBLIC_TURNSTILE_SITE_KEY
 # Then delete the temporary bypass if present:
 #   npx wrangler secret delete ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA
 
-# Optional shared rate limits (multi-isolate). Without these, backend stays in-memory.
-# npx wrangler secret put UPSTASH_REDIS_REST_URL
-# npx wrangler secret put UPSTASH_REDIS_REST_TOKEN
+# Shared rate limits (multi-isolate). Without these, backend stays in-memory.
+# Prefer a real Upstash Redis REST DB in an EU region. Until then, a
+# Durable-Object Upstash-compatible shim Worker (`treow-rl-shim`) can be used:
+#   UPSTASH_REDIS_REST_URL=https://treow-rl-shim.<subdomain>.workers.dev
+#   UPSTASH_REDIS_REST_TOKEN=<shim TOKEN secret>
+npx wrangler secret put UPSTASH_REDIS_REST_URL
+npx wrangler secret put UPSTASH_REDIS_REST_TOKEN
 ```
+Confirm `GET /api/v1/health` shows `"rateLimitBackend":"upstash"`.
 
 Non-secret vars are in [`web/wrangler.jsonc`](../web/wrangler.jsonc) (`CLOUDFLARE_WORKERS`, `USE_NEON_ADAPTER`, `NODE_ENV`).
 

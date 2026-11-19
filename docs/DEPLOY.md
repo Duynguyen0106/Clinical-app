@@ -114,12 +114,17 @@ After stacking clinical-safety → leak/live-day → re-audit-improve → post-6
 4. Wire reminders + organise (see §4). Confirm `GET /api/v1/health` shows `cronConfigured: true`, intended `smsProvider` / `emailProvider`, and `rateLimitBackend`.
 5. Optional hardening — FORCE RLS runbook (prove on **staging** first with a non-owner `treow_app` role):
    ```bash
-   # As migration/owner role:
-   cd web && npm run db:rls
-   # Create non-owner app role, grant DML, point DATABASE_URL at it, then:
-   APPLY_FORCE_RLS=1 npm run db:rls
+   # Preferred: empty Neon database (e.g. CREATE DATABASE treow_staging),
+   # load schema (prisma migrate diff --from-empty --to-schema … --script | psql),
+   # then as owner:
+   cd web
+   export DATABASE_URL='postgresql://…/treow_staging?sslmode=require'
+   export CONFIRM_FORCE_RLS_STAGING=1
+   ./scripts/force-rls-staging.sh
+   # Creates/rotates treow_app and asserts clinic_id denial under FORCE.
    ```
-   Schedule create, deposit mark-paid, patient/leave/invoice writes set `app.clinic_id`.
+   Do **not** run FORCE against the live pilot owner URL until the Worker
+   `DATABASE_URL` uses a non-owner role and every write path sets `app.clinic_id`.
    Details: `prisma/sql/002_force_rls.sql` and ARCHITECTURE.
    Multi-instance public book / rate limits: set `UPSTASH_REDIS_REST_URL` +
    `UPSTASH_REDIS_REST_TOKEN`. Even on staging, set a dedicated Stripe webhook
