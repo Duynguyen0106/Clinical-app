@@ -70,6 +70,27 @@ export function appointmentOccupiesSlot(status: string): boolean {
   return OCCUPYING.has(status.toUpperCase());
 }
 
+/** Bookable start offsets within an hour (matches SLOT_STEP_MINUTES). */
+export const QUARTER_MINUTES = [0, 15, 30, 45] as const;
+export type QuarterMinute = (typeof QUARTER_MINUTES)[number];
+
+/** Snap any minute-of-hour value to the nearest :00 / :15 / :30 / :45. */
+export function snapQuarterMinute(minuteOfHour: number): QuarterMinute {
+  if (!Number.isFinite(minuteOfHour)) return 0;
+  const clamped = Math.min(59, Math.max(0, minuteOfHour));
+  return Math.min(45, Math.round(clamped / 15) * 15) as QuarterMinute;
+}
+
+/**
+ * Map a vertical position ratio (0–1) inside an hour cell to a 15-minute start.
+ * Top quarter → :00, then :15, :30, bottom → :45.
+ */
+export function quarterMinuteFromCellRatio(ratio: number): QuarterMinute {
+  if (!Number.isFinite(ratio)) return 0;
+  const clamped = Math.min(0.999, Math.max(0, ratio));
+  return QUARTER_MINUTES[Math.min(3, Math.floor(clamped * 4))]!;
+}
+
 /** CSS modifier for calendar event colouring by appointment status. */
 export function calendarEventStatusClass(status: string): string {
   switch (status.toUpperCase()) {

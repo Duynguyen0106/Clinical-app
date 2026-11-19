@@ -6,7 +6,9 @@ import {
   diaryHoursFromRules,
   humanStatusLabel,
   isHourWithinRules,
+  quarterMinuteFromCellRatio,
   rulesForPractitioner,
+  snapQuarterMinute,
 } from "../../src/modules/scheduling/calendar-ui";
 
 describe("appointmentOccupiesSlot", () => {
@@ -19,6 +21,31 @@ describe("appointmentOccupiesSlot", () => {
   it("frees cancelled and no-show slots", () => {
     assert.equal(appointmentOccupiesSlot("CANCELLED"), false);
     assert.equal(appointmentOccupiesSlot("NO_SHOW"), false);
+  });
+});
+
+describe("15-minute drag snap", () => {
+  it("snaps minute-of-hour to :00/:15/:30/:45", () => {
+    assert.equal(snapQuarterMinute(0), 0);
+    assert.equal(snapQuarterMinute(7), 0);
+    assert.equal(snapQuarterMinute(8), 15);
+    assert.equal(snapQuarterMinute(22), 15);
+    assert.equal(snapQuarterMinute(23), 30);
+    assert.equal(snapQuarterMinute(37), 30);
+    assert.equal(snapQuarterMinute(38), 45);
+    assert.equal(snapQuarterMinute(52), 45);
+    assert.equal(snapQuarterMinute(59), 45);
+  });
+
+  it("maps hour-cell vertical ratio to quarter bands", () => {
+    assert.equal(quarterMinuteFromCellRatio(0), 0);
+    assert.equal(quarterMinuteFromCellRatio(0.24), 0);
+    assert.equal(quarterMinuteFromCellRatio(0.25), 15);
+    assert.equal(quarterMinuteFromCellRatio(0.49), 15);
+    assert.equal(quarterMinuteFromCellRatio(0.5), 30);
+    assert.equal(quarterMinuteFromCellRatio(0.74), 30);
+    assert.equal(quarterMinuteFromCellRatio(0.75), 45);
+    assert.equal(quarterMinuteFromCellRatio(0.99), 45);
   });
 });
 
