@@ -5,6 +5,25 @@ export function clinicDateKey(date: Date, timeZone: string) {
   return formatInTimeZone(date, timeZone, "yyyy-MM-dd");
 }
 
+/** Clinic-local midnight for the civil day containing `date`. */
+export function startOfClinicDay(date: Date, timeZone: string) {
+  return clinicLocalDateTime(clinicDateKey(date, timeZone), 0, timeZone);
+}
+
+/**
+ * Monday 00:00 clinic-local for the ISO week containing `date`
+ * (week starts Monday, matching the staff diary).
+ */
+export function startOfClinicWeek(date: Date, timeZone: string) {
+  const key = clinicDateKey(date, timeZone);
+  const dow = clinicDayOfWeek(date, timeZone); // 0=Sun … 6=Sat
+  const daysFromMonday = dow === 0 ? 6 : dow - 1;
+  const [y, m, d] = key.split("-").map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  utc.setUTCDate(utc.getUTCDate() - daysFromMonday);
+  return clinicLocalDateTime(utc.toISOString().slice(0, 10), 0, timeZone);
+}
+
 /**
  * JS day-of-week (0=Sun … 6=Sat) in the clinic timezone.
  * date-fns `i` is ISO day (1=Mon … 7=Sun).

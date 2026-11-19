@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDays, format, startOfWeek } from "date-fns";
+import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
@@ -18,10 +18,13 @@ import {
   type AvailabilityRule,
 } from "@/modules/scheduling/calendar-ui";
 import {
+  addClinicCalendarDays,
   clinicDateKey,
   clinicDayOfWeek,
   clinicLocalDateTime,
   clinicMinutesFromMidnight,
+  startOfClinicDay,
+  startOfClinicWeek,
 } from "@/modules/scheduling/clinic-time";
 import { patientDiaryLabel } from "@/modules/scheduling/diary-privacy";
 
@@ -120,10 +123,12 @@ export default function CalendarPage() {
   const canEditSchedule =
     me?.role === "OWNER" || me?.role === "RECEPTION";
   const [weekStart, setWeekStart] = useState(() =>
-    startOfWeek(new Date(), { weekStartsOn: 1 }),
+    startOfClinicWeek(new Date(), "Europe/London"),
   );
   const [viewMode, setViewMode] = useState<"week" | "day">("week");
-  const [dayFocus, setDayFocus] = useState(() => new Date());
+  const [dayFocus, setDayFocus] = useState(() =>
+    startOfClinicDay(new Date(), "Europe/London"),
+  );
   /** Phone-first: day view is clearer on narrow screens */
   const [isNarrow, setIsNarrow] = useState(false);
   /** "" = all practitioners; otherwise filter diary to one profile */
@@ -134,6 +139,8 @@ export default function CalendarPage() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  /** Ignore stale diary responses when the user flips weeks/days quickly. */
+  const loadGen = useRef(0);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   /** When set with draggingId, slot tap shifts the whole series from that appointment */
   const [seriesMove, setSeriesMove] = useState(false);
@@ -195,9 +202,15 @@ export default function CalendarPage() {
   const days = useMemo(
     () =>
       viewMode === "day"
-        ? [dayFocus]
-        : Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
-    [weekStart, viewMode, dayFocus],
+        ? [startOfClinicDay(dayFocus, timeZone)]
+        : Array.from({ length: 7 }, (_, i) =>
+            addClinicCalendarDays(
+              startOfClinicWeek(weekStart, timeZone),
+              i,
+              timeZone,
+            ),
+          ),
+    [weekStart, viewMode, dayFocus, timeZone],
   );
 
   const hours = useMemo(() => {
@@ -226,19 +239,27 @@ export default function CalendarPage() {
   );
 
   const load = useCallback(() => {
-    const from = viewMode === "day" ? dayFocus : weekStart;
-    const to = viewMode === "day" ? addDays(dayFocus, 1) : addDays(weekStart, 7);
+    // Always query full clinic-local days. Using wall-clock dayFocus/weekStart
+    // (e.g. "now" or Today-at-noon) dropped morning bookings from the diary.
+    const from =
+      viewMode === "day"
+        ? startOfClinicDay(dayFocus, timeZone)
+        : startOfClinicWeek(weekStart, timeZone);
+    const to =
+      viewMode === "day"
+        ? addClinicCalendarDays(from, 1, timeZone)
+        : addClinicCalendarDays(from, 7, timeZone);
     const pracQs = filterPractitionerId
       ? `&practitionerId=${encodeURIComponent(filterPractitionerId)}`
       : "";
     const aptPath = `/appointments?from=${from.toISOString()}&to=${to.toISOString()}${pracQs}`;
     const blocksPath = `/blocks?from=${clinicDateKey(from, timeZone)}&to=${clinicDateKey(
-      viewMode === "day" ? dayFocus : addDays(weekStart, 6),
+      viewMode === "day" ? from : addClinicCalendarDays(from, 6, timeZone),
       timeZone,
     )}${pracQs}`;
 
     // Workers isolate 1101 on Neon WS is intermittent — retry with backoff.
-    const withRetry = async <T,>(fn: () => Promise<T>, attempts = 3): Promise<T> => {
+    const withRetry = async <T,>(fn: () => Promise<T>, attempts = 5): Promise<T> => {
       let last: unknown;
       for (let i = 0; i < attempts; i++) {
         try {
@@ -248,12 +269,13 @@ export default function CalendarPage() {
           if (!(err instanceof ApiError) || err.status < 500 || i === attempts - 1) {
             throw err;
           }
-          await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+          await new Promise((r) => setTimeout(r, 300 * Math.pow(2, i)));
         }
       }
       throw last;
     };
 
+    const gen = ++loadGen.current;
     void (async () => {
       // Load independently so a flaky /blocks or /catalog 1101 does not blank the diary.
       const aptJob = withRetry(() =>
@@ -268,6 +290,7 @@ export default function CalendarPage() {
 
       try {
         const [a, b, c] = await Promise.all([aptJob, blockJob, catalogJob]);
+        if (gen !== loadGen.current) return;
         setAppointments(a.appointments);
         setBlocks(b.blocks);
         if (c) setCatalog(c);
@@ -278,6 +301,8 @@ export default function CalendarPage() {
           return fresh ?? prev;
         });
       } catch (e) {
+        if (gen !== loadGen.current) return;
+        // Keep the last good diary on screen; only surface the error.
         setError(e instanceof Error ? e.message : "Could not load diary");
       }
     })();
@@ -342,37 +367,49 @@ export default function CalendarPage() {
     // Only force day view when crossing into narrow — do not reset weekStart
     // on every match (that made → week arrows look broken on soft resizes).
     let wasNarrow = mq.matches;
+    const snapToday = () => {
+      const today = startOfClinicDay(new Date(), timeZone);
+      setDayFocus(today);
+      setWeekStart(startOfClinicWeek(today, timeZone));
+    };
     const apply = () => {
       const narrow = mq.matches;
       setIsNarrow(narrow);
       if (narrow && !wasNarrow) {
         setViewMode("day");
-        setDayFocus(new Date());
-        setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+        snapToday();
       }
       wasNarrow = narrow;
     };
     setIsNarrow(wasNarrow);
     if (wasNarrow) {
       setViewMode("day");
-      setDayFocus(new Date());
-      setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+      snapToday();
     }
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
-  }, []);
+  }, [timeZone]);
+
+  // Re-anchor diary anchors if clinic timezone arrives after first paint.
+  useEffect(() => {
+    if (!me?.clinic.timezone) return;
+    setWeekStart((w) => startOfClinicWeek(w, me.clinic.timezone));
+    setDayFocus((d) => startOfClinicDay(d, me.clinic.timezone));
+  }, [me?.clinic.timezone]);
 
   const stripDays = useMemo(
     () =>
       Array.from({ length: 7 }, (_, i) =>
-        addDays(
-          startOfWeek(viewMode === "day" ? dayFocus : weekStart, {
-            weekStartsOn: 1,
-          }),
+        addClinicCalendarDays(
+          startOfClinicWeek(
+            viewMode === "day" ? dayFocus : weekStart,
+            timeZone,
+          ),
           i,
+          timeZone,
         ),
       ),
-    [dayFocus, weekStart, viewMode],
+    [dayFocus, weekStart, viewMode, timeZone],
   );
 
   useEffect(() => {
@@ -929,7 +966,7 @@ export default function CalendarPage() {
                 className={`btn-sm ${viewMode === "day" ? "btn-secondary" : "btn-ghost"}`}
                 onClick={() => {
                   setViewMode("day");
-                  setDayFocus(new Date());
+                  setDayFocus(startOfClinicDay(new Date(), timeZone));
                 }}
               >
                 Day
@@ -949,8 +986,20 @@ export default function CalendarPage() {
                 aria-label="Previous"
                 onClick={() =>
                   viewMode === "day"
-                    ? setDayFocus((d) => addDays(d, -1))
-                    : setWeekStart((d) => addDays(d, -7))
+                    ? setDayFocus((d) =>
+                        addClinicCalendarDays(
+                          startOfClinicDay(d, timeZone),
+                          -1,
+                          timeZone,
+                        ),
+                      )
+                    : setWeekStart((d) =>
+                        addClinicCalendarDays(
+                          startOfClinicWeek(d, timeZone),
+                          -7,
+                          timeZone,
+                        ),
+                      )
                 }
               >
                 ←
@@ -958,7 +1007,14 @@ export default function CalendarPage() {
               <h2 className="cal-date-label">
                 {viewMode === "day"
                   ? format(dayFocus, isNarrow ? "EEE d MMM" : "EEE d MMM yyyy")
-                  : `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 6), isNarrow ? "d MMM" : "d MMM yyyy")}`}
+                  : `${format(startOfClinicWeek(weekStart, timeZone), "d MMM")} – ${format(
+                      addClinicCalendarDays(
+                        startOfClinicWeek(weekStart, timeZone),
+                        6,
+                        timeZone,
+                      ),
+                      isNarrow ? "d MMM" : "d MMM yyyy",
+                    )}`}
               </h2>
               <button
                 type="button"
@@ -966,8 +1022,20 @@ export default function CalendarPage() {
                 aria-label="Next"
                 onClick={() =>
                   viewMode === "day"
-                    ? setDayFocus((d) => addDays(d, 1))
-                    : setWeekStart((d) => addDays(d, 7))
+                    ? setDayFocus((d) =>
+                        addClinicCalendarDays(
+                          startOfClinicDay(d, timeZone),
+                          1,
+                          timeZone,
+                        ),
+                      )
+                    : setWeekStart((d) =>
+                        addClinicCalendarDays(
+                          startOfClinicWeek(d, timeZone),
+                          7,
+                          timeZone,
+                        ),
+                      )
                 }
               >
                 →
@@ -976,10 +1044,9 @@ export default function CalendarPage() {
                 type="button"
                 className="btn-secondary btn-sm"
                 onClick={() => {
-                  const todayKey = clinicDateKey(new Date(), timeZone);
-                  const today = clinicLocalDateTime(todayKey, 12 * 60, timeZone);
+                  const today = startOfClinicDay(new Date(), timeZone);
                   setDayFocus(today);
-                  setWeekStart(startOfWeek(today, { weekStartsOn: 1 }));
+                  setWeekStart(startOfClinicWeek(today, timeZone));
                 }}
               >
                 Today
@@ -1126,8 +1193,8 @@ export default function CalendarPage() {
                     title={dayClosed ? "Closed — outside open hours" : undefined}
                     onClick={() => {
                       setViewMode("day");
-                      setDayFocus(day);
-                      setWeekStart(startOfWeek(day, { weekStartsOn: 1 }));
+                      setDayFocus(startOfClinicDay(day, timeZone));
+                      setWeekStart(startOfClinicWeek(day, timeZone));
                     }}
                   >
                     <span className="cal-day-chip-dow">{format(day, "EEE")}</span>
@@ -1142,7 +1209,18 @@ export default function CalendarPage() {
             <p className="cal-swipe-hint muted">Swipe sideways to see the full week</p>
           ) : null}
         </div>
-        {error ? <p className="form-error">{error}</p> : null}
+        {error ? (
+          <p className="form-error">
+            {error}{" "}
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => load()}
+            >
+              Retry
+            </button>
+          </p>
+        ) : null}
         {message ? <p className="form-ok">{message}</p> : null}
 
         <div
