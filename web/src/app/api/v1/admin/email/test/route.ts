@@ -4,6 +4,7 @@ import { jsonOk } from "@/server/http";
 import { unauthorized, badRequest } from "@/server/errors";
 import { isAdminProvisionAuthorized } from "@/server/admin-auth";
 import { enforceAdminEmailTestLimits } from "@/server/abuse";
+import { getAppBaseUrl } from "@/server/env";
 import { sendEmail } from "@/modules/notifications/email";
 import { loadEmailRuntimeConfig } from "@/modules/notifications/email-config";
 import { buildBookingConfirmationEmail } from "@/modules/notifications/booking-confirmation-email";
@@ -29,17 +30,18 @@ export const POST = withPublic(async (req) => {
   if (!parsed.success) throw badRequest("Valid 'to' email required");
 
   const cfg = await loadEmailRuntimeConfig({ bypassCache: true });
+  const manageLink = `${getAppBaseUrl()}/book/manage/demo`;
   const content = buildBookingConfirmationEmail({
     clinicName: "Nguyen's Osteopathic Clinic",
     clinicPhone: "+447882843513",
-    clinicAddress: "52 Powis Street, Woolwich, London, SE18 6LQ",
+    clinicAddress: "Village Pharmacy\n9 The Village, Charlton, SE7 8UG",
     patientFirstName: "Test",
     whenLabel: "Monday 9 November 2026 at 09:00",
     timezone: "Europe/London",
     practitionerName: "Austin Nguyen",
     serviceName: "Follow-up Osteopathic Treatment",
     roomName: "Couch 1",
-    manageLink: "https://treow-clinic.vercel.app/book/manage/demo",
+    manageLink,
     cancelNoticeHours: 24,
     patientPrepText:
       "Please wear loose, comfortable clothing that allows movement of the area being treated. Arrive a few minutes early. Bring any referral letters or imaging reports if you have them.",
@@ -52,7 +54,7 @@ export const POST = withPublic(async (req) => {
     clinicName: "Nguyen's Osteopathic Clinic",
     clinicEmail: "nguyensosteopathy@gmail.com",
     clinicPhone: "+447882843513",
-    clinicAddress: "52 Powis Street, Woolwich, London, SE18 6LQ",
+    clinicAddress: "Village Pharmacy\n9 The Village, Charlton, SE7 8UG",
     patientFirstName: "Test",
     patientEmail: parsed.data.to,
     practitionerName: "Austin Nguyen",
@@ -60,7 +62,7 @@ export const POST = withPublic(async (req) => {
     roomName: "Couch 1",
     startsAt,
     endsAt,
-    manageLink: "https://treow-clinic.vercel.app/book/manage/demo",
+    manageLink,
     method: "REQUEST",
     sequence: 0,
   });
