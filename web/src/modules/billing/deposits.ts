@@ -377,14 +377,12 @@ export async function applyDepositCheckoutCompleted(session: {
   if (session.payment_status !== "paid") return { applied: false as const };
   const appointmentId = session.metadata?.appointmentId;
   const clinicId = session.metadata?.clinicId;
-  if (!appointmentId) return { applied: false as const };
-  if (clinicId) {
-    const apt = await prisma.appointment.findFirst({
-      where: { id: appointmentId, clinicId },
-      select: { id: true },
-    });
-    if (!apt) return { applied: false as const };
-  }
+  if (!appointmentId || !clinicId) return { applied: false as const };
+  const apt = await prisma.appointment.findFirst({
+    where: { id: appointmentId, clinicId },
+    select: { id: true },
+  });
+  if (!apt) return { applied: false as const };
   try {
     const appointment = await markDepositPaid(appointmentId);
     return { applied: true as const, appointmentId: appointment.id };

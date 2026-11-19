@@ -63,14 +63,13 @@ export function assertProductionSecrets() {
 
   const turnstileSecret = process.env.TURNSTILE_SECRET_KEY?.trim();
   const turnstileSite = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
-  const requireCaptcha =
-    process.env.REQUIRE_PUBLIC_BOOK_CAPTCHA?.trim() === "1";
   const allowNoCaptcha =
     process.env.ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA?.trim() === "1";
+  // Production requires Turnstile unless explicitly opted out for emergency.
   if (!turnstileSecret || !turnstileSite) {
     const msg =
       "[treow] TURNSTILE_SECRET_KEY / NEXT_PUBLIC_TURNSTILE_SITE_KEY unset — public booking captcha is skipped.";
-    if (requireCaptcha && !allowNoCaptcha) {
+    if (!allowNoCaptcha) {
       throw new Error(
         `${msg} Set the Turnstile keys, or ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA=1.`,
       );
