@@ -16,12 +16,15 @@ describe("patient lifecycle emails", () => {
       serviceName: "Follow-up",
       whenLabel: "Monday 20 October 2026 at 10:00",
       bookAgainUrl: "https://app.example/book/nguyen",
+      prefsUrl: "https://app.example/book/email-prefs/tok",
     });
     assert.match(mail.subject, /Thank you/);
     assert.match(mail.text, /Sam/);
     assert.match(mail.text, /Book online/);
+    assert.match(mail.text, /Manage preferences/);
     assert.match(mail.html, /Book again/);
     assert.match(mail.html, /https:\/\/app\.example\/book\/nguyen/);
+    assert.match(mail.html, /Unsubscribe or manage preferences/);
   });
 
   it("builds review request with review URL", () => {
@@ -30,10 +33,13 @@ describe("patient lifecycle emails", () => {
       patientFirstName: "Sam",
       practitionerName: "Alex",
       reviewUrl: "https://g.page/r/example",
+      prefsUrl: "https://app.example/book/email-prefs/tok",
     });
     assert.match(mail.subject, /How was your visit/);
     assert.match(mail.text, /https:\/\/g\.page\/r\/example/);
+    assert.match(mail.text, /Manage preferences/);
     assert.match(mail.html, /Leave a review/);
+    assert.match(mail.html, /Unsubscribe or manage preferences/);
   });
 
   it("builds no-show follow-up", () => {

@@ -1,7 +1,7 @@
-# Hourly patient jobs for Vercel Hobby (sub-daily Vercel cron needs Pro).
+# Hourly patient jobs for Cloudflare Worker (Vercel Hobby cannot run sub-daily cron).
 # Requires repo secrets:
-#   CRON_SECRET  — same as Vercel production CRON_SECRET
-#   APP_BASE_URL — optional, defaults to Cloudflare Worker URL
+#   CRON_SECRET  — must match Worker secret CRON_SECRET (≥24 chars)
+#   APP_BASE_URL — optional; blank/unset defaults to the Worker URL below
 name: Cron jobs
 
 on:
@@ -36,14 +36,33 @@ jobs:
           set -euo pipefail
           if [[ -z "${CRON_SECRET:-}" ]]; then
             echo "Missing repo secret CRON_SECRET — add it under Settings → Secrets → Actions" >&2
+            echo "It must match the Worker secret CRON_SECRET (wrangler secret put CRON_SECRET)." >&2
             exit 1
           fi
-          BASE="${APP_BASE_URL:-https://treow-clinic.duydichdanh.workers.dev}"
+          # Trim; treat blank APP_BASE_URL as unset (GitHub may inject empty string).
+          BASE="$(echo -n "${APP_BASE_URL:-}" | tr -d '[:space:]')"
+          if [[ -z "$BASE" ]]; then
+            BASE="https://treow-clinic.duydichdanh.workers.dev"
+          fi
           BASE="${BASE%/}"
+          echo "Cron target host: ${BASE}"
           hit() {
             local path="$1"
-            echo "GET $path"
-            curl -sS -f -H "Authorization: Bearer ${CRON_SECRET}" "${BASE}${path}"
+            echo "GET ${BASE}${path}"
+            local code
+            code=$(curl -sS -o /tmp/cron-body.txt -w "%{http_code}" \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              "${BASE}${path}" || true)
+            echo "HTTP ${code}"
+            if [[ "$code" != "200" ]]; then
+              head -c 400 /tmp/cron-body.txt || true
+              echo
+              if [[ "$code" == "401" || "$code" == "403" ]]; then
+                echo "Auth failed — GitHub Actions CRON_SECRET does not match Worker CRON_SECRET." >&2
+              fi
+              exit 1
+            fi
+            head -c 500 /tmp/cron-body.txt || true
             echo
           }
           # schedule cron strings from `on.schedule`

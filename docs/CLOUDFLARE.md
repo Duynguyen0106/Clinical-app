@@ -41,9 +41,22 @@ npx wrangler secret put S3_ACCESS_KEY
 npx wrangler secret put S3_SECRET_KEY
 npx wrangler secret put S3_ENDPOINT
 npx wrangler secret put S3_REGION
+
+# Turnstile (public book / forgot-password). Site key is also needed at *build* time:
+#   export NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x…
+npx wrangler secret put TURNSTILE_SECRET_KEY
+npx wrangler secret put NEXT_PUBLIC_TURNSTILE_SITE_KEY
+# Then delete the temporary bypass if present:
+#   npx wrangler secret delete ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA
+
+# Optional shared rate limits (multi-isolate). Without these, backend stays in-memory.
+# npx wrangler secret put UPSTASH_REDIS_REST_URL
+# npx wrangler secret put UPSTASH_REDIS_REST_TOKEN
 ```
 
 Non-secret vars are in [`web/wrangler.jsonc`](../web/wrangler.jsonc) (`CLOUDFLARE_WORKERS`, `USE_NEON_ADAPTER`, `NODE_ENV`).
+
+**Cron auth:** GitHub Actions secret `CRON_SECRET` must match the Worker secret `CRON_SECRET`. The workflow [`.github/workflows/cron-jobs.yml`](../.github/workflows/cron-jobs.yml) defaults a blank `APP_BASE_URL` to `https://treow-clinic.duydichdanh.workers.dev` and prints the host + clearer 401 hints.
 
 ## Deploy
 

@@ -20,6 +20,7 @@ export const AbuseLimits = {
   publicManageIp: { limit: 40, windowMs: 15 * MIN } satisfies RateLimitOpts,
   publicIntakeIp: { limit: 40, windowMs: 15 * MIN } satisfies RateLimitOpts,
   publicWaitlistIp: { limit: 30, windowMs: 15 * MIN } satisfies RateLimitOpts,
+  publicEmailPrefsIp: { limit: 40, windowMs: 15 * MIN } satisfies RateLimitOpts,
   publicDepositIp: { limit: 20, windowMs: 15 * MIN } satisfies RateLimitOpts,
   publicSlotsIp: { limit: 90, windowMs: MIN } satisfies RateLimitOpts,
   publicClinicGetIp: { limit: 120, windowMs: MIN } satisfies RateLimitOpts,
@@ -125,6 +126,14 @@ export async function enforcePublicWaitlistLimits(req: Request) {
     `public:waitlist:ip:${clientIp(req)}`,
     AbuseLimits.publicWaitlistIp,
     "Too many waitlist actions. Try again shortly.",
+  );
+}
+
+export async function enforcePublicEmailPrefsLimits(req: Request) {
+  await enforceKey(
+    `public:email-prefs:ip:${clientIp(req)}`,
+    AbuseLimits.publicEmailPrefsIp,
+    "Too many preference requests. Try again shortly.",
   );
 }
 

@@ -39,6 +39,16 @@ function wrapHtml(clinicName: string, title: string, bodyHtml: string) {
 </html>`;
 }
 
+function prefsFooterText(prefsUrl?: string | null) {
+  if (!prefsUrl) return null;
+  return `Prefer fewer emails? Manage preferences:\n${prefsUrl}`;
+}
+
+function prefsFooterHtml(prefsUrl?: string | null) {
+  if (!prefsUrl) return "";
+  return `<p style="margin:22px 0 0;color:#7a8782;font-size:12px;font-family:system-ui,-apple-system,sans-serif;">Prefer fewer emails? <a href="${escapeHtml(prefsUrl)}" style="color:#5b6b66;">Unsubscribe or manage preferences</a></p>`;
+}
+
 export type ThankYouEmailInput = {
   clinicName: string;
   clinicPhone?: string | null;
@@ -47,6 +57,7 @@ export type ThankYouEmailInput = {
   serviceName: string;
   whenLabel: string;
   bookAgainUrl?: string | null;
+  prefsUrl?: string | null;
 };
 
 export function buildThankYouEmail(input: ThankYouEmailInput) {
@@ -62,6 +73,7 @@ export function buildThankYouEmail(input: ThankYouEmailInput) {
       : null,
     input.clinicPhone ? `Or call us on ${input.clinicPhone}.` : null,
     "",
+    prefsFooterText(input.prefsUrl),
     `— ${input.clinicName}`,
   ].filter((line): line is string => line !== null);
 
@@ -75,7 +87,8 @@ export function buildThankYouEmail(input: ThankYouEmailInput) {
     `<p style="margin:0;">Hi ${escapeHtml(input.patientFirstName)},</p>
      <p style="margin:12px 0 0;">Thank you for coming in to see ${escapeHtml(input.practitionerName)} for your ${escapeHtml(input.serviceName)}. We hope you're feeling better after your visit on ${escapeHtml(input.whenLabel)}.</p>
      ${bookHtml}
-     <p style="margin:18px 0 0;color:#5b6b66;font-size:14px;">— ${escapeHtml(input.clinicName)}${input.clinicPhone ? ` · ${escapeHtml(input.clinicPhone)}` : ""}</p>`,
+     <p style="margin:18px 0 0;color:#5b6b66;font-size:14px;">— ${escapeHtml(input.clinicName)}${input.clinicPhone ? ` · ${escapeHtml(input.clinicPhone)}` : ""}</p>
+     ${prefsFooterHtml(input.prefsUrl)}`,
   );
 
   return { subject, text: lines.join("\n"), html };
@@ -86,6 +99,7 @@ export type ReviewRequestEmailInput = {
   patientFirstName: string;
   practitionerName: string;
   reviewUrl: string;
+  prefsUrl?: string | null;
 };
 
 export function buildReviewRequestEmail(input: ReviewRequestEmailInput) {
@@ -99,8 +113,9 @@ export function buildReviewRequestEmail(input: ReviewRequestEmailInput) {
     "Leave a review:",
     input.reviewUrl,
     "",
+    prefsFooterText(input.prefsUrl),
     `Thank you — ${input.clinicName}`,
-  ];
+  ].filter((line): line is string => line !== null);
 
   const html = wrapHtml(
     input.clinicName,
@@ -108,7 +123,8 @@ export function buildReviewRequestEmail(input: ReviewRequestEmailInput) {
     `<p style="margin:0;">Hi ${escapeHtml(input.patientFirstName)},</p>
      <p style="margin:12px 0 0;">If you have a moment, we'd love a short review of your recent visit with ${escapeHtml(input.practitionerName)}. It helps other patients find us.</p>
      <p style="margin:18px 0 0;"><a href="${escapeHtml(input.reviewUrl)}" style="display:inline-block;background:#1E3F37;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-family:system-ui,-apple-system,sans-serif;font-size:14px;font-weight:600;">Leave a review</a></p>
-     <p style="margin:18px 0 0;color:#5b6b66;font-size:14px;">Thank you — ${escapeHtml(input.clinicName)}</p>`,
+     <p style="margin:18px 0 0;color:#5b6b66;font-size:14px;">Thank you — ${escapeHtml(input.clinicName)}</p>
+     ${prefsFooterHtml(input.prefsUrl)}`,
   );
 
   return { subject, text: lines.join("\n"), html };
