@@ -18,9 +18,11 @@ import {
 import { withClinicTransaction } from "@/server/clinic-rls";
 import { assertOwnsDiaryOrOwner } from "@/server/rbac";
 import { withSerializableRetry } from "@/server/serializable-retry";
+import { emptyContentFromTemplateSchema } from "@/modules/notes/templates";
 
 export { hashNoteContent } from "@/modules/notes/hash";
 export { assertNoteDiaryAccess } from "@/modules/notes/access";
+export { emptyContentFromTemplateSchema } from "@/modules/notes/templates";
 
 export async function listNoteTemplates(ctx: AuthContext) {
   // Idempotent: ensure older clinic templates include a body chart section
@@ -455,6 +457,110 @@ export async function createDraftFromAi(
         },
       },
     });
+  });
+}
+
+/**
+ * Blank typed draft for a visit — no recording / AI organise required.
+ * Idempotent: returns an existing visit DRAFT unchanged (never wipes AI content).
+ */
+export async function createManualDraft(
+  ctx: AuthContext,
+  args: {
+    patientId: string;
+    visitId: string;
+    templateId?: string;
+  },
+) {
+  await ensureBodyMapSectionsOnTemplates(ctx.clinicId);
+
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    const visit = await tx.visit.findFirst({
+      where: {
+        id: args.visitId,
+        appointment: { clinicId: ctx.clinicId },
+      },
+      include: {
+        appointment: {
+          select: { practitionerId: true, patientId: true },
+        },
+      },
+    });
+    if (!visit) throw notFound("Visit not found");
+    if (visit.appointment.patientId !== args.patientId) {
+      throw badRequest("Visit does not belong to this patient");
+    }
+    assertOwnsDiaryOrOwner(ctx, visit.appointment.practitionerId);
+
+    const existing = await tx.clinicalNote.findFirst({
+      where: {
+        visitId: args.visitId,
+        status: NoteStatus.DRAFT,
+        patient: { clinicId: ctx.clinicId },
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        template: { select: { id: true, name: true, schema: true } },
+      },
+    });
+    if (existing) return existing;
+
+    let templateId = args.templateId;
+    let template =
+      templateId
+        ? await tx.noteTemplate.findFirst({
+            where: { id: templateId, clinicId: ctx.clinicId },
+            select: { id: true, name: true, schema: true },
+          })
+        : null;
+    if (!template) {
+      template = await tx.noteTemplate.findFirst({
+        where: { clinicId: ctx.clinicId, isDefault: true },
+        select: { id: true, name: true, schema: true },
+      });
+      if (!template) {
+        template = await tx.noteTemplate.findFirst({
+          where: { clinicId: ctx.clinicId },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, schema: true },
+        });
+      }
+      templateId = template?.id;
+    }
+    if (!template) {
+      throw badRequest("No note template configured for this clinic");
+    }
+
+    const content = sanitizeNoteContent(
+      emptyContentFromTemplateSchema(template.schema),
+    );
+
+    const created = await tx.clinicalNote.create({
+      data: {
+        patientId: args.patientId,
+        visitId: args.visitId,
+        templateId: template.id,
+        status: NoteStatus.DRAFT,
+        source: "manual",
+        content: content as Prisma.InputJsonValue,
+        audits: {
+          create: {
+            actorId: ctx.userId,
+            action: "created",
+            meta: { source: "manual" },
+          },
+        },
+      },
+    });
+
+    return {
+      ...created,
+      template: {
+        id: template.id,
+        name: template.name,
+        schema: template.schema,
+      },
+    };
   });
 }
 
