@@ -240,34 +240,17 @@ export async function getAppointment(ctx: AuthContext, id: string) {
   });
   if (!appointment) throw notFound("Appointment not found");
 
+  // Practitioners: own diary only (match listAppointments). Hide peer rows as 404.
+  if (
+    ctx.role === "PRACTITIONER" &&
+    ctx.practitionerProfileId !== appointment.practitionerId
+  ) {
+    throw notFound("Appointment not found");
+  }
+
   const ownDiary = canSeeVisitClinicalMeta(ctx, appointment.practitionerId);
   let scoped = appointment;
-  // Peer diary practitioner: strip clinical visit meta + patient contact / alerts
-  if (ctx.role === "PRACTITIONER" && !ownDiary) {
-    scoped = {
-      ...appointment,
-      notes: null,
-      patient: {
-        ...appointment.patient,
-        email: null,
-        phone: null,
-        alerts: null,
-        dateOfBirth: null,
-        gpName: null,
-        gpPractice: null,
-        gpEmail: null,
-        nhsNumber: null,
-      },
-      visit: appointment.visit
-        ? {
-            ...appointment.visit,
-            notes: [],
-            recording: null,
-            recordingConsentAt: null,
-          }
-        : null,
-    };
-  } else if (appointment.visit && !ownDiary) {
+  if (appointment.visit && !ownDiary) {
     // Reception: strip note stubs + recording status (need-to-know)
     scoped = {
       ...appointment,

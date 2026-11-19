@@ -1,10 +1,29 @@
 import type { NextConfig } from "next";
 
+const frameDeny = [
+  {
+    key: "Content-Security-Policy",
+    value: "frame-ancestors 'none'",
+  },
+  {
+    key: "X-Frame-Options",
+    value: "DENY",
+  },
+] as const;
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
+      // Staff UI + auth + public book/manage — deny clickjacking.
+      // Do NOT apply a catch-all here: /embed must remain frameable and Next
+      // merges headers from every matching source.
+      { source: "/app/:path*", headers: [...frameDeny] },
+      { source: "/login", headers: [...frameDeny] },
+      { source: "/privacy", headers: [...frameDeny] },
+      { source: "/book/:path*", headers: [...frameDeny] },
+      { source: "/", headers: [...frameDeny] },
       {
-        // Allow clinic websites to iframe the embed booking UI
+        // Clinic websites iframe the embed booking UI
         source: "/embed/:path*",
         headers: [
           {
@@ -23,10 +42,29 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // Manage tokens in path/query — never leak via Referer
+        source: "/book/manage/:path*",
+        headers: [
+          {
+            key: "Referrer-Policy",
+            value: "no-referrer",
+          },
+        ],
+      },
+      {
+        source: "/book/waitlist/:path*",
+        headers: [
+          {
+            key: "Referrer-Policy",
+            value: "no-referrer",
+          },
+        ],
+      },
     ];
   },
 };
 
 export default nextConfig;
 
-import('@opennextjs/cloudflare').then(m => m.initOpenNextCloudflareForDev());
+import("@opennextjs/cloudflare").then((m) => m.initOpenNextCloudflareForDev());

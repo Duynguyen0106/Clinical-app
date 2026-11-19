@@ -10,7 +10,7 @@ import { z } from "zod";
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import { badRequest, conflict, forbidden, notFound } from "@/server/errors";
-import { getAppBaseUrl } from "@/server/env";
+import { getAppBaseUrl, getAuthSecret } from "@/server/env";
 import { listClinicSlots } from "./slots";
 import { publicSlotWindow } from "./public-slot-window";
 import { assertWithinAvailability } from "./availability";
@@ -23,7 +23,7 @@ const CANCEL_BUFFER_HOURS = 24;
 const FALLBACK_TTL_MS = MIN_TTL_MS;
 
 function manageSecret() {
-  return process.env.AUTH_SECRET ?? "treow-dev-secret-change-me";
+  return getAuthSecret();
 }
 
 function sealKey() {

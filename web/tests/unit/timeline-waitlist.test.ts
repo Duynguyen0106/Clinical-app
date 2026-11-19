@@ -69,10 +69,16 @@ describe("buildPatientTimeline", () => {
 });
 
 describe("waitlist offer token", () => {
-  it("round-trips entry id before expiry", () => {
+  it("round-trips entry id before expiry (sealed v2)", () => {
     const exp = Date.now() + 60_000;
     const token = createWaitlistOfferToken("entry_abc", exp);
+    assert.ok(token.startsWith("v2."));
+    assert.equal(token.includes("entry_abc"), false);
     const verified = verifyWaitlistOfferToken(token);
     assert.equal(verified.entryId, "entry_abc");
+  });
+
+  it("rejects legacy cleartext entryId.exp.sig tokens", () => {
+    assert.throws(() => verifyWaitlistOfferToken("entry_abc.9999999999999.fakesig"));
   });
 });
