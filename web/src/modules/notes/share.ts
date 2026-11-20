@@ -45,13 +45,23 @@ export async function shareNoteWithPatient(
   }
 
   const email = buildPatientCopyEmail(doc);
-  const result = await sendEmail({
-    to,
-    subject: email.subject,
-    text: email.text,
-    html: email.html,
-    replyTo: doc.clinic.email,
-  });
+  let result;
+  try {
+    result = await sendEmail({
+      to,
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
+      replyTo: doc.clinic.email,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Email send failed";
+    throw badRequest(
+      message.includes("Resend")
+        ? `Could not send email: ${message}`
+        : `Could not send email (${message})`,
+    );
+  }
 
   await prisma.noteAuditEvent.create({
     data: {
