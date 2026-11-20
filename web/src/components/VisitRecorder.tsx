@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Mic, Square, Check, AlertTriangle, RefreshCw } from "lucide-react";
+import { Mic, Square, Check, AlertTriangle, RefreshCw, PenLine } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
 import { PatientPrepPanel } from "@/components/PatientPrepPanel";
@@ -62,6 +62,7 @@ type VisitPayload = {
   notes: Array<{
     id: string;
     status: string;
+    source?: string | null;
     content: Record<string, unknown>;
     updatedAt?: string;
     parentNoteId?: string | null;
@@ -84,10 +85,12 @@ export function VisitRecorder({ visitId }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [visit, setVisit] = useState<VisitPayload | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
+  const [noteSource, setNoteSource] = useState<string | null>(null);
   const [content, setContent] = useState<Record<string, unknown>>({});
   const [flags, setFlags] = useState<string[]>([]);
   const [statusLine, setStatusLine] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [typeNoteBusy, setTypeNoteBusy] = useState(false);
   const [micHint, setMicHint] = useState<string | null>(null);
   const [recoverHint, setRecoverHint] = useState<string | null>(null);
   const [rebook, setRebook] = useState<{
@@ -137,9 +140,15 @@ export function VisitRecorder({ visitId }: Props) {
   function adoptNote(note: {
     id: string;
     updatedAt?: string | Date | null;
+    source?: string | null;
   }) {
     setNoteId(note.id);
     noteIdRef.current = note.id;
+    setNoteSource(
+      typeof note.source === "string" && note.source.trim()
+        ? note.source
+        : null,
+    );
     baseUpdatedAtRef.current =
       typeof note.updatedAt === "string"
         ? note.updatedAt
@@ -151,6 +160,7 @@ export function VisitRecorder({ visitId }: Props) {
   function clearAdoptedNote() {
     setNoteId(null);
     noteIdRef.current = null;
+    setNoteSource(null);
     baseUpdatedAtRef.current = null;
   }
 
@@ -591,6 +601,38 @@ export function VisitRecorder({ visitId }: Props) {
     setPhase("ready");
   }
 
+  async function startTypingNote() {
+    if (typeNoteBusy) return;
+    setTypeNoteBusy(true);
+    setError(null);
+    try {
+      const data = await api<{
+        note: {
+          id: string;
+          source?: string | null;
+          content: Record<string, unknown>;
+          updatedAt?: string;
+          template?: { id: string; name: string; schema: unknown } | null;
+        };
+      }>(`/visits/${visitId}/manual-note`, { method: "POST", body: "{}" });
+      adoptNote(data.note);
+      setContent(stringifyContent(data.note.content));
+      setFlags(asFlags(data.note.content));
+      applyTemplateMeta(data.note.template);
+      setPhase("review");
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Could not start a typed note",
+      );
+    } finally {
+      setTypeNoteBusy(false);
+    }
+  }
+
   const [signBusy, setSignBusy] = useState(false);
 
   async function signNote() {
@@ -802,13 +844,24 @@ export function VisitRecorder({ visitId }: Props) {
               </p>
               {micHint ? <p className="form-error">{micHint}</p> : null}
               {phase === "ready" ? (
-                <button
-                  type="button"
-                  className="btn-primary record-btn"
-                  onClick={() => void startRecording()}
-                >
-                  <Mic size={18} aria-hidden /> Start recording
-                </button>
+                <div className="apt-actions" style={{ marginTop: "0.75rem" }}>
+                  <button
+                    type="button"
+                    className="btn-primary record-btn"
+                    onClick={() => void startRecording()}
+                  >
+                    <Mic size={18} aria-hidden /> Start recording
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary record-btn"
+                    disabled={typeNoteBusy}
+                    onClick={() => void startTypingNote()}
+                  >
+                    <PenLine size={16} aria-hidden />{" "}
+                    {typeNoteBusy ? "Opening note…" : "Type note"}
+                  </button>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -1054,7 +1107,11 @@ export function VisitRecorder({ visitId }: Props) {
           <div className="note-panel-head">
             <h3>Clinical note{templateName ? ` · ${templateName}` : ""}</h3>
             {phase === "review" && (
-              <span className="badge-draft">AI draft — review required</span>
+              <span className="badge-draft">
+                {noteSource === "manual"
+                  ? "Draft — review required"
+                  : "AI draft — review required"}
+              </span>
             )}
             {phase === "signed" && <span className="badge-signed">Signed</span>}
           </div>
@@ -1062,8 +1119,8 @@ export function VisitRecorder({ visitId }: Props) {
           {fields.length === 0 && phase !== "review" && phase !== "signed" ? (
             <div className="note-placeholder">
               <p>
-                After you stop recording, Treow organises a note from your clinic
-                template. You review and sign.
+                Record the visit for an AI draft, or choose Type note to write
+                from your clinic template. You review and sign either way.
               </p>
             </div>
           ) : null}
