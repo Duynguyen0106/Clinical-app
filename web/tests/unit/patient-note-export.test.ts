@@ -167,3 +167,56 @@ describe("shareNoteWithPatient guards", () => {
     }
   });
 });
+
+/** Mirrors resolvePractitionerLetterhead preference order (pure). */
+function pickPractitionerLetterhead(args: {
+  visitPractitioner: {
+    displayName: string;
+    professionalTitle: string | null;
+    registrationBody: string | null;
+    registrationNumber: string | null;
+  } | null;
+  signerProfile: {
+    displayName: string;
+    professionalTitle: string | null;
+    registrationBody: string | null;
+    registrationNumber: string | null;
+  } | null;
+}) {
+  return args.visitPractitioner ?? args.signerProfile ?? null;
+}
+
+describe("practitioner letterhead for patient_copy", () => {
+  it("uses visit practitioner when present", () => {
+    const picked = pickPractitionerLetterhead({
+      visitPractitioner: {
+        displayName: "Visit Clinician",
+        professionalTitle: "Osteopath",
+        registrationBody: "GOsC",
+        registrationNumber: "111",
+      },
+      signerProfile: {
+        displayName: "Signer",
+        professionalTitle: null,
+        registrationBody: null,
+        registrationNumber: null,
+      },
+    });
+    assert.equal(picked?.displayName, "Visit Clinician");
+    assert.equal(picked?.registrationNumber, "111");
+  });
+
+  it("falls back to signer profile for visit-less notes", () => {
+    const picked = pickPractitionerLetterhead({
+      visitPractitioner: null,
+      signerProfile: {
+        displayName: "Austin Nguyen",
+        professionalTitle: "Osteopath",
+        registrationBody: "GOsC",
+        registrationNumber: "1234",
+      },
+    });
+    assert.equal(picked?.displayName, "Austin Nguyen");
+    assert.equal(picked?.registrationBody, "GOsC");
+  });
+});
