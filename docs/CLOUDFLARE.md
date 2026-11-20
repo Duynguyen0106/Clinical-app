@@ -11,16 +11,20 @@ Prisma client is generated with `runtime = "cloudflare"` so Workers do not compi
 
 1. Cloudflare account API token with Workers Scripts Edit + Account read  
 2. **Neon** `DATABASE_URL` (Europe) — Workers cannot use TCP `pg` pools; the app uses `@prisma/adapter-neon` **WebSocket** mode (`PrismaNeon`) for `neon.tech` URLs / `CLOUDFLARE_WORKERS=1`. Do not use `PrismaNeonHttp` — booking and other paths need `$transaction`.  
-3. **Enable R2** in the Cloudflare dashboard (Account → R2) — one-time ToS click.
-   API returns error `10042` until this is done. Then create:
+3. **Enable R2** (subscribe to R2 if needed), then create:
    - `treow-clinic-cache` — OpenNext incremental cache (optional but recommended)
-   - `treow-clinic-media` — encrypted visit audio (S3-compatible), prefer EU jurisdiction
-4. R2 API token → set as `S3_ACCESS_KEY` / `S3_SECRET_KEY` with:
+   - `treow-clinic-media` — encrypted visit audio (S3-compatible)
+4. R2 Account API token → derive S3 credentials (`Access Key ID` = token `id`,
+   `Secret Access Key` = SHA-256 hex of token `value`) and set Worker secrets:
    - `S3_BUCKET=treow-clinic-media`
    - `S3_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com`
    - `S3_REGION=auto`
+   - `S3_ACCESS_KEY` / `S3_SECRET_KEY`
 5. Confirm recording works: `APP_BASE_URL=… PILOT_EMAIL=… PILOT_PASSWORD=… npx tsx scripts/pilot-visit-smoke.ts`
    (without S3_* the script reports `recordingBlocked` and stops before organise/sign).
+
+**Status (2026-11-20):** Bucket `treow-clinic-media` exists; Worker `treow-clinic` has
+`S3_BUCKET` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_ENDPOINT` / `S3_REGION` set.
 
 ## One-time secrets
 
