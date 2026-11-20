@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Printer, FileText, X } from "lucide-react";
+import { Printer, FileText, X, Share2, Mail } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type {
   BodyChartCustomView,
@@ -52,6 +52,32 @@ type ClinicalDocument = {
   printedAt: string;
 };
 
+type PatientCopyDocument = {
+  kind: "patient_copy";
+  noteId: string;
+  reference: string;
+  signedAt: string | null;
+  signedByName: string | null;
+  clinic: LetterheadClinic;
+  patient: {
+    fullName: string;
+    dateOfBirth: string | null;
+    email: string | null;
+    phone: string | null;
+    nhsNumber: string | null;
+  };
+  practitioner: LetterheadPractitioner | null;
+  locationName: string | null;
+  locationAddress: string | null;
+  serviceName: string | null;
+  appointmentStartsAt: string | null;
+  templateName: string | null;
+  sections: { key: string; label: string; value: string }[];
+  bodyMap?: BodyMapContent | null;
+  bodyChartCustomViews?: BodyChartCustomView[];
+  printedAt: string;
+};
+
 type GpLetterDocument = {
   kind: "gp_letter";
   noteId: string;
@@ -75,7 +101,8 @@ type GpLetterDocument = {
   printedAt: string;
 };
 
-type Doc = ClinicalDocument | GpLetterDocument;
+type Doc = ClinicalDocument | GpLetterDocument | PatientCopyDocument;
+type DocKind = "clinical_note" | "gp_letter" | "patient_copy";
 
 type Props = {
   noteId: string;
@@ -159,25 +186,30 @@ function ClinicLetterhead({
 
 export function NotePrintActions({ noteId, compact = false }: Props) {
   const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<"clinical_note" | "gp_letter">(
-    "clinical_note",
-  );
+  const [kind, setKind] = useState<DocKind>("clinical_note");
   const [doc, setDoc] = useState<Doc | null>(null);
   const [letterBody, setLetterBody] = useState("");
   const [letterSubject, setLetterSubject] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [shareTo, setShareTo] = useState("");
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setBusy(true);
     setError(null);
+    setShareMsg(null);
     void api<{ document: Doc }>(`/notes/${noteId}/document?kind=${kind}`)
       .then((d) => {
         setDoc(d.document);
         if (d.document.kind === "gp_letter") {
           setLetterBody(d.document.body);
           setLetterSubject(d.document.subject);
+        }
+        if (d.document.kind === "patient_copy") {
+          setShareTo(d.document.patient.email ?? "");
         }
       })
       .catch((e: Error) =>
@@ -186,10 +218,53 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
       .finally(() => setBusy(false));
   }, [open, noteId, kind]);
 
-  function openKind(next: "clinical_note" | "gp_letter") {
+  function openKind(next: DocKind) {
     setKind(next);
+    setDoc(null);
     setOpen(true);
   }
+
+  async function emailPatientCopy() {
+    if (shareBusy) return;
+    const to = shareTo.trim();
+    if (!to) {
+      setError("Enter an email address to share with the patient");
+      return;
+    }
+    setShareBusy(true);
+    setError(null);
+    setShareMsg(null);
+    try {
+      const data = await api<{
+        share: { to: string; delivered: boolean; reference: string };
+      }>(`/notes/${noteId}/share`, {
+        method: "POST",
+        body: JSON.stringify({ channel: "email", to }),
+      });
+      setShareMsg(
+        data.share.delivered
+          ? `Sent to ${data.share.to}`
+          : `Queued for ${data.share.to} (console provider)`,
+      );
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Could not email patient copy",
+      );
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  const dialogLabel =
+    kind === "gp_letter"
+      ? "GP letter"
+      : kind === "patient_copy"
+        ? "Patient copy"
+        : "Clinical note";
 
   return (
     <>
@@ -200,6 +275,13 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
           onClick={() => openKind("clinical_note")}
         >
           <Printer size={16} aria-hidden /> Print note
+        </button>
+        <button
+          type="button"
+          className={compact ? "btn-ghost btn-sm" : "btn-secondary"}
+          onClick={() => openKind("patient_copy")}
+        >
+          <Share2 size={16} aria-hidden /> Share with patient
         </button>
         <button
           type="button"
@@ -216,7 +298,7 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
             className="doc-modal"
             role="dialog"
             aria-modal="true"
-            aria-label={kind === "gp_letter" ? "GP letter" : "Clinical note"}
+            aria-label={dialogLabel}
           >
             <div className="doc-modal-toolbar no-print">
               <div className="view-toggle" role="group">
@@ -226,6 +308,13 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
                   onClick={() => setKind("clinical_note")}
                 >
                   Clinical note
+                </button>
+                <button
+                  type="button"
+                  className={`btn-sm ${kind === "patient_copy" ? "btn-secondary" : "btn-ghost"}`}
+                  onClick={() => setKind("patient_copy")}
+                >
+                  Patient copy
                 </button>
                 <button
                   type="button"
@@ -255,6 +344,37 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
               </div>
             </div>
 
+            {kind === "patient_copy" ? (
+              <div className="no-print" style={{ marginBottom: "0.75rem" }}>
+                <label className="note-field">
+                  <span>Email patient copy to</span>
+                  <input
+                    type="email"
+                    value={shareTo}
+                    onChange={(e) => setShareTo(e.target.value)}
+                    placeholder="patient@example.com"
+                    autoComplete="email"
+                  />
+                </label>
+                <div className="apt-actions" style={{ marginTop: "0.5rem" }}>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    disabled={!doc || busy || shareBusy || !shareTo.trim()}
+                    onClick={() => void emailPatientCopy()}
+                  >
+                    <Mail size={14} aria-hidden />{" "}
+                    {shareBusy ? "Sending…" : "Email patient"}
+                  </button>
+                </div>
+                {shareMsg ? (
+                  <p className="muted" role="status">
+                    {shareMsg}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {error ? <p className="form-error no-print">{error}</p> : null}
             {busy && !doc ? (
               <p className="muted no-print">Preparing document…</p>
@@ -263,7 +383,12 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
             {doc ? (
               <div className="print-document">
                 {doc.kind === "clinical_note" ? (
-                  <ClinicalNotePrint doc={doc} />
+                  <ClinicalNotePrint doc={doc} title="Clinical note" />
+                ) : doc.kind === "patient_copy" ? (
+                  <ClinicalNotePrint
+                    doc={doc}
+                    title="Visit summary for patient"
+                  />
                 ) : (
                   <GpLetterPrint
                     doc={doc}
@@ -282,12 +407,18 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
   );
 }
 
-function ClinicalNotePrint({ doc }: { doc: ClinicalDocument }) {
+function ClinicalNotePrint({
+  doc,
+  title,
+}: {
+  doc: ClinicalDocument | PatientCopyDocument;
+  title: string;
+}) {
   const reg = registrationLine(doc.practitioner);
   return (
     <article className="print-sheet">
       <ClinicLetterhead clinic={doc.clinic} reference={doc.reference} />
-      <h1>Clinical note</h1>
+      <h1>{title}</h1>
       <p className="print-meta">
         {doc.templateName ?? "Consultation"} · Signed{" "}
         {formatDateTime(doc.signedAt)}
