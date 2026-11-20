@@ -18,6 +18,10 @@ import {
 import { withClinicTransaction } from "@/server/clinic-rls";
 import { assertOwnsDiaryOrOwner } from "@/server/rbac";
 import { withSerializableRetry } from "@/server/serializable-retry";
+import {
+  MSK_TEMPLATE_PACK,
+  packTemplateByName,
+} from "@/modules/notes/templates";
 
 export { hashNoteContent } from "@/modules/notes/hash";
 export { assertNoteDiaryAccess } from "@/modules/notes/access";
@@ -25,9 +29,40 @@ export { assertNoteDiaryAccess } from "@/modules/notes/access";
 export async function listNoteTemplates(ctx: AuthContext) {
   // Idempotent: ensure older clinic templates include a body chart section
   await ensureBodyMapSectionsOnTemplates(ctx.clinicId);
+  // Refresh pack templates (by name) so clinics pick up richer section prompts
+  await syncPackTemplateSchemas(ctx.clinicId);
   return prisma.noteTemplate.findMany({
     where: { clinicId: ctx.clinicId },
     orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+  });
+}
+
+/**
+ * Update clinic templates that match MSK pack names to the latest detailed schema.
+ * Leaves custom-named templates untouched; does not flip isDefault.
+ */
+export async function syncPackTemplateSchemas(clinicId: string) {
+  const existing = await prisma.noteTemplate.findMany({
+    where: { clinicId },
+    select: { id: true, name: true, schema: true },
+  });
+  const updates: { id: string; schema: { sections: unknown[] } }[] = [];
+  for (const row of existing) {
+    const pack = packTemplateByName(row.name);
+    if (!pack) continue;
+    const nextSchema = { sections: pack.sections };
+    if (JSON.stringify(row.schema) === JSON.stringify(nextSchema)) continue;
+    updates.push({ id: row.id, schema: nextSchema });
+  }
+  if (updates.length === 0) return;
+
+  await withClinicTransaction(clinicId, async (tx) => {
+    for (const u of updates) {
+      await tx.noteTemplate.update({
+        where: { id: u.id },
+        data: { schema: u.schema as Prisma.InputJsonValue },
+      });
+    }
   });
 }
 

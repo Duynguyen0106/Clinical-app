@@ -34,6 +34,9 @@ describe("mapSoapToTemplateSections", () => {
     assert.match(String(out.presentation), /Presenting complaint/);
     assert.match(String(out.findings), /Examination findings/);
     assert.match(String(out.treatment), /Treatment today/);
+    assert.match(String(out.history), /Case history/i);
+    assert.match(String(out.response), /Patient response/);
+    assert.equal(out.assessment, soap.assessment);
     assert.equal(out.plan, soap.plan);
   });
 

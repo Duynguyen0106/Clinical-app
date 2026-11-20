@@ -68,12 +68,20 @@ function mapSection(soap: SoapNoteContent, id: string): string | null {
         "Presenting complaint:",
         soap.subjective,
       ].join(" ");
+    case "history":
+      return [
+        "Case history (confirm / complete):",
+        "Past medical, medications, and previous treatment not fully captured in transcript — complete from patient record and today's history.",
+      ].join(" ");
+    case "past_medical":
+      return [
+        "Past medical / medications (confirm):",
+        "Complete PMH, medications, allergies, and investigations from today's history — not clearly itemised in transcript.",
+      ].join(" ");
     case "findings":
       return [
         "Examination findings:",
         soap.objective,
-        "Clinical impression:",
-        soap.assessment,
       ].join(" ");
     case "treatment":
       return [
@@ -92,6 +100,21 @@ function mapSection(soap: SoapNoteContent, id: string): string | null {
         "Patient response during / after techniques:",
         "Tolerated treatment; symptoms discussed as improved night pain with residual overhead irritability.",
         "Reassess response at next review.",
+      ].join(" ");
+    case "progress_since_last":
+      return [
+        "Progress since last visit:",
+        soap.subjective,
+      ].join(" ");
+    case "outcome_measures":
+      return [
+        "Outcome measures:",
+        "Record or update scores used for this episode (e.g. NPRS/VAS, PSFS) — not clearly stated in transcript.",
+      ].join(" ");
+    case "goals":
+      return [
+        "Goals & consent:",
+        "Confirm agreed functional goals and that informed consent for assessment/treatment was obtained.",
       ].join(" ");
     default:
       return null;
