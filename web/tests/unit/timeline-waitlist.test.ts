@@ -66,6 +66,26 @@ describe("buildPatientTimeline", () => {
     });
     assert.equal(items.length, 0);
   });
+
+  it("links visit-less notes to the chart page", () => {
+    const items = buildPatientTimeline({
+      includeNotes: true,
+      appointments: [],
+      notes: [
+        {
+          id: "n_standalone",
+          status: "DRAFT",
+          signedAt: null,
+          createdAt: new Date("2026-08-12T09:00:00Z"),
+          template: { name: "Osteo SOAP" },
+          visitId: null,
+        },
+      ],
+      invoices: [],
+    });
+    assert.equal(items.length, 1);
+    assert.equal(items[0].href, "/app/notes/n_standalone");
+  });
 });
 
 describe("waitlist offer token", () => {

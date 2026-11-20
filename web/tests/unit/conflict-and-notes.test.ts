@@ -146,3 +146,51 @@ describe("createManualDraft idempotency policy", () => {
     assert.equal(result.note?.content.subjective, "From organise");
   });
 });
+
+/** Mirrors createPatientManualDraft: visit-less, reuse own open draft only. */
+function resolvePatientManualDraftAction(
+  existingOwnVisitlessDraft: {
+    id: string;
+    source: string;
+    visitId: string | null;
+    content: Record<string, unknown>;
+  } | null,
+) {
+  if (existingOwnVisitlessDraft) {
+    return {
+      action: "reuse" as const,
+      note: existingOwnVisitlessDraft,
+      visitId: null as string | null,
+    };
+  }
+  return {
+    action: "create" as const,
+    source: "manual" as const,
+    visitId: null as string | null,
+    standalone: true as const,
+  };
+}
+
+describe("createPatientManualDraft policy", () => {
+  it("creates a visit-less manual draft when none exists", () => {
+    const result = resolvePatientManualDraftAction(null);
+    assert.equal(result.action, "create");
+    assert.equal(result.visitId, null);
+    assert.equal(result.standalone, true);
+  });
+
+  it("reuses the clinician's open visit-less draft", () => {
+    const existing = {
+      id: "note_p1",
+      source: "manual",
+      visitId: null,
+      content: { subjective: "phone follow-up" },
+    };
+    const first = resolvePatientManualDraftAction(existing);
+    const second = resolvePatientManualDraftAction(existing);
+    assert.equal(first.action, "reuse");
+    assert.equal(second.action, "reuse");
+    assert.equal(first.note?.id, second.note?.id);
+    assert.equal(second.note?.content.subjective, "phone follow-up");
+  });
+});

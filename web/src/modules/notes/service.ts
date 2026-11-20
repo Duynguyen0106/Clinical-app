@@ -347,6 +347,13 @@ export async function listNotes(
               },
               // Notes this user signed (covers another diary / addenda)
               { signedById: ctx.userId },
+              // Visit-less drafts this practitioner created from a patient profile
+              {
+                visitId: null,
+                audits: {
+                  some: { action: "created", actorId: ctx.userId },
+                },
+              },
             ],
           }
         : {}),
@@ -582,6 +589,116 @@ export async function createManualDraft(
             actorId: ctx.userId,
             action: "created",
             meta: { source: "manual" },
+          },
+        },
+      },
+    });
+
+    return {
+      ...created,
+      template: {
+        id: template.id,
+        name: template.name,
+        schema: template.schema,
+      },
+    };
+  });
+}
+
+/**
+ * Blank typed draft for a patient with no visit/appointment required.
+ * Idempotent per clinician: reuses their latest visit-less DRAFT for the patient.
+ */
+export async function createPatientManualDraft(
+  ctx: AuthContext,
+  args: {
+    patientId: string;
+    templateId?: string;
+  },
+) {
+  await ensureBodyMapSectionsOnTemplates(ctx.clinicId);
+
+  return withClinicTransaction(ctx.clinicId, async (tx) => {
+    const patient = await tx.patient.findFirst({
+      where: { id: args.patientId, clinicId: ctx.clinicId },
+      select: { id: true },
+    });
+    if (!patient) throw notFound("Patient not found");
+
+    // Practitioners may only chart patients who appear on their diary
+    if (ctx.role === "PRACTITIONER") {
+      if (!ctx.practitionerProfileId) throw notFound("Patient not found");
+      const onDiary = await tx.appointment.findFirst({
+        where: {
+          clinicId: ctx.clinicId,
+          patientId: args.patientId,
+          practitionerId: ctx.practitionerProfileId,
+        },
+        select: { id: true },
+      });
+      if (!onDiary) throw notFound("Patient not found");
+    }
+
+    const existing = await tx.clinicalNote.findFirst({
+      where: {
+        patientId: args.patientId,
+        visitId: null,
+        status: NoteStatus.DRAFT,
+        patient: { clinicId: ctx.clinicId },
+        audits: {
+          some: { action: "created", actorId: ctx.userId },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        template: { select: { id: true, name: true, schema: true } },
+      },
+    });
+    if (existing) return existing;
+
+    let templateId = args.templateId;
+    let template =
+      templateId
+        ? await tx.noteTemplate.findFirst({
+            where: { id: templateId, clinicId: ctx.clinicId },
+            select: { id: true, name: true, schema: true },
+          })
+        : null;
+    if (!template) {
+      template = await tx.noteTemplate.findFirst({
+        where: { clinicId: ctx.clinicId, isDefault: true },
+        select: { id: true, name: true, schema: true },
+      });
+      if (!template) {
+        template = await tx.noteTemplate.findFirst({
+          where: { clinicId: ctx.clinicId },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, schema: true },
+        });
+      }
+      templateId = template?.id;
+    }
+    if (!template) {
+      throw badRequest("No note template configured for this clinic");
+    }
+
+    const content = sanitizeNoteContent(
+      emptyContentFromTemplateSchema(template.schema),
+    );
+
+    const created = await tx.clinicalNote.create({
+      data: {
+        patientId: args.patientId,
+        visitId: null,
+        templateId: template.id,
+        status: NoteStatus.DRAFT,
+        source: "manual",
+        content: content as Prisma.InputJsonValue,
+        audits: {
+          create: {
+            actorId: ctx.userId,
+            action: "created",
+            meta: { source: "manual", standalone: true },
           },
         },
       },

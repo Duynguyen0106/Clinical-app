@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { api } from "@/lib/api";
 import { NotePrintActions } from "@/components/NotePrintActions";
@@ -88,12 +89,14 @@ export function PatientPrepPanel({
   privacyMode = "FULL_NAME",
   defaultCollapsed = false,
 }: Props) {
+  const router = useRouter();
   const [prep, setPrep] = useState<PatientPrep | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
   const [noteBodies, setNoteBodies] = useState<Record<string, NoteBody>>({});
   const [loadingBodyId, setLoadingBodyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creatingNote, setCreatingNote] = useState(false);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [nowMs] = useState(() => Date.now());
   const loadedBodies = useRef<Set<string>>(new Set());
@@ -194,6 +197,22 @@ export function PatientPrepPanel({
     }
     setExpandedNoteId(noteId);
     void loadNoteBody(noteId);
+  }
+
+  async function addStandaloneNote() {
+    if (creatingNote) return;
+    setCreatingNote(true);
+    setError(null);
+    try {
+      const result = await api<{ note: { id: string } }>(
+        `/patients/${patientId}/manual-note`,
+        { method: "POST", body: "{}" },
+      );
+      router.push(`/app/notes/${result.note.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create note");
+      setCreatingNote(false);
+    }
   }
 
   if (loading) {
@@ -343,7 +362,19 @@ export function PatientPrepPanel({
       </section>
 
       <section className="prep-section">
-        <h4>Previous notes</h4>
+        <div className="prep-section-heading">
+          <h4>Previous notes</h4>
+          {canViewNotes ? (
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              disabled={creatingNote}
+              onClick={() => void addStandaloneNote()}
+            >
+              {creatingNote ? "Opening…" : "Add note"}
+            </button>
+          ) : null}
+        </div>
         {!canViewNotes ? (
           <p className="muted">
             Clinical note history is restricted to practitioners and owners.
@@ -351,7 +382,10 @@ export function PatientPrepPanel({
         ) : signedNotes.length === 0 &&
           otherNotes.length === 0 &&
           voidedNotes.length === 0 ? (
-          <p className="muted">No clinical notes yet — first visit or notes unsigned.</p>
+          <p className="muted">
+            No clinical notes yet — add a note anytime, even without an
+            appointment.
+          </p>
         ) : (
           <ul className="prep-list">
             {[...signedNotes, ...otherNotes, ...voidedNotes]
@@ -409,7 +443,14 @@ export function PatientPrepPanel({
                         >
                           Open visit
                         </Link>
-                      ) : null}
+                      ) : (
+                        <Link
+                          href={`/app/notes/${n.id}`}
+                          className="btn-ghost btn-sm"
+                        >
+                          Open note
+                        </Link>
+                      )}
                     </div>
                   ) : null}
                 </li>
