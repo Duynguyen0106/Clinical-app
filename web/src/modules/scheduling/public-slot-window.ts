@@ -11,8 +11,9 @@ export function publicSlotWindow(args: {
   days?: number;
 }) {
   const days = Math.min(Math.max(args.days ?? args.maxAdvanceDays, 1), 90);
-  // ~8h open × 4 starts/hour ≈ 32; covers 09:00–17:00 at 15‑minute steps.
-  const maxPerDay = 32;
-  const limit = Math.min(Math.max(days * maxPerDay, 64), 960);
+  // ~11h open × 4 starts/hour ≈ 44; covers 09:00–20:00 at 15‑minute steps
+  // (30‑min services → last start 19:30). Cap slightly above that.
+  const maxPerDay = 48;
+  const limit = Math.min(Math.max(days * maxPerDay, 64), 1440);
   return { days, limit, maxPerDay };
 }

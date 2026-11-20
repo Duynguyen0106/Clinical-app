@@ -3,13 +3,14 @@ import { jsonOk } from "@/server/http";
 import {
   getClinicalDocument,
   getGpLetterDocument,
+  getPatientCopyDocument,
 } from "@/modules/notes/documents";
 import { badRequest } from "@/server/errors";
 import { requireClinician } from "@/server/rbac";
 
 /**
- * GET /notes/:id/document?kind=clinical_note|gp_letter
- * Printable packs for signed notes (clinician only).
+ * GET /notes/:id/document?kind=clinical_note|gp_letter|patient_copy
+ * Printable / shareable packs for signed notes (clinician only).
  */
 export const GET = withAuth(async (req, ctx, params) => {
   requireClinician(ctx);
@@ -22,5 +23,9 @@ export const GET = withAuth(async (req, ctx, params) => {
     const document = await getClinicalDocument(ctx, params.id);
     return jsonOk({ document });
   }
-  throw badRequest("kind must be clinical_note or gp_letter");
+  if (kind === "patient_copy") {
+    const document = await getPatientCopyDocument(ctx, params.id);
+    return jsonOk({ document });
+  }
+  throw badRequest("kind must be clinical_note, gp_letter, or patient_copy");
 });

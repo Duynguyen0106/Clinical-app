@@ -317,3 +317,33 @@ export function parseTemplateSections(schema: unknown): NoteSection[] {
 export function packTemplateByName(name: string): NoteTemplateDef | undefined {
   return MSK_TEMPLATE_PACK.find((t) => t.name === name);
 }
+
+/**
+ * Blank note body for a clinic template — empty markdown sections + empty body chart.
+ * Used by manual (typed) drafts so practitioners can write without recording.
+ */
+export function emptyContentFromTemplateSchema(
+  schema: unknown,
+): Record<string, unknown> {
+  const sections = parseTemplateSections(schema);
+  const content: Record<string, unknown> = {};
+  for (const section of sections) {
+    if (section.type === "body_map") {
+      content[BODY_MAP_CONTENT_KEY] = {
+        version: 1,
+        activeView: "posterior",
+        marks: [],
+      };
+      continue;
+    }
+    content[section.id] = "";
+  }
+  if (!content[BODY_MAP_CONTENT_KEY]) {
+    content[BODY_MAP_CONTENT_KEY] = {
+      version: 1,
+      activeView: "posterior",
+      marks: [],
+    };
+  }
+  return content;
+}
