@@ -219,6 +219,8 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
   }, [open, noteId, kind]);
 
   function openKind(next: DocKind) {
+    setError(null);
+    setShareMsg(null);
     setKind(next);
     setDoc(null);
     setOpen(true);
@@ -272,21 +274,33 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
         <button
           type="button"
           className={compact ? "btn-ghost btn-sm" : "btn-secondary"}
-          onClick={() => openKind("clinical_note")}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openKind("clinical_note");
+          }}
         >
           <Printer size={16} aria-hidden /> Print note
         </button>
         <button
           type="button"
           className={compact ? "btn-ghost btn-sm" : "btn-secondary"}
-          onClick={() => openKind("patient_copy")}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openKind("patient_copy");
+          }}
         >
           <Share2 size={16} aria-hidden /> Share with patient
         </button>
         <button
           type="button"
           className={compact ? "btn-ghost btn-sm" : "btn-secondary"}
-          onClick={() => openKind("gp_letter")}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openKind("gp_letter");
+          }}
         >
           <FileText size={16} aria-hidden /> GP letter
         </button>

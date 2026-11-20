@@ -206,6 +206,42 @@ function mapPractitioner(
   };
 }
 
+/**
+ * Prefer visit diary practitioner; for visit-less signed notes, fall back to
+ * the signer's clinic practitioner profile (letterhead credentials).
+ */
+export async function resolvePractitionerLetterhead(
+  clinicId: string,
+  args: {
+    visitPractitioner:
+      | {
+          displayName: string;
+          professionalTitle: string | null;
+          registrationBody: string | null;
+          registrationNumber: string | null;
+        }
+      | null
+      | undefined;
+    signedById: string | null;
+  },
+): Promise<LetterheadPractitioner | null> {
+  const fromVisit = mapPractitioner(args.visitPractitioner);
+  if (fromVisit) return fromVisit;
+  if (!args.signedById) return null;
+  const profile = await prisma.practitionerProfile.findFirst({
+    where: {
+      membership: { clinicId, userId: args.signedById },
+    },
+    select: {
+      displayName: true,
+      professionalTitle: true,
+      registrationBody: true,
+      registrationNumber: true,
+    },
+  });
+  return mapPractitioner(profile);
+}
+
 function composeLetterBody(args: {
   practitioner: LetterheadPractitioner;
   clinic: LetterheadClinic;
@@ -387,7 +423,10 @@ export async function getClinicalDocument(
   const bodyMap = parseBodyMap(note.content);
   const customViews = resolveCustomViewsForMap(bodyMap, clinicViews);
   const sections = flattenNoteSections(note.content, customViews);
-  const practitioner = mapPractitioner(note.visit?.appointment.practitioner);
+  const practitioner = await resolvePractitionerLetterhead(ctx.clinicId, {
+    visitPractitioner: note.visit?.appointment.practitioner,
+    signedById: note.signedById,
+  });
 
   await prisma.noteAuditEvent.create({
     data: {
@@ -453,7 +492,10 @@ export async function getGpLetterDocument(
   );
   const sections = flattenNoteSections(note.content, customViews);
   const practitioner =
-    mapPractitioner(note.visit?.appointment.practitioner) ?? {
+    (await resolvePractitionerLetterhead(ctx.clinicId, {
+      visitPractitioner: note.visit?.appointment.practitioner,
+      signedById: note.signedById,
+    })) ?? {
       displayName: "Treating clinician",
       professionalTitle: null,
       registrationBody: null,
@@ -537,7 +579,10 @@ export async function getPatientCopyDocument(
   const bodyMap = parseBodyMap(note.content);
   const customViews = resolveCustomViewsForMap(bodyMap, clinicViews);
   const sections = flattenNoteSections(note.content, customViews);
-  const practitioner = mapPractitioner(note.visit?.appointment.practitioner);
+  const practitioner = await resolvePractitionerLetterhead(ctx.clinicId, {
+    visitPractitioner: note.visit?.appointment.practitioner,
+    signedById: note.signedById,
+  });
 
   if (opts.audit !== false) {
     await prisma.noteAuditEvent.create({
