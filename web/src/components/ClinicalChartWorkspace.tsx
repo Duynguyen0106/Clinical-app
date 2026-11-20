@@ -46,9 +46,9 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = useRef(content);
   contentRef.current = content;
-  /** Monotonic save generation — stale in-flight PATCHes must not clobber UI. */
-  const saveSeq = useRef(0);
-  const saveAbort = useRef<AbortController | null>(null);
+  /** Coalesce autosaves: never abort in-flight PATCH (server still runs). */
+  const saveInFlight = useRef(false);
+  const saveQueued = useRef(false);
   const savePromiseRef = useRef<Promise<void> | null>(null);
   const signingRef = useRef(false);
   const baseUpdatedAtRef = useRef<string | null>(null);
@@ -124,50 +124,78 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
   }, []);
 
   const save = useCallback(
-    async (nextContent: Record<string, unknown>) => {
+    async (
+      nextContent: Record<string, unknown>,
+      opts: { quiet?: boolean } = {},
+    ) => {
       if (statusLocked || signingRef.current) return;
-      const seq = ++saveSeq.current;
-      saveAbort.current?.abort();
-      const ac = new AbortController();
-      saveAbort.current = ac;
+      // One in-flight PATCH at a time — queue latest content instead of aborting
+      // (aborted clients still leave the Worker transaction running → CF 1101).
+      if (saveInFlight.current) {
+        saveQueued.current = true;
+        contentRef.current = nextContent;
+        return;
+      }
+      saveInFlight.current = true;
       setSaving(true);
       setError(null);
+      // Autosave passes quiet:true; Save now / sign leave quiet unset (audited).
+      const quiet = opts.quiet === true;
       const run = (async () => {
         try {
-          const data = await api<{
-            note: { updatedAt?: string; content?: unknown };
-          }>(`/notes/${noteId}`, {
-            method: "PATCH",
-            body: JSON.stringify({
-              content: nextContent,
-              ...(baseUpdatedAtRef.current
-                ? { baseUpdatedAt: baseUpdatedAtRef.current }
-                : {}),
-            }),
-            signal: ac.signal,
-          });
-          if (seq !== saveSeq.current) return;
-          if (typeof data.note.updatedAt === "string") {
-            baseUpdatedAtRef.current = data.note.updatedAt;
-          }
-          if (data.note.content && typeof data.note.content === "object") {
-            mergeServerSnapshots(data.note.content);
-          }
-          if (contentRef.current === nextContent || !signingRef.current) {
-            // Clear dirty when we saved the latest local payload
-            if (
-              JSON.stringify(parseBodyMap(contentRef.current).marks) ===
-              JSON.stringify(parseBodyMap(nextContent).marks)
-            ) {
-              setDirty(false);
+          do {
+            saveQueued.current = false;
+            if (signingRef.current) break;
+            const payload = contentRef.current;
+            try {
+              const data = await api<{
+                note: { updatedAt?: string; content?: unknown };
+              }>(`/notes/${noteId}`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  content: payload,
+                  quiet,
+                  ...(baseUpdatedAtRef.current
+                    ? { baseUpdatedAt: baseUpdatedAtRef.current }
+                    : {}),
+                }),
+              });
+              if (typeof data.note.updatedAt === "string") {
+                baseUpdatedAtRef.current = data.note.updatedAt;
+              }
+              if (data.note.content && typeof data.note.content === "object") {
+                mergeServerSnapshots(data.note.content);
+              }
+              if (
+                JSON.stringify(parseBodyMap(contentRef.current).marks) ===
+                JSON.stringify(parseBodyMap(payload).marks)
+              ) {
+                setDirty(false);
+              }
+              setSavedAt(new Date().toISOString());
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : "Save failed";
+              // Stale OCC token after a queued retry — refresh and try once more
+              if (/modified elsewhere/i.test(msg) && !saveQueued.current) {
+                try {
+                  const fresh = await api<NotePayload>(`/notes/${noteId}`);
+                  if (typeof fresh.note.updatedAt === "string") {
+                    baseUpdatedAtRef.current = fresh.note.updatedAt;
+                  }
+                  saveQueued.current = true;
+                  continue;
+                } catch {
+                  /* fall through */
+                }
+              }
+              if (!saveQueued.current) {
+                setError(msg);
+              }
             }
-          }
-          setSavedAt(new Date().toISOString());
-        } catch (e) {
-          if (ac.signal.aborted || seq !== saveSeq.current) return;
-          setError(e instanceof Error ? e.message : "Save failed");
+          } while (saveQueued.current && !signingRef.current);
         } finally {
-          if (seq === saveSeq.current) setSaving(false);
+          saveInFlight.current = false;
+          setSaving(false);
         }
       })();
       savePromiseRef.current = run;
@@ -184,14 +212,13 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
       if (signingRef.current) return;
-      void save(contentRef.current);
-    }, 800);
+      void save(contentRef.current, { quiet: true });
+    }, 1200);
   }
 
   useEffect(() => {
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-      saveAbort.current?.abort();
     };
   }, []);
 
@@ -235,6 +262,7 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
             method: "PATCH",
             body: JSON.stringify({
               content: contentRef.current,
+              quiet: false,
               ...(baseUpdatedAtRef.current
                 ? { baseUpdatedAt: baseUpdatedAtRef.current }
                 : {}),
@@ -326,7 +354,9 @@ export function ClinicalChartWorkspace({ noteId }: Props) {
                 type="button"
                 className="btn-secondary btn-sm"
                 disabled={saving || signing}
-                onClick={() => void save(contentRef.current)}
+                onClick={() =>
+                  void save(contentRef.current, { quiet: false })
+                }
               >
                 {saving && !signing ? "Saving…" : "Save now"}
               </button>

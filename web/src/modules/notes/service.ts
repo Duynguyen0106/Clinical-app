@@ -737,6 +737,11 @@ export const updateNoteSchema = z.object({
     .string()
     .refine((s) => !Number.isNaN(Date.parse(s)), "Invalid baseUpdatedAt")
     .optional(),
+  /**
+   * Autosave: skip writing a NoteAuditEvent row per keystroke.
+   * Manual Save / Sign still audit via quiet:false (default).
+   */
+  quiet: z.boolean().optional(),
 });
 
 async function clinicCustomViewsForSnapshots(
@@ -764,7 +769,7 @@ export async function updateDraftNote(
   ctx: AuthContext,
   id: string,
   content: Record<string, unknown>,
-  opts: { baseUpdatedAt?: string } = {},
+  opts: { baseUpdatedAt?: string; quiet?: boolean } = {},
 ) {
   await assertNoteDiaryAccess(ctx, id);
 
@@ -815,14 +820,16 @@ export async function updateDraftNote(
       }
       throw badRequest("Only draft notes can be edited");
     }
-    await tx.noteAuditEvent.create({
-      data: {
-        noteId: id,
-        actorId: ctx.userId,
-        action: "updated",
-        meta: { hasBodyMap },
-      },
-    });
+    if (!opts.quiet) {
+      await tx.noteAuditEvent.create({
+        data: {
+          noteId: id,
+          actorId: ctx.userId,
+          action: "updated",
+          meta: { hasBodyMap },
+        },
+      });
+    }
     return tx.clinicalNote.findFirstOrThrow({
       where: { id, patient: { clinicId: ctx.clinicId } },
     });
