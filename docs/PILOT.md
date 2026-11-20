@@ -4,11 +4,13 @@ Goal: **5 real visits** at one UK clinic without critical privacy issues.
 
 ## Before day 1
 
-- [ ] Staging/production URL live; `/api/v1/health` = ok  
+- [ ] Staging/production URL live; `/api/v1/health` = ok (`cronConfigured`, `emailProvider=resend`, preferably `rateLimitBackend=upstash`)  
 - [ ] Owner + reception logins (change demo password on laptop)  
 - [ ] `AI_PROVIDER=mock`  
 - [ ] Privacy notice reviewed; retention set (e.g. 14 days)  
 - [ ] Partner signed a short pilot note (controller = clinic)  
+- [ ] Cloudflare **R2** enabled + Worker `S3_*` secrets (visit recording upload requires object storage on Workers)  
+- [ ] Optional automation smoke: `APP_BASE_URL=… PILOT_EMAIL=… PILOT_PASSWORD=… npx tsx scripts/pilot-visit-smoke.ts`
 
 ## Visit checklist (repeat ×5)
 

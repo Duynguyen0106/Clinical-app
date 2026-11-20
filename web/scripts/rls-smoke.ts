@@ -53,16 +53,29 @@ async function seedClinics(client: pg.Client) {
   await client.query("COMMIT");
 }
 
+/** Neon rejects weak role passwords; keep smoke password local-only. */
+const TREOW_APP_PASSWORD = "Treow_App_Smoke_9x!";
+
 async function ensureAppRole(owner: pg.Client) {
+  // Neon owner roles cannot ALTER SUPERUSER/BYPASSRLS attributes on existing roles.
+  // Create with hard attributes when missing; password-only rotate when present.
   await owner.query(`
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'treow_app') THEN
-        CREATE ROLE treow_app LOGIN PASSWORD 'treow_app' NOSUPERUSER NOBYPASSRLS;
+        CREATE ROLE treow_app LOGIN PASSWORD '${TREOW_APP_PASSWORD}' NOSUPERUSER NOBYPASSRLS;
+      ELSE
+        ALTER ROLE treow_app WITH LOGIN PASSWORD '${TREOW_APP_PASSWORD}';
       END IF;
     END $$;
   `);
-  await owner.query(`GRANT CONNECT ON DATABASE treow TO treow_app`);
+  const db = await owner.query<{ current_database: string }>(
+    `SELECT current_database()`,
+  );
+  const dbName = db.rows[0]?.current_database;
+  if (!dbName) throw new Error("Could not resolve current_database()");
+  // Identifier only — quote to allow underscores (e.g. treow_staging).
+  await owner.query(`GRANT CONNECT ON DATABASE "${dbName}" TO treow_app`);
   await owner.query(`GRANT USAGE ON SCHEMA public TO treow_app`);
   await owner.query(
     `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO treow_app`,
@@ -134,7 +147,7 @@ async function main() {
     await ensureAppRole(owner);
     const appUrl = connectionString.replace(
       /\/\/([^:]+):([^@]+)@/,
-      "//treow_app:treow_app@",
+      `//treow_app:${encodeURIComponent(TREOW_APP_PASSWORD)}@`,
     );
     const ids = await visiblePatients(appUrl);
     if (ids.length !== 1 || ids[0] !== "smoke_p1") {

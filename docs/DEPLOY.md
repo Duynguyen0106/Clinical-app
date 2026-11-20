@@ -112,15 +112,24 @@ After stacking clinical-safety → leak/live-day → re-audit-improve → post-6
    - UK/EU object storage for visit audio: `S3_BUCKET` + `S3_REGION=eu-west-2` (+ keys).
      Local `web/storage/` is ephemeral on Vercel and will lose recordings.
 4. Wire reminders + organise (see §4). Confirm `GET /api/v1/health` shows `cronConfigured: true`, intended `smsProvider` / `emailProvider`, and `rateLimitBackend`.
-5. Optional hardening — FORCE RLS runbook (prove on **staging** first with a non-owner `treow_app` role):
+5. FORCE RLS runbook:
    ```bash
-   # As migration/owner role:
-   cd web && npm run db:rls
-   # Create non-owner app role, grant DML, point DATABASE_URL at it, then:
-   APPLY_FORCE_RLS=1 npm run db:rls
+   # Staging first (empty Neon DB preferred):
+   cd web
+   export DATABASE_URL='postgresql://…/treow_staging?sslmode=require'
+   export CONFIRM_FORCE_RLS_STAGING=1
+   ./scripts/force-rls-staging.sh
+
+   # Production Neon (ENABLE + FORCE + treow_app denial). Prefer DATABASE_URL_DIRECT.
+   # Safe while Worker still uses neondb_owner (BYPASSRLS=true). Do NOT point the
+   # Worker at treow_app until every write path sets app.clinic_id.
+   export DATABASE_URL='postgresql://…'   # owner role
+   export CONFIRM_FORCE_RLS_PROD=1
+   ./scripts/force-rls-prod.sh
    ```
-   Schedule create, deposit mark-paid, patient/leave/invoice writes set `app.clinic_id`.
-   Details: `prisma/sql/002_force_rls.sql` and ARCHITECTURE.
+   **Status (2026-11-20):** Prod Neon has ENABLE + FORCE RLS applied; `treow_app`
+   denial smoke passed. Worker `DATABASE_URL` remains `neondb_owner` (BYPASSRLS)
+   until the non-owner cutover. Details: `prisma/sql/002_force_rls.sql` and ARCHITECTURE.
    Multi-instance public book / rate limits: set `UPSTASH_REDIS_REST_URL` +
    `UPSTASH_REDIS_REST_TOKEN`. Even on staging, set a dedicated Stripe webhook
    secret when deposits are exercised.

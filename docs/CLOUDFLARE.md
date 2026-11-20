@@ -11,13 +11,16 @@ Prisma client is generated with `runtime = "cloudflare"` so Workers do not compi
 
 1. Cloudflare account API token with Workers Scripts Edit + Account read  
 2. **Neon** `DATABASE_URL` (Europe) — Workers cannot use TCP `pg` pools; the app uses `@prisma/adapter-neon` **WebSocket** mode (`PrismaNeon`) for `neon.tech` URLs / `CLOUDFLARE_WORKERS=1`. Do not use `PrismaNeonHttp` — booking and other paths need `$transaction`.  
-3. **Enable R2** in the Cloudflare dashboard (Account → R2), then create:
+3. **Enable R2** in the Cloudflare dashboard (Account → R2) — one-time ToS click.
+   API returns error `10042` until this is done. Then create:
    - `treow-clinic-cache` — OpenNext incremental cache (optional but recommended)
-   - `treow-clinic-media` — encrypted visit audio (S3-compatible)
+   - `treow-clinic-media` — encrypted visit audio (S3-compatible), prefer EU jurisdiction
 4. R2 API token → set as `S3_ACCESS_KEY` / `S3_SECRET_KEY` with:
    - `S3_BUCKET=treow-clinic-media`
    - `S3_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com`
    - `S3_REGION=auto`
+5. Confirm recording works: `APP_BASE_URL=… PILOT_EMAIL=… PILOT_PASSWORD=… npx tsx scripts/pilot-visit-smoke.ts`
+   (without S3_* the script reports `recordingBlocked` and stops before organise/sign).
 
 ## One-time secrets
 
@@ -49,10 +52,15 @@ npx wrangler secret put NEXT_PUBLIC_TURNSTILE_SITE_KEY
 # Then delete the temporary bypass if present:
 #   npx wrangler secret delete ALLOW_PUBLIC_BOOK_WITHOUT_CAPTCHA
 
-# Optional shared rate limits (multi-isolate). Without these, backend stays in-memory.
-# npx wrangler secret put UPSTASH_REDIS_REST_URL
-# npx wrangler secret put UPSTASH_REDIS_REST_TOKEN
+# Shared rate limits (multi-isolate). Without these, backend stays in-memory.
+# Prefer a real Upstash Redis REST DB in an EU region. Until then, a
+# Durable-Object Upstash-compatible shim Worker (`treow-rl-shim`) can be used:
+#   UPSTASH_REDIS_REST_URL=https://treow-rl-shim.<subdomain>.workers.dev
+#   UPSTASH_REDIS_REST_TOKEN=<shim TOKEN secret>
+npx wrangler secret put UPSTASH_REDIS_REST_URL
+npx wrangler secret put UPSTASH_REDIS_REST_TOKEN
 ```
+Confirm `GET /api/v1/health` shows `"rateLimitBackend":"upstash"`.
 
 Non-secret vars are in [`web/wrangler.jsonc`](../web/wrangler.jsonc) (`CLOUDFLARE_WORKERS`, `USE_NEON_ADAPTER`, `NODE_ENV`).
 
