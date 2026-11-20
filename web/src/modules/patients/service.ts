@@ -337,7 +337,9 @@ export async function getPatient(ctx: AuthContext, id: string) {
         (n) =>
           n.visit?.appointment?.practitioner?.id === diaryId ||
           n.signedById === ctx.userId ||
-          (n.visitId == null && n.audits[0]?.actorId === ctx.userId),
+          (n.visitId == null && n.audits[0]?.actorId === ctx.userId) ||
+          (n.visitId == null &&
+            (n.status === "SIGNED" || n.status === "VOIDED")),
       )
       .slice(0, 15)
       .map(stripNoteMeta);
@@ -406,6 +408,11 @@ export async function getPatientPrep(
                   audits: {
                     some: { action: "created", actorId: ctx.userId },
                   },
+                },
+                // Peer clinicians on this patient can see signed/voided standalone notes
+                {
+                  visitId: null,
+                  status: { in: ["SIGNED", "VOIDED"] },
                 },
               ],
             }

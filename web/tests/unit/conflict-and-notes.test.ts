@@ -194,3 +194,75 @@ describe("createPatientManualDraft policy", () => {
     assert.equal(second.note?.content.subjective, "phone follow-up");
   });
 });
+
+/**
+ * Mirrors assertNoteDiaryAccess / prep filters for visit-less notes.
+ * Drafts: creator only. Signed/voided: diary peers of the patient.
+ */
+function peerCanSeeStandaloneNote(args: {
+  viewerUserId: string;
+  viewerOnPatientDiary: boolean;
+  note: {
+    status: string;
+    createdByUserId: string;
+    signedByUserId: string | null;
+  };
+}) {
+  const { viewerUserId, viewerOnPatientDiary, note } = args;
+  if (note.createdByUserId === viewerUserId) return true;
+  if (note.signedByUserId === viewerUserId) return true;
+  if (
+    (note.status === "SIGNED" || note.status === "VOIDED") &&
+    viewerOnPatientDiary
+  ) {
+    return true;
+  }
+  return false;
+}
+
+describe("standalone note peer visibility", () => {
+  it("hides peer drafts", () => {
+    assert.equal(
+      peerCanSeeStandaloneNote({
+        viewerUserId: "prac_b",
+        viewerOnPatientDiary: true,
+        note: {
+          status: "DRAFT",
+          createdByUserId: "prac_a",
+          signedByUserId: null,
+        },
+      }),
+      false,
+    );
+  });
+
+  it("shows signed notes to diary peers", () => {
+    assert.equal(
+      peerCanSeeStandaloneNote({
+        viewerUserId: "prac_b",
+        viewerOnPatientDiary: true,
+        note: {
+          status: "SIGNED",
+          createdByUserId: "prac_a",
+          signedByUserId: "prac_a",
+        },
+      }),
+      true,
+    );
+  });
+
+  it("hides signed notes from practitioners without a diary link", () => {
+    assert.equal(
+      peerCanSeeStandaloneNote({
+        viewerUserId: "prac_c",
+        viewerOnPatientDiary: false,
+        note: {
+          status: "SIGNED",
+          createdByUserId: "prac_a",
+          signedByUserId: "prac_a",
+        },
+      }),
+      false,
+    );
+  });
+});

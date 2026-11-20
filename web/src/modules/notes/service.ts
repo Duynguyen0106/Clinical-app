@@ -354,6 +354,21 @@ export async function listNotes(
                   some: { action: "created", actorId: ctx.userId },
                 },
               },
+              // Signed/voided standalone notes on patients this practitioner has seen
+              {
+                visitId: null,
+                status: {
+                  in: [NoteStatus.SIGNED, NoteStatus.VOIDED],
+                },
+                patient: {
+                  appointments: {
+                    some: {
+                      clinicId: ctx.clinicId,
+                      practitionerId,
+                    },
+                  },
+                },
+              },
             ],
           }
         : {}),
