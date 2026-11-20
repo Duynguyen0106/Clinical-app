@@ -322,6 +322,13 @@ export async function getPatient(ctx: AuthContext, id: string) {
     return { ...patient, notes: [], invoices: patient.invoices };
   }
   // Practitioners: own-diary relationship required; no clinic-wide invoices
+  const stripNoteMeta = <T extends { audits?: unknown; signedById?: string | null }>(
+    n: T,
+  ) => {
+    const { audits: _audits, signedById: _signedById, ...rest } = n;
+    return rest;
+  };
+
   if (ctx.role === "PRACTITIONER") {
     await assertPractitionerDiaryPatient(ctx, id);
     const diaryId = ctx.practitionerProfileId!;
@@ -332,13 +339,17 @@ export async function getPatient(ctx: AuthContext, id: string) {
           n.signedById === ctx.userId ||
           (n.visitId == null && n.audits[0]?.actorId === ctx.userId),
       )
-      .slice(0, 15);
+      .slice(0, 15)
+      .map(stripNoteMeta);
     const appointments = patient.appointments.filter(
       (a) => a.practitioner.id === diaryId,
     );
     return { ...patient, notes, appointments, invoices: [] };
   }
-  return { ...patient, notes: patient.notes.slice(0, 15) };
+  return {
+    ...patient,
+    notes: patient.notes.slice(0, 15).map(stripNoteMeta),
+  };
 }
 
 /**
