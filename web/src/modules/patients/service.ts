@@ -265,6 +265,7 @@ const noteMetaSelect = {
   status: true,
   source: true,
   signedAt: true,
+  signedById: true,
   createdAt: true,
   visitId: true,
   template: { select: { id: true, name: true } },
@@ -279,6 +280,12 @@ const noteMetaSelect = {
         },
       },
     },
+  },
+  audits: {
+    where: { action: "created" },
+    select: { actorId: true },
+    orderBy: { createdAt: "asc" as const },
+    take: 1,
   },
 } as const;
 
@@ -315,20 +322,36 @@ export async function getPatient(ctx: AuthContext, id: string) {
     return { ...patient, notes: [], invoices: patient.invoices };
   }
   // Practitioners: own-diary relationship required; no clinic-wide invoices
+  const stripNoteMeta = <T extends { audits?: unknown; signedById?: string | null }>(
+    n: T,
+  ) => {
+    const { audits: _audits, signedById: _signedById, ...rest } = n;
+    return rest;
+  };
+
   if (ctx.role === "PRACTITIONER") {
     await assertPractitionerDiaryPatient(ctx, id);
     const diaryId = ctx.practitionerProfileId!;
     const notes = patient.notes
       .filter(
-        (n) => n.visit?.appointment?.practitioner?.id === diaryId,
+        (n) =>
+          n.visit?.appointment?.practitioner?.id === diaryId ||
+          n.signedById === ctx.userId ||
+          (n.visitId == null && n.audits[0]?.actorId === ctx.userId) ||
+          (n.visitId == null &&
+            (n.status === "SIGNED" || n.status === "VOIDED")),
       )
-      .slice(0, 15);
+      .slice(0, 15)
+      .map(stripNoteMeta);
     const appointments = patient.appointments.filter(
       (a) => a.practitioner.id === diaryId,
     );
     return { ...patient, notes, appointments, invoices: [] };
   }
-  return { ...patient, notes: patient.notes.slice(0, 15) };
+  return {
+    ...patient,
+    notes: patient.notes.slice(0, 15).map(stripNoteMeta),
+  };
 }
 
 /**
@@ -380,6 +403,17 @@ export async function getPatientPrep(
               OR: [
                 { visit: { appointment: { practitionerId: diaryId } } },
                 { signedById: ctx.userId },
+                {
+                  visitId: null,
+                  audits: {
+                    some: { action: "created", actorId: ctx.userId },
+                  },
+                },
+                // Peer clinicians on this patient can see signed/voided standalone notes
+                {
+                  visitId: null,
+                  status: { in: ["SIGNED", "VOIDED"] },
+                },
               ],
             }
           : undefined,

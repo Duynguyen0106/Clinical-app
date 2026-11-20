@@ -60,7 +60,7 @@ export function buildPatientTimeline(args: {
         title: n.template?.name ?? "Clinical note",
         detail: n.status === "SIGNED" ? "Signed" : n.status,
         status: n.status,
-        href: n.visitId ? `/app/visits/${n.visitId}` : null,
+        href: n.visitId ? `/app/visits/${n.visitId}` : `/app/notes/${n.id}`,
       });
     }
   }
