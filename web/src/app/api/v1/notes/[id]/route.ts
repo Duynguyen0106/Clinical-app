@@ -18,6 +18,7 @@ export const PATCH = withAuth(async (req, ctx, params) => {
   const body = updateNoteSchema.parse(await req.json());
   const note = await updateDraftNote(ctx, params.id, body.content, {
     baseUpdatedAt: body.baseUpdatedAt,
+    quiet: body.quiet,
   });
   return jsonOk({ note });
 });

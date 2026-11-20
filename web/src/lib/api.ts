@@ -95,9 +95,14 @@ export async function api<T>(
   }
 
   if (!res.ok) {
+    const cfEdge =
+      /error code:\s*11\d{2}/i.test(raw) ||
+      /worker threw an exception/i.test(raw);
     const fallback =
       res.status >= 500
-        ? "Server temporarily unavailable — try again"
+        ? cfEdge
+          ? "Server overloaded — wait a moment and try again"
+          : "Server temporarily unavailable — try again"
         : res.statusText;
     throw new ApiError(
       res.status,
