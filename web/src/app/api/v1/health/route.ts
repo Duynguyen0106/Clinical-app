@@ -11,6 +11,10 @@ function smsProvider() {
   return (process.env.SMS_PROVIDER ?? "console").toLowerCase();
 }
 
+function paymentProvider() {
+  return (process.env.PAYMENT_PROVIDER ?? "console").toLowerCase();
+}
+
 function cronConfigured() {
   const cron = process.env.CRON_SECRET?.trim() ?? "";
   return cron.length >= 24;
@@ -49,6 +53,7 @@ export async function GET() {
       latencyMs: Date.now() - started,
       emailProvider: emailProvider(),
       smsProvider: smsProvider(),
+      paymentProvider: paymentProvider(),
       cronConfigured: cronConfigured(),
       rateLimitBackend: rateLimitBackend(),
     },

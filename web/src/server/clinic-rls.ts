@@ -1,5 +1,10 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
+import {
+  enterRlsTransaction,
+  runWithClinicRls,
+  runWithRlsBypass,
+} from "@/server/rls-als";
 
 type Tx = Prisma.TransactionClient;
 
@@ -31,18 +36,26 @@ export async function withClinicTransaction<T>(
     timeout?: number;
   },
 ): Promise<T> {
-  return client.$transaction(async (tx) => {
-    await setClinicRlsLocal(tx, clinicId);
-    return fn(tx);
-  }, options);
+  return runWithClinicRls(clinicId, () =>
+    enterRlsTransaction(() =>
+      client.$transaction(async (tx) => {
+        await setClinicRlsLocal(tx, clinicId);
+        return fn(tx);
+      }, options),
+    ),
+  );
 }
 
 export async function withRlsBypassTransaction<T>(
   fn: (tx: Tx) => Promise<T>,
   client: PrismaClient = prisma,
 ): Promise<T> {
-  return client.$transaction(async (tx) => {
-    await setRlsBypassLocal(tx);
-    return fn(tx);
-  });
+  return runWithRlsBypass(() =>
+    enterRlsTransaction(() =>
+      client.$transaction(async (tx) => {
+        await setRlsBypassLocal(tx);
+        return fn(tx);
+      }),
+    ),
+  );
 }

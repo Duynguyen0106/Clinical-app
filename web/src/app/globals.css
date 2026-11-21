@@ -4079,10 +4079,25 @@ button.cal-block-btn:focus-visible {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0.75rem 0;
+  position: relative;
+  z-index: 5;
+  isolation: isolate;
+  pointer-events: auto;
+}
+
+.note-print-actions > button {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .note-print-actions.compact {
   margin: 0.35rem 0 0;
+}
+
+.chart-workspace-actions .note-print-actions {
+  z-index: 6;
 }
 
 .doc-modal-backdrop {
