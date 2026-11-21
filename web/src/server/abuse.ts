@@ -10,8 +10,14 @@ const HOUR = 60 * MIN;
 
 /** Shared policy windows — tune per surface. */
 export const AbuseLimits = {
-  loginIp: { limit: 30, windowMs: 15 * MIN } satisfies RateLimitOpts,
-  loginEmail: { limit: 10, windowMs: 15 * MIN } satisfies RateLimitOpts,
+  /** All login POSTs from one IP (success + failure). */
+  loginIp: { limit: 60, windowMs: 15 * MIN } satisfies RateLimitOpts,
+  /**
+   * Failed password attempts for one email only.
+   * Successful logins must not consume this budget — otherwise staff +
+   * automation share a 10/15m lockout and lock the real user out.
+   */
+  loginEmailFailed: { limit: 8, windowMs: 15 * MIN } satisfies RateLimitOpts,
   forgotIp: { limit: 10, windowMs: HOUR } satisfies RateLimitOpts,
   forgotEmail: { limit: 5, windowMs: HOUR } satisfies RateLimitOpts,
   resetIp: { limit: 20, windowMs: HOUR } satisfies RateLimitOpts,
@@ -40,23 +46,28 @@ async function enforceKey(
   }
 }
 
-export async function enforceLoginLimits(req: Request, email: string) {
+/** IP spray limit — applied before credential check. */
+export async function enforceLoginLimits(req: Request, _email?: string) {
   const ip = clientIp(req);
+  await enforceKey(
+    `auth:login:ip:${ip}`,
+    AbuseLimits.loginIp,
+    "Too many sign-in attempts from this network. Try again shortly.",
+  );
+}
+
+/**
+ * Count a failed sign-in against the email bucket.
+ * Call only after an invalid password / unknown user response.
+ */
+export async function recordFailedLoginAttempt(email: string) {
   const normalised = email.toLowerCase().trim();
-  await Promise.all([
-    enforceKey(
-      `auth:login:ip:${ip}`,
-      AbuseLimits.loginIp,
-      "Too many sign-in attempts from this network. Try again shortly.",
-    ),
-    normalised
-      ? enforceKey(
-          `auth:login:email:${normalised}`,
-          AbuseLimits.loginEmail,
-          "Too many sign-in attempts for this account. Try again shortly.",
-        )
-      : Promise.resolve(),
-  ]);
+  if (!normalised) return;
+  await enforceKey(
+    `auth:login:email:fail:${normalised}`,
+    AbuseLimits.loginEmailFailed,
+    "Too many sign-in attempts for this account. Try again shortly.",
+  );
 }
 
 export async function enforceForgotPasswordLimits(req: Request, email: string) {

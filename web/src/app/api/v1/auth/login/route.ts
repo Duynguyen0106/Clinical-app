@@ -1,7 +1,11 @@
 import { withPublic } from "@/server/api";
 import { jsonOk } from "@/server/http";
 import { login, loginSchema, logout } from "@/modules/auth/service";
-import { enforceLoginLimits } from "@/server/abuse";
+import {
+  enforceLoginLimits,
+  recordFailedLoginAttempt,
+} from "@/server/abuse";
+import { AppError } from "@/server/errors";
 import {
   appendSessionCookie,
   clearSessionCookie,
@@ -11,7 +15,17 @@ import {
 export const POST = withPublic(async (req) => {
   const body = loginSchema.parse(await req.json());
   await enforceLoginLimits(req, body.email);
-  const result = await login(body);
+  let result;
+  try {
+    result = await login(body);
+  } catch (err) {
+    // Only failed credentials burn the per-email budget (credential stuffing).
+    // Successful staff / agent logins must not lock the account out.
+    if (err instanceof AppError && err.status === 401) {
+      await recordFailedLoginAttempt(body.email);
+    }
+    throw err;
+  }
   const res = jsonOk(result);
   appendSessionCookie(
     res,

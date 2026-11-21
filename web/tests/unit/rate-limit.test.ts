@@ -4,6 +4,7 @@ import {
   consumeRateLimit,
   resetRateLimitStore,
 } from "../../src/server/rate-limit";
+import { AbuseLimits } from "../../src/server/abuse";
 import { clientIp } from "../../src/server/client-ip";
 import { turnstileSecretConfigured } from "../../src/server/turnstile";
 
@@ -59,5 +60,13 @@ describe("turnstileSecretConfigured", () => {
     assert.equal(turnstileSecretConfigured(), false);
     if (prev === undefined) delete process.env.TURNSTILE_SECRET_KEY;
     else process.env.TURNSTILE_SECRET_KEY = prev;
+  });
+});
+
+describe("login abuse policy", () => {
+  it("keeps a failed-email budget separate from IP spray", () => {
+    assert.ok(AbuseLimits.loginIp.limit >= 30);
+    assert.ok(AbuseLimits.loginEmailFailed.limit >= 5);
+    assert.ok(AbuseLimits.loginEmailFailed.windowMs >= 60_000);
   });
 });
