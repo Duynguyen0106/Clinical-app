@@ -338,7 +338,7 @@ export async function buildReceiptDocument(
       phone: clinic.phone,
       email: clinic.email,
       address: clinic.address,
-      website: null,
+      website: clinic.website,
       brandColour: clinic.brandColour,
       logoDataUrl,
     },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Printer, FileText, X, Share2, Mail } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type {
@@ -218,12 +218,30 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
       .finally(() => setBusy(false));
   }, [open, noteId, kind]);
 
+  /** Ignore the synthetic click that follows pointerdown so we only open once. */
+  const openedByPointerRef = useRef(false);
+
   function openKind(next: DocKind) {
     setError(null);
     setShareMsg(null);
     setKind(next);
     setDoc(null);
     setOpen(true);
+  }
+
+  function activateKind(
+    next: DocKind,
+    e: { preventDefault(): void; stopPropagation(): void },
+    via: "pointer" | "click",
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (via === "click" && openedByPointerRef.current) {
+      openedByPointerRef.current = false;
+      return;
+    }
+    if (via === "pointer") openedByPointerRef.current = true;
+    openKind(next);
   }
 
   async function emailPatientCopy() {
@@ -274,33 +292,35 @@ export function NotePrintActions({ noteId, compact = false }: Props) {
         <button
           type="button"
           className={compact ? "btn-ghost btn-sm" : "btn-secondary"}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            openKind("clinical_note");
+          onPointerDown={(e) => {
+            // Prefer pointerdown so sticky/overlay hits still open the modal
+            // when click is swallowed by a parent layer.
+            if (e.button !== 0) return;
+            activateKind("clinical_note", e, "pointer");
           }}
+          onClick={(e) => activateKind("clinical_note", e, "click")}
         >
           <Printer size={16} aria-hidden /> Print note
         </button>
         <button
           type="button"
           className={compact ? "btn-ghost btn-sm" : "btn-secondary"}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            openKind("patient_copy");
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            activateKind("patient_copy", e, "pointer");
           }}
+          onClick={(e) => activateKind("patient_copy", e, "click")}
         >
           <Share2 size={16} aria-hidden /> Share with patient
         </button>
         <button
           type="button"
           className={compact ? "btn-ghost btn-sm" : "btn-secondary"}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            openKind("gp_letter");
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            activateKind("gp_letter", e, "pointer");
           }}
+          onClick={(e) => activateKind("gp_letter", e, "click")}
         >
           <FileText size={16} aria-hidden /> GP letter
         </button>

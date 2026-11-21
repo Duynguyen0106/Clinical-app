@@ -653,7 +653,8 @@ export async function sendUpcomingReminders(
                 .join("\n"),
               replyTo: apt.clinic.email,
             });
-            if (emailResult.delivered) {
+            // Console provider never delivers — keep claim to avoid retry storms.
+            if (emailResult.delivered || emailResult.provider === "console") {
               emailIds.push(apt.id);
             } else {
               await unclaim(apt.id, "reminderSentAt");
@@ -675,7 +676,9 @@ export async function sendUpcomingReminders(
               to: apt.patient.phone,
               body: `${apt.clinic.name} reminder: ${when} with ${apt.practitioner.displayName}.${roomBit} Manage: ${manageLink}`.trim(),
             });
-            if (smsResult.delivered) {
+            // Console provider never delivers — keep the claim so we do not
+            // retry-storm every cron tick while SMS stays intentionally off.
+            if (smsResult.delivered || smsResult.provider === "console") {
               smsIds.push(apt.id);
             } else {
               await unclaim(apt.id, "smsReminderSentAt");

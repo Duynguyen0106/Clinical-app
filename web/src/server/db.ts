@@ -1,8 +1,35 @@
 import { PrismaClient } from "@/generated/prisma/client";
+import { enterRlsTransaction, rlsAls } from "@/server/rls-als";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
+
+/** Tables with ENABLE/FORCE clinic RLS — bare queries need app.clinic_id GUC. */
+const RLS_MODELS = new Set([
+  "Patient",
+  "Appointment",
+  "WaitlistEntry",
+  "Invoice",
+  "PatientAccessEvent",
+  "NoteTemplate",
+  "AiOrganiseJob",
+  "Visit",
+  "ClinicalNote",
+  "Recording",
+  "Transcript",
+  "AppointmentAuditEvent",
+  "NoteAuditEvent",
+  "PatientConsent",
+  "PatientIntakeSubmission",
+  "LeaveRequest",
+  "Room",
+  "Payment",
+]);
+
+function modelDelegateKey(model: string) {
+  return model.charAt(0).toLowerCase() + model.slice(1);
+}
 
 function isNeonConnection(connectionString: string) {
   if (process.env.USE_NEON_ADAPTER === "1") return true;
@@ -105,11 +132,41 @@ function createPrisma() {
     base = new PrismaClient({ adapter: new PrismaPg(pool) });
   }
 
-  // Retry transient Neon/Worker failures on every query (including nested model ops).
+  // Retry transient Neon/Worker failures; when ALS has clinic/bypass intent and
+  // we are not already inside an RLS transaction, wrap the op in SET LOCAL.
   return base.$extends({
     query: {
-      $allOperations({ args, query }) {
-        return withNeonRetry(() => query(args));
+      async $allOperations({ model, operation, args, query }) {
+        return withNeonRetry(async () => {
+          const store = rlsAls.getStore();
+          if (
+            !store ||
+            store.depth > 0 ||
+            !model ||
+            !RLS_MODELS.has(model) ||
+            operation.startsWith("$")
+          ) {
+            return query(args);
+          }
+
+          return enterRlsTransaction(() =>
+            base.$transaction(async (tx) => {
+              if (store.kind === "clinic") {
+                await tx.$executeRaw`SELECT set_config('app.clinic_id', ${store.clinicId}, true)`;
+                await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'off', true)`;
+              } else {
+                await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'on', true)`;
+              }
+              const key = modelDelegateKey(model);
+              const delegate = (tx as unknown as Record<string, Record<string, (a: unknown) => Promise<unknown>>>)[key];
+              if (!delegate || typeof delegate[operation] !== "function") {
+                // Fallback — should be rare (raw helpers use $ prefix).
+                return query(args);
+              }
+              return delegate[operation](args);
+            }),
+          );
+        });
       },
     },
   }) as unknown as PrismaClient;

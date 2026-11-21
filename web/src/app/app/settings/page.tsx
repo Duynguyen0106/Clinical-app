@@ -15,6 +15,7 @@ type ClinicProfile = {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  website?: string | null;
   brandColour?: string | null;
   hasLogo?: boolean;
   logoUrl?: string | null;
@@ -75,6 +76,7 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const [clinicWebsite, setClinicWebsite] = useState("");
   const [brandColour, setBrandColour] = useState("#1E3F37");
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -131,6 +133,7 @@ export default function SettingsPage() {
         setPhone(c.clinic.phone ?? "");
         setEmail(c.clinic.email ?? "");
         setAddress(c.clinic.address ?? "");
+        setClinicWebsite(c.clinic.website ?? "");
         setBrandColour(c.clinic.brandColour ?? "#1E3F37");
         setCalendarPrivacyMode(
           c.clinic.calendarPrivacyMode === "INITIALS"
@@ -166,11 +169,13 @@ export default function SettingsPage() {
           phone: phone || null,
           email: email || null,
           address: address || null,
+          website: clinicWebsite || null,
           brandColour: brandColour || null,
           calendarPrivacyMode,
         }),
       });
       setClinic(d.clinic);
+      setClinicWebsite(d.clinic.website ?? "");
       setCalendarPrivacyMode(
         d.clinic.calendarPrivacyMode === "INITIALS"
           ? "INITIALS"
@@ -534,6 +539,19 @@ export default function SettingsPage() {
               onChange={(e) => setAddress(e.target.value)}
               placeholder="12 Quayside, London"
             />
+          </label>
+          <label className="field">
+            <span>Website</span>
+            <input
+              type="url"
+              value={clinicWebsite}
+              disabled={!isOwner}
+              onChange={(e) => setClinicWebsite(e.target.value)}
+              placeholder="https://www.yourclinic.co.uk"
+            />
+            <p className="muted" style={{ marginTop: 6 }}>
+              Shown on itemised receipts and printed letterhead.
+            </p>
           </label>
           <label className="field">
             <span>Phone</span>

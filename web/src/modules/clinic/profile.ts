@@ -16,6 +16,7 @@ export const updateClinicProfileSchema = z.object({
   phone: z.string().max(40).nullable().optional(),
   email: z.union([z.string().email(), z.literal(""), z.null()]).optional(),
   address: z.string().max(400).nullable().optional(),
+  website: z.string().max(200).nullable().optional(),
   brandColour: z
     .union([z.string().regex(HEX), z.literal(""), z.null()])
     .optional(),
@@ -30,6 +31,7 @@ const profileSelect = {
   phone: true,
   email: true,
   address: true,
+  website: true,
   brandColour: true,
   logoStorageKey: true,
   logoMimeType: true,
@@ -47,6 +49,7 @@ function toPublicProfile(clinic: {
   phone: string | null;
   email: string | null;
   address: string | null;
+  website: string | null;
   brandColour: string | null;
   logoStorageKey: string | null;
   logoMimeType: string | null;
@@ -89,6 +92,16 @@ export async function updateClinicProfile(
         : {}),
       ...(input.address !== undefined
         ? { address: input.address?.trim() || null }
+        : {}),
+      ...(input.website !== undefined
+        ? {
+            website: (() => {
+              const raw = input.website?.trim() || "";
+              if (!raw) return null;
+              if (/^https?:\/\//i.test(raw)) return raw;
+              return `https://${raw}`;
+            })(),
+          }
         : {}),
       ...(input.brandColour !== undefined
         ? {
