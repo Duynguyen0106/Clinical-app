@@ -68,8 +68,18 @@ export async function getInvoice(ctx: AuthContext, id: string) {
       payments: { orderBy: { paidAt: "desc" } },
       appointment: {
         include: {
-          appointmentType: { select: { name: true } },
-          practitioner: { select: { displayName: true } },
+          appointmentType: {
+            select: { name: true, durationMinutes: true },
+          },
+          practitioner: {
+            select: {
+              displayName: true,
+              registerName: true,
+              professionalTitle: true,
+              registrationBody: true,
+              registrationNumber: true,
+            },
+          },
         },
       },
     },
@@ -276,11 +286,22 @@ export type ReceiptDocument = {
     phone: string | null;
     email: string | null;
     address: string | null;
+    website: string | null;
     brandColour: string | null;
     logoDataUrl: string | null;
   };
   patient: { fullName: string; email: string | null; phone: string | null };
   serviceName: string | null;
+  durationMinutes: number | null;
+  practitioner: {
+    displayName: string;
+    /** Official register / legal name when distinct from display name */
+    registerName: string | null;
+    professionalTitle: string | null;
+    registrationBody: string | null;
+    registrationNumber: string | null;
+  } | null;
+  /** @deprecated Prefer practitioner.displayName — kept for older clients */
   practitionerName: string | null;
   appointmentStartsAt: string | null;
   amountCents: number;
@@ -306,6 +327,7 @@ export async function buildReceiptDocument(
   });
   const logoDataUrl = await clinicLogoDataUrl(clinic.id);
   const ref = `INV-${invoice.id.slice(-8).toUpperCase()}`;
+  const prac = invoice.appointment?.practitioner ?? null;
 
   return {
     kind: "receipt",
@@ -316,6 +338,7 @@ export async function buildReceiptDocument(
       phone: clinic.phone,
       email: clinic.email,
       address: clinic.address,
+      website: null,
       brandColour: clinic.brandColour,
       logoDataUrl,
     },
@@ -325,7 +348,18 @@ export async function buildReceiptDocument(
       phone: invoice.patient.phone,
     },
     serviceName: invoice.appointment?.appointmentType.name ?? null,
-    practitionerName: invoice.appointment?.practitioner.displayName ?? null,
+    durationMinutes:
+      invoice.appointment?.appointmentType.durationMinutes ?? null,
+    practitioner: prac
+      ? {
+          displayName: prac.displayName,
+          registerName: prac.registerName,
+          professionalTitle: prac.professionalTitle,
+          registrationBody: prac.registrationBody,
+          registrationNumber: prac.registrationNumber,
+        }
+      : null,
+    practitionerName: prac?.displayName ?? null,
     appointmentStartsAt: invoice.appointment?.startsAt?.toISOString() ?? null,
     amountCents: invoice.amountCents,
     currency: invoice.currency,
@@ -356,7 +390,15 @@ export async function emailInvoiceReceipt(ctx: AuthContext, invoiceId: string) {
         timeStyle: "short",
       })
     : null;
-  const statusLabel = doc.status === "PAID" ? "Receipt" : "Invoice";
+  const statusLabel =
+    doc.status === "PAID" ? "Itemised receipt" : "Itemised invoice";
+  const prac = doc.practitioner;
+  const regLine =
+    prac?.registrationBody && prac.registrationNumber
+      ? `${prac.registrationBody} Reg. No. ${prac.registrationNumber}`
+      : prac?.registrationNumber
+        ? `Reg. No. ${prac.registrationNumber}`
+        : null;
 
   const { sendEmail } = await import("@/modules/notifications/email");
   const result = await sendEmail({
@@ -366,13 +408,22 @@ export async function emailInvoiceReceipt(ctx: AuthContext, invoiceId: string) {
     text: [
       `Hi ${doc.patient.fullName},`,
       "",
-      `${statusLabel} from ${doc.clinic.name}.`,
+      `${statusLabel} (patient copy) from ${doc.clinic.name}.`,
       `Reference: ${doc.reference}`,
+      prac?.displayName ? `Practitioner: ${prac.displayName}` : null,
+      regLine,
       doc.serviceName ? `Service: ${doc.serviceName}` : null,
-      when ? `Appointment: ${when}` : null,
+      doc.durationMinutes != null
+        ? `Duration: ${doc.durationMinutes} minutes`
+        : null,
+      when ? `Date of treatment: ${when}` : null,
       `Amount: £${pounds} ${doc.currency}`,
       `Status: ${doc.status}`,
+      doc.payments[0]
+        ? `Payment method: ${doc.payments[0].method.replaceAll("_", " ")}`
+        : null,
       "",
+      "For insurance or cash-plan claims, quote the practitioner name and registration number above.",
       doc.clinic.phone ? `Clinic phone: ${doc.clinic.phone}` : null,
       "",
       "— Treow Clinic",

@@ -6,6 +6,10 @@ import Link from "next/link";
 import { Printer, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
+import {
+  ItemisedReceiptPrint,
+  type ReceiptDoc,
+} from "@/components/ItemisedReceiptPrint";
 import { api, ApiError } from "@/lib/api";
 import { LAUNCH } from "@/modules/config/brand";
 
@@ -17,47 +21,11 @@ type Invoice = {
   appointmentId: string | null;
 };
 
-type ReceiptDoc = {
-  kind: "receipt";
-  invoiceId: string;
-  reference: string;
-  clinic: {
-    name: string;
-    phone: string | null;
-    email: string | null;
-    address: string | null;
-    brandColour: string | null;
-    logoDataUrl: string | null;
-  };
-  patient: { fullName: string; email: string | null; phone: string | null };
-  serviceName: string | null;
-  practitionerName: string | null;
-  appointmentStartsAt: string | null;
-  amountCents: number;
-  currency: string;
-  status: string;
-  issuedAt: string | null;
-  paidAt: string | null;
-  payments: Array<{ amountCents: number; method: string; paidAt: string }>;
-  printedAt: string;
-};
-
 function formatGbp(pence: number) {
   return new Intl.NumberFormat(LAUNCH.locale, {
     style: "currency",
     currency: LAUNCH.currency,
   }).format(pence / 100);
-}
-
-function formatDateTime(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 export default function MoneyPage() {
@@ -385,59 +353,7 @@ function MoneyPageInner() {
                 </button>
               </div>
             </div>
-            <article className="print-sheet print-document">
-              <header className="print-head">
-                <div className="print-letterhead">
-                  <div className="print-letterhead-main">
-                    {receipt.clinic.logoDataUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={receipt.clinic.logoDataUrl}
-                        alt=""
-                        className="print-clinic-logo"
-                      />
-                    ) : null}
-                    <div>
-                      <p className="print-clinic">{receipt.clinic.name}</p>
-                      {receipt.clinic.address ? (
-                        <p className="print-contact">{receipt.clinic.address}</p>
-                      ) : null}
-                    </div>
-                  </div>
-                  <p className="print-ref">Ref {receipt.reference}</p>
-                </div>
-              </header>
-              <h1>Receipt</h1>
-              <p className="print-meta">
-                Paid · {formatDateTime(receipt.paidAt)}
-              </p>
-              <section className="print-block">
-                <h2>Patient</h2>
-                <p>
-                  <strong>{receipt.patient.fullName}</strong>
-                </p>
-              </section>
-              <section className="print-block">
-                <h2>Service</h2>
-                <p>
-                  {receipt.serviceName ?? "Consultation"}
-                  {receipt.appointmentStartsAt
-                    ? ` · ${formatDateTime(receipt.appointmentStartsAt)}`
-                    : ""}
-                </p>
-              </section>
-              <section className="print-block">
-                <h2>Amount</h2>
-                <p>
-                  <strong>{formatGbp(receipt.amountCents)}</strong>
-                </p>
-              </section>
-              <footer className="print-foot">
-                <p>
-                  {receipt.clinic.name} · Ref {receipt.reference}
-                </p>
-              </footer>
-            </article>
+            <ItemisedReceiptPrint doc={receipt} />
           </div>
         </div>
       ) : null}

@@ -21,6 +21,7 @@ type Practitioner = {
   colour: string;
   active: boolean;
   professionalTitle?: string | null;
+  registerName?: string | null;
   registrationBody?: string | null;
   registrationNumber?: string | null;
   /** null = all clinic services */
@@ -143,6 +144,7 @@ function TeamPageInner() {
   const [editDisplayName, setEditDisplayName] = useState("");
   const [editColour, setEditColour] = useState("#1E3F37");
   const [editTitle, setEditTitle] = useState("");
+  const [editRegisterName, setEditRegisterName] = useState("");
   const [editBody, setEditBody] = useState("");
   const [editReg, setEditReg] = useState("");
   const [tempPassword, setTempPassword] = useState("");
@@ -249,6 +251,7 @@ function TeamPageInner() {
     setEditDisplayName(selected.displayName);
     setEditColour(selected.colour || "#1E3F37");
     setEditTitle(selected.professionalTitle ?? "");
+    setEditRegisterName(selected.registerName ?? "");
     setEditBody(selected.registrationBody ?? "");
     setEditReg(selected.registrationNumber ?? "");
     if (
@@ -321,6 +324,7 @@ function TeamPageInner() {
           displayName: editDisplayName,
           colour: editColour,
           professionalTitle: editTitle || null,
+          registerName: editRegisterName || null,
           registrationBody: editBody || null,
           registrationNumber: editReg || null,
           ...(isOwner || isReception
@@ -330,7 +334,7 @@ function TeamPageInner() {
             : {}),
         }),
       });
-      setMessage("Profile saved — registration appears on printed letters.");
+      setMessage("Profile saved — registration appears on receipts and letters.");
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not save profile");
@@ -698,6 +702,15 @@ function TeamPageInner() {
                   disabled={!canEditSelected}
                   onChange={(e) => setEditTitle(e.target.value)}
                   placeholder="Chartered Physiotherapist"
+                />
+              </label>
+              <label className="field">
+                <span>Register name</span>
+                <input
+                  value={editRegisterName}
+                  disabled={!canEditSelected}
+                  onChange={(e) => setEditRegisterName(e.target.value)}
+                  placeholder="Official name on the register (receipts)"
                 />
               </label>
               <div className="team-reg-row">

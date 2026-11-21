@@ -5472,3 +5472,226 @@ button.cal-block-btn:focus-visible {
   }
 }
 .body-map-hint { margin: 0; font-size: 0.8rem; }
+
+/* —— Itemised receipt (patient copy) —— */
+.itemised-receipt {
+  gap: 1.1rem;
+  color: var(--receipt-navy, #1a2b48);
+  font-family: var(--font-body, "Source Sans 3", "Segoe UI", sans-serif);
+}
+
+.itemised-receipt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1.5px solid var(--receipt-navy, #1a2b48);
+}
+
+.itemised-receipt-brand {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.itemised-receipt-logo {
+  display: block;
+  max-height: 72px;
+  max-width: min(260px, 100%);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.itemised-receipt-clinic-fallback {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--receipt-navy, #1a2b48);
+  line-height: 1.35;
+  max-width: 14rem;
+}
+
+.itemised-receipt-title-block {
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.itemised-receipt-title-block h1 {
+  margin: 0;
+  font-family: var(--font-display, "Libre Baskerville", Georgia, serif);
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: var(--receipt-navy, #1a2b48);
+  line-height: 1.15;
+}
+
+.itemised-receipt-copy-label {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--receipt-accent, #1f7a7a);
+}
+
+.itemised-receipt-practitioner {
+  background: #f0f7f9;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.itemised-receipt-kicker {
+  margin: 0 0 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--receipt-accent, #1f7a7a);
+}
+
+.itemised-receipt-prac-name {
+  margin: 0;
+  font-family: var(--font-display, "Libre Baskerville", Georgia, serif);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--receipt-navy, #1a2b48);
+  line-height: 1.2;
+}
+
+.itemised-receipt-prac-meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.92rem;
+  color: var(--receipt-navy, #1a2b48);
+}
+
+.itemised-receipt-prac-reg {
+  margin: 0.2rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--receipt-navy, #1a2b48);
+}
+
+.itemised-receipt-clinic-block {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.itemised-receipt-clinic-name {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.98rem;
+  color: var(--receipt-navy, #1a2b48);
+}
+
+.itemised-receipt-clinic-line {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--receipt-navy, #1a2b48);
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
+.itemised-receipt-details h2 {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--receipt-accent, #1f7a7a);
+}
+
+.itemised-receipt-rows {
+  margin: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.itemised-receipt-row {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 10.5rem) 1fr;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.itemised-receipt-row dt {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--receipt-accent, #1f7a7a);
+  padding-bottom: 0.2rem;
+}
+
+.itemised-receipt-row dd {
+  margin: 0;
+  font-size: 0.98rem;
+  color: var(--receipt-navy, #1a2b48);
+  border-bottom: 1px solid color-mix(in srgb, var(--receipt-navy, #1a2b48) 35%, transparent);
+  padding: 0 0 0.2rem;
+  min-height: 1.35rem;
+}
+
+.itemised-receipt-disclaimer {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--receipt-navy, #1a2b48);
+}
+
+.itemised-receipt-signs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.itemised-receipt-sign-line {
+  margin-top: 1.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--receipt-navy, #1a2b48) 45%, transparent);
+  min-height: 1.5rem;
+}
+
+.itemised-receipt-date-line {
+  margin: 0.85rem 0 0;
+  font-size: 0.85rem;
+  color: var(--receipt-navy, #1a2b48);
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.itemised-receipt-date-line span {
+  flex: 1;
+  border-bottom: 1px solid color-mix(in srgb, var(--receipt-navy, #1a2b48) 45%, transparent);
+  min-height: 1.1rem;
+}
+
+@media print {
+  .itemised-receipt-practitioner {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+@media (max-width: 560px) {
+  .itemised-receipt-header {
+    flex-direction: column;
+  }
+
+  .itemised-receipt-title-block {
+    text-align: left;
+  }
+
+  .itemised-receipt-row {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .itemised-receipt-signs {
+    grid-template-columns: 1fr;
+  }
+}

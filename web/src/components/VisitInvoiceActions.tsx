@@ -4,37 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import { Printer, Banknote, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { LAUNCH } from "@/modules/config/brand";
+import {
+  ItemisedReceiptPrint,
+  type ReceiptDoc,
+} from "@/components/ItemisedReceiptPrint";
 
 type InvoiceRow = {
   id: string;
   amountCents: number;
   status: string;
   patient: { firstName: string; lastName: string };
-};
-
-type ReceiptDoc = {
-  kind: "receipt";
-  invoiceId: string;
-  reference: string;
-  clinic: {
-    name: string;
-    phone: string | null;
-    email: string | null;
-    address: string | null;
-    brandColour: string | null;
-    logoDataUrl: string | null;
-  };
-  patient: { fullName: string; email: string | null; phone: string | null };
-  serviceName: string | null;
-  practitionerName: string | null;
-  appointmentStartsAt: string | null;
-  amountCents: number;
-  currency: string;
-  status: string;
-  issuedAt: string | null;
-  paidAt: string | null;
-  payments: Array<{ amountCents: number; method: string; paidAt: string }>;
-  printedAt: string;
 };
 
 type Props = {
@@ -47,18 +26,6 @@ function formatGbp(pence: number) {
     style: "currency",
     currency: LAUNCH.currency,
   }).format(pence / 100);
-}
-
-function formatDateTime(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 export function VisitInvoiceActions({ visitId }: Props) {
@@ -271,105 +238,12 @@ export function VisitInvoiceActions({ visitId }: Props) {
                 </button>
               </div>
             </div>
-            {receipt ? <ReceiptPrint doc={receipt} /> : (
+            {receipt ? <ItemisedReceiptPrint doc={receipt} /> : (
               <p className="muted no-print">Preparing receipt…</p>
             )}
           </div>
         </div>
       ) : null}
     </div>
-  );
-}
-
-function ReceiptPrint({ doc }: { doc: ReceiptDoc }) {
-  const accent = doc.clinic.brandColour || undefined;
-  return (
-    <article className="print-sheet print-document">
-      <header className="print-head">
-        <div
-          className="print-letterhead"
-          style={accent ? { borderBottomColor: accent } : undefined}
-        >
-          <div className="print-letterhead-main">
-            {doc.clinic.logoDataUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- print data URL
-              <img
-                src={doc.clinic.logoDataUrl}
-                alt=""
-                className="print-clinic-logo"
-              />
-            ) : null}
-            <div>
-              <p
-                className="print-clinic"
-                style={accent ? { color: accent } : undefined}
-              >
-                {doc.clinic.name}
-              </p>
-              {doc.clinic.address ? (
-                <p className="print-contact">{doc.clinic.address}</p>
-              ) : null}
-              <p className="print-contact">
-                {[
-                  doc.clinic.phone ? `Tel ${doc.clinic.phone}` : null,
-                  doc.clinic.email,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            </div>
-          </div>
-          <p className="print-ref">Ref {doc.reference}</p>
-        </div>
-      </header>
-
-      <h1>{doc.status === "PAID" ? "Receipt" : "Invoice"}</h1>
-      <p className="print-meta">
-        {doc.status === "PAID" ? "Paid" : "Due"} ·{" "}
-        {formatDateTime(doc.paidAt ?? doc.issuedAt)}
-      </p>
-
-      <section className="print-block">
-        <h2>Patient</h2>
-        <p>
-          <strong>{doc.patient.fullName}</strong>
-        </p>
-        <p>
-          {[doc.patient.phone, doc.patient.email].filter(Boolean).join(" · ") ||
-            "No contact on file"}
-        </p>
-      </section>
-
-      <section className="print-block">
-        <h2>Service</h2>
-        <p>
-          {doc.serviceName ?? "Consultation"}
-          {doc.appointmentStartsAt
-            ? ` · ${formatDateTime(doc.appointmentStartsAt)}`
-            : ""}
-        </p>
-        {doc.practitionerName ? <p>{doc.practitionerName}</p> : null}
-      </section>
-
-      <section className="print-block">
-        <h2>Amount</h2>
-        <p>
-          <strong>{formatGbp(doc.amountCents)}</strong> {doc.currency}
-        </p>
-        {doc.payments.map((p, i) => (
-          <p key={i} className="muted">
-            {formatGbp(p.amountCents)} via {p.method.replaceAll("_", " ")} ·{" "}
-            {formatDateTime(p.paidAt)}
-          </p>
-        ))}
-      </section>
-
-      <footer className="print-foot">
-        <p>
-          {doc.clinic.name} · Ref {doc.reference} · Printed{" "}
-          {formatDateTime(doc.printedAt)}
-        </p>
-      </footer>
-    </article>
   );
 }

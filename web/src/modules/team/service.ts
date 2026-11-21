@@ -18,6 +18,7 @@ export const createPractitionerSchema = z.object({
   displayName: z.string().min(1).max(120),
   colour: z.string().max(20).optional(),
   professionalTitle: z.string().max(120).optional().nullable(),
+  registerName: z.string().max(120).optional().nullable(),
   registrationBody: z.string().max(40).optional().nullable(),
   registrationNumber: z.string().max(40).optional().nullable(),
   /** If omitted, Mon–Fri 09:00–17:00 */
@@ -33,6 +34,7 @@ export const updatePractitionerSchema = z.object({
   colour: z.string().max(20).optional(),
   active: z.boolean().optional(),
   professionalTitle: z.string().max(120).optional().nullable(),
+  registerName: z.string().max(120).optional().nullable(),
   registrationBody: z.string().max(40).optional().nullable(),
   registrationNumber: z.string().max(40).optional().nullable(),
   /**
@@ -151,6 +153,7 @@ export async function createPractitioner(
         colour: input.colour ?? "#1E3F37",
         active: true,
         professionalTitle: input.professionalTitle?.trim() || null,
+        registerName: input.registerName?.trim() || null,
         registrationBody: input.registrationBody?.trim() || null,
         registrationNumber: input.registrationNumber?.trim() || null,
         availability: {
@@ -224,6 +227,9 @@ export async function updatePractitioner(
       ...(input.active !== undefined ? { active: input.active } : {}),
       ...(input.professionalTitle !== undefined
         ? { professionalTitle: input.professionalTitle?.trim() || null }
+        : {}),
+      ...(input.registerName !== undefined
+        ? { registerName: input.registerName?.trim() || null }
         : {}),
       ...(input.registrationBody !== undefined
         ? { registrationBody: input.registrationBody?.trim() || null }

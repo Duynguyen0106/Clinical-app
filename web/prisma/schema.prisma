@@ -264,6 +264,8 @@ model PractitionerProfile {
   active       Boolean @default(true)
   /// e.g. Chartered Physiotherapist
   professionalTitle String?
+  /// Official register / legal name when different from displayName (receipts)
+  registerName String?
   /// e.g. HCPC, GOsC
   registrationBody String?
   /// e.g. PH12345
