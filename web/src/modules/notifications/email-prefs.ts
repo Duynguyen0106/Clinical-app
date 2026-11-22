@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/server/db";
 import { notFound } from "@/server/errors";
-import { withClinicRequest } from "@/server/clinic-rls";
+import { withClinicTransaction } from "@/server/clinic-rls";
 import { verifyEmailPrefsToken } from "./email-prefs-token";
 
 export const emailPrefsActionSchema = z.object({
@@ -11,8 +11,9 @@ export const emailPrefsActionSchema = z.object({
 
 export async function loadEmailPrefs(token: string) {
   const { patientId, clinicId } = verifyEmailPrefsToken(token);
-  return withClinicRequest(clinicId, async () => {
-    const patient = await prisma.patient.findFirst({
+  // Clinic + PatientConsent under FORCE: short explicit tx (not request-long).
+  return withClinicTransaction(clinicId, async (tx) => {
+    const patient = await tx.patient.findFirst({
       where: { id: patientId, clinicId },
       select: {
         id: true,
@@ -41,14 +42,14 @@ export async function loadEmailPrefs(token: string) {
 /** Revoke MARKETING consent (insert a granted=false row; senders require granted:true). */
 export async function unsubscribeMarketing(token: string) {
   const { patientId, clinicId } = verifyEmailPrefsToken(token);
-  return withClinicRequest(clinicId, async () => {
-    const patient = await prisma.patient.findFirst({
+  return withClinicTransaction(clinicId, async (tx) => {
+    const patient = await tx.patient.findFirst({
       where: { id: patientId, clinicId },
       select: { id: true, clinic: { select: { name: true } } },
     });
     if (!patient) throw notFound("Patient not found");
 
-    await prisma.patientConsent.create({
+    await tx.patientConsent.create({
       data: {
         patientId: patient.id,
         type: "MARKETING",

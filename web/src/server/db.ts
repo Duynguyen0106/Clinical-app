@@ -1,5 +1,5 @@
 import { PrismaClient } from "@/generated/prisma/client";
-import { enterRlsTransaction, rlsAls } from "@/server/rls-als";
+import { rlsAls } from "@/server/rls-als";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -132,16 +132,17 @@ function createPrisma() {
     base = new PrismaClient({ adapter: new PrismaPg(pool) });
   }
 
-  // Retry transient Neon/Worker failures. Prefer the request-scoped tx from ALS
-  // (withClinicRequest); only open a one-shot SET LOCAL tx when intent is set
-  // without an active tx (legacy callers of runWithClinicRls alone).
+  // Retry transient Neon/Worker failures. When ALS has a bound interactive tx
+  // (withClinicTransaction / withClinicRequest), route RLS-model ops onto it.
+  // Never auto-open a new interactive transaction per query — that caused
+  // Cloudflare 1102 / "Server temporarily unavailable" under fan-out.
   return base.$extends({
     query: {
       async $allOperations({ model, operation, args, query }) {
         return withNeonRetry(async () => {
           const store = rlsAls.getStore();
           if (
-            !store ||
+            !store?.tx ||
             !model ||
             !RLS_MODELS.has(model) ||
             operation.startsWith("$")
@@ -150,47 +151,16 @@ function createPrisma() {
           }
 
           const key = modelDelegateKey(model);
-          const runOn = (tx: {
-            [k: string]: Record<string, (a: unknown) => Promise<unknown>>;
-          }) => {
-            const delegate = tx[key];
-            if (!delegate || typeof delegate[operation] !== "function") {
-              return query(args);
-            }
-            return delegate[operation](args);
-          };
-
-          if (store.tx) {
-            return runOn(
-              store.tx as unknown as {
-                [k: string]: Record<string, (a: unknown) => Promise<unknown>>;
-              },
-            );
-          }
-
-          if (store.depth > 0) {
-            // Inside a tx helper that did not bind ALS.tx — do not nest.
+          const delegate = (
+            store.tx as unknown as Record<
+              string,
+              Record<string, (a: unknown) => Promise<unknown>>
+            >
+          )[key];
+          if (!delegate || typeof delegate[operation] !== "function") {
             return query(args);
           }
-
-          return enterRlsTransaction(() =>
-            base.$transaction(async (tx) => {
-              if (store.kind === "clinic") {
-                await tx.$executeRaw`SELECT set_config('app.clinic_id', ${store.clinicId}, true)`;
-                await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'off', true)`;
-              } else {
-                await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'on', true)`;
-              }
-              return runOn(
-                tx as unknown as {
-                  [k: string]: Record<
-                    string,
-                    (a: unknown) => Promise<unknown>
-                  >;
-                },
-              );
-            }),
-          );
+          return delegate[operation](args);
         });
       },
     },

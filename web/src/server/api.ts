@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import type { AuthContext } from "./auth";
 import { resolveAuth } from "./auth";
-import { withClinicRequest } from "./clinic-rls";
 import { jsonError } from "./http";
 
 type Handler = (
@@ -23,10 +22,10 @@ export function withAuth(handler: Handler) {
     try {
       const params = route?.params ? await route.params : {};
       const auth = await resolveAuth(req);
-      // One interactive tx + SET LOCAL for the whole handler (treow_app + FORCE).
-      return await withClinicRequest(auth.clinicId, () =>
-        handler(req, auth, params),
-      );
+      // Do not open a request-long interactive Neon transaction here — that
+      // trips Cloudflare 1102 under fan-out. Writes that need FORCE RLS GUC
+      // use withClinicTransaction / withScheduleLocks explicitly.
+      return await handler(req, auth, params);
     } catch (error) {
       return jsonError(error);
     }
