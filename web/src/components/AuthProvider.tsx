@@ -93,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         new Promise<never>((_, reject) => {
           window.setTimeout(
             () => reject(new ApiError(408, "Auth check timed out")),
-            5_000,
+            12_000,
           );
         }),
       ]);

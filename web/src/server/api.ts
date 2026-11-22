@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import type { AuthContext } from "./auth";
 import { resolveAuth } from "./auth";
 import { jsonError } from "./http";
-import { runWithClinicRls } from "./rls-als";
 
 type Handler = (
   req: NextRequest,
@@ -23,10 +22,10 @@ export function withAuth(handler: Handler) {
     try {
       const params = route?.params ? await route.params : {};
       const auth = await resolveAuth(req);
-      // Bind clinic RLS GUC for bare prisma queries under treow_app + FORCE.
-      return await runWithClinicRls(auth.clinicId, () =>
-        handler(req, auth, params),
-      );
+      // Do not open a request-long interactive Neon transaction here — that
+      // trips Cloudflare 1102 under fan-out. Writes that need FORCE RLS GUC
+      // use withClinicTransaction / withScheduleLocks explicitly.
+      return await handler(req, auth, params);
     } catch (error) {
       return jsonError(error);
     }

@@ -3,7 +3,6 @@ import type { MembershipRole } from "@/generated/prisma/client";
 import type { AuthContext } from "@/server/auth";
 import { resolveAuth, requireRole } from "@/server/auth";
 import { jsonError } from "@/server/http";
-import { runWithClinicRls, runWithRlsBypass } from "@/server/rls-als";
 import { timingSafeEqual } from "node:crypto";
 
 export function getCronSecret() {
@@ -34,7 +33,8 @@ type CronOrStaffHandler = (
 
 /**
  * Accepts CRON_SECRET Bearer **or** a staff session (roles required for staff).
- * Cron mode runs under RLS bypass ALS so cross-clinic sweeps work as treow_app.
+ * Avoid request-long interactive txs (Cloudflare 1102); cron sweeps that need
+ * RLS bypass use withRlsBypassTransaction inside the job.
  */
 export function withCronOrStaff(
   staffRoles: MembershipRole[],
@@ -47,15 +47,11 @@ export function withCronOrStaff(
     try {
       const params = route?.params ? await route.params : {};
       if (isCronAuthorized(req)) {
-        return await runWithRlsBypass(() =>
-          handler(req, { mode: "cron" }, params),
-        );
+        return await handler(req, { mode: "cron" }, params);
       }
       const auth = await resolveAuth(req);
       requireRole(auth, staffRoles);
-      return await runWithClinicRls(auth.clinicId, () =>
-        handler(req, { mode: "staff", auth }, params),
-      );
+      return await handler(req, { mode: "staff", auth }, params);
     } catch (error) {
       return jsonError(error);
     }

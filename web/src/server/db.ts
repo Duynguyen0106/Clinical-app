@@ -1,5 +1,5 @@
 import { PrismaClient } from "@/generated/prisma/client";
-import { enterRlsTransaction, rlsAls } from "@/server/rls-als";
+import { rlsAls } from "@/server/rls-als";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -132,16 +132,17 @@ function createPrisma() {
     base = new PrismaClient({ adapter: new PrismaPg(pool) });
   }
 
-  // Retry transient Neon/Worker failures; when ALS has clinic/bypass intent and
-  // we are not already inside an RLS transaction, wrap the op in SET LOCAL.
+  // Retry transient Neon/Worker failures. When ALS has a bound interactive tx
+  // (withClinicTransaction / withClinicRequest), route RLS-model ops onto it.
+  // Never auto-open a new interactive transaction per query — that caused
+  // Cloudflare 1102 / "Server temporarily unavailable" under fan-out.
   return base.$extends({
     query: {
       async $allOperations({ model, operation, args, query }) {
         return withNeonRetry(async () => {
           const store = rlsAls.getStore();
           if (
-            !store ||
-            store.depth > 0 ||
+            !store?.tx ||
             !model ||
             !RLS_MODELS.has(model) ||
             operation.startsWith("$")
@@ -149,23 +150,17 @@ function createPrisma() {
             return query(args);
           }
 
-          return enterRlsTransaction(() =>
-            base.$transaction(async (tx) => {
-              if (store.kind === "clinic") {
-                await tx.$executeRaw`SELECT set_config('app.clinic_id', ${store.clinicId}, true)`;
-                await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'off', true)`;
-              } else {
-                await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'on', true)`;
-              }
-              const key = modelDelegateKey(model);
-              const delegate = (tx as unknown as Record<string, Record<string, (a: unknown) => Promise<unknown>>>)[key];
-              if (!delegate || typeof delegate[operation] !== "function") {
-                // Fallback — should be rare (raw helpers use $ prefix).
-                return query(args);
-              }
-              return delegate[operation](args);
-            }),
-          );
+          const key = modelDelegateKey(model);
+          const delegate = (
+            store.tx as unknown as Record<
+              string,
+              Record<string, (a: unknown) => Promise<unknown>>
+            >
+          )[key];
+          if (!delegate || typeof delegate[operation] !== "function") {
+            return query(args);
+          }
+          return delegate[operation](args);
         });
       },
     },

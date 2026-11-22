@@ -1249,8 +1249,8 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
   const clinic = await prisma.clinic.findUnique({ where: { slug } });
   if (!clinic) throw notFound("Clinic not found");
 
-  const { runWithClinicRls } = await import("@/server/rls-als");
-  return runWithClinicRls(clinic.id, async () => {
+  // Booking mutations set GUC via withScheduleLocks / withClinicTransaction.
+  // Do not wrap the whole handler in an interactive tx (Cloudflare 1102).
   const type = await prisma.appointmentType.findFirst({
     where: {
       id: input.appointmentTypeId,
@@ -1501,7 +1501,6 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     policyText: policy.bookingPolicyText,
     confirmation,
   };
-  });
 }
 
 export async function assertNoConflict(
