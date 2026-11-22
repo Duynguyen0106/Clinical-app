@@ -1249,8 +1249,8 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
   const clinic = await prisma.clinic.findUnique({ where: { slug } });
   if (!clinic) throw notFound("Clinic not found");
 
-  const { runWithClinicRls } = await import("@/server/rls-als");
-  return runWithClinicRls(clinic.id, async () => {
+  const { withClinicRequest } = await import("@/server/clinic-rls");
+  return withClinicRequest(clinic.id, async () => {
   const type = await prisma.appointmentType.findFirst({
     where: {
       id: input.appointmentTypeId,

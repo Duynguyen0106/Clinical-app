@@ -2,8 +2,11 @@ import type { NextRequest } from "next/server";
 import type { MembershipRole } from "@/generated/prisma/client";
 import type { AuthContext } from "@/server/auth";
 import { resolveAuth, requireRole } from "@/server/auth";
+import {
+  withClinicRequest,
+  withRlsBypassRequest,
+} from "@/server/clinic-rls";
 import { jsonError } from "@/server/http";
-import { runWithClinicRls, runWithRlsBypass } from "@/server/rls-als";
 import { timingSafeEqual } from "node:crypto";
 
 export function getCronSecret() {
@@ -47,13 +50,13 @@ export function withCronOrStaff(
     try {
       const params = route?.params ? await route.params : {};
       if (isCronAuthorized(req)) {
-        return await runWithRlsBypass(() =>
+        return await withRlsBypassRequest(() =>
           handler(req, { mode: "cron" }, params),
         );
       }
       const auth = await resolveAuth(req);
       requireRole(auth, staffRoles);
-      return await runWithClinicRls(auth.clinicId, () =>
+      return await withClinicRequest(auth.clinicId, () =>
         handler(req, { mode: "staff", auth }, params),
       );
     } catch (error) {

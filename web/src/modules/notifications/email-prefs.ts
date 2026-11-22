@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/server/db";
 import { notFound } from "@/server/errors";
-import { runWithClinicRls } from "@/server/rls-als";
+import { withClinicRequest } from "@/server/clinic-rls";
 import { verifyEmailPrefsToken } from "./email-prefs-token";
 
 export const emailPrefsActionSchema = z.object({
@@ -11,7 +11,7 @@ export const emailPrefsActionSchema = z.object({
 
 export async function loadEmailPrefs(token: string) {
   const { patientId, clinicId } = verifyEmailPrefsToken(token);
-  return runWithClinicRls(clinicId, async () => {
+  return withClinicRequest(clinicId, async () => {
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, clinicId },
       select: {
@@ -41,7 +41,7 @@ export async function loadEmailPrefs(token: string) {
 /** Revoke MARKETING consent (insert a granted=false row; senders require granted:true). */
 export async function unsubscribeMarketing(token: string) {
   const { patientId, clinicId } = verifyEmailPrefsToken(token);
-  return runWithClinicRls(clinicId, async () => {
+  return withClinicRequest(clinicId, async () => {
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, clinicId },
       select: { id: true, clinic: { select: { name: true } } },

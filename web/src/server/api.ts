@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import type { AuthContext } from "./auth";
 import { resolveAuth } from "./auth";
+import { withClinicRequest } from "./clinic-rls";
 import { jsonError } from "./http";
-import { runWithClinicRls } from "./rls-als";
 
 type Handler = (
   req: NextRequest,
@@ -23,8 +23,8 @@ export function withAuth(handler: Handler) {
     try {
       const params = route?.params ? await route.params : {};
       const auth = await resolveAuth(req);
-      // Bind clinic RLS GUC for bare prisma queries under treow_app + FORCE.
-      return await runWithClinicRls(auth.clinicId, () =>
+      // One interactive tx + SET LOCAL for the whole handler (treow_app + FORCE).
+      return await withClinicRequest(auth.clinicId, () =>
         handler(req, auth, params),
       );
     } catch (error) {
