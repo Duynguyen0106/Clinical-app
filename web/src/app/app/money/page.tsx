@@ -170,11 +170,12 @@ function MoneyPageInner() {
         provider: string;
         to: string;
         reference: string;
+        filename?: string;
       }>(`/invoices/${id}/email`, { method: "POST" });
       setMessage(
         d.delivered
-          ? `Receipt emailed to ${d.to}`
-          : `Receipt logged via ${d.provider} (not delivered — configure Resend for live email)`,
+          ? `PDF receipt emailed to ${d.to}${d.filename ? ` (${d.filename})` : ""}`
+          : `PDF receipt logged via ${d.provider} (not delivered — configure Resend for live email)`,
       );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not email receipt");
