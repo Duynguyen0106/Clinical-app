@@ -5,6 +5,8 @@ export class AppError extends Error {
     public code?: string,
     /** Seconds until the client may retry (429). */
     public retryAfterSec?: number,
+    /** Extra JSON payload (e.g. duplicate patient matches on 409). */
+    public details?: unknown,
   ) {
     super(message);
     this.name = "AppError";
@@ -27,8 +29,8 @@ export function badRequest(message: string) {
   return new AppError(400, message, "BAD_REQUEST");
 }
 
-export function conflict(message: string) {
-  return new AppError(409, message, "CONFLICT");
+export function conflict(message: string, details?: unknown) {
+  return new AppError(409, message, "CONFLICT", undefined, details);
 }
 
 export function tooManyRequests(

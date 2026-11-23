@@ -6,7 +6,7 @@ import {
 } from "@/generated/prisma/client";
 import { prisma } from "@/server/db";
 import type { AuthContext } from "@/server/auth";
-import { badRequest, conflict, notFound } from "@/server/errors";
+import { badRequest, conflict, forbidden, notFound } from "@/server/errors";
 import { requirePatient } from "@/modules/patients/service";
 import { assertWithinAvailability } from "./availability";
 import { intervalsOverlap, withBuffers } from "./conflict";
@@ -1235,6 +1235,8 @@ export const publicBookSchema = z.object({
     email: z.string().email(),
     phone: z.string().optional(),
   }),
+  /** Signed returning-patient token — forces existing patientId (no create). */
+  rebookToken: z.string().min(8).max(500).optional(),
   intake: z
     .object({
       reasonForVisit: z.string().max(1000).optional(),
@@ -1278,17 +1280,21 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     appointmentTypeId: input.appointmentTypeId,
   });
 
-  let patient = await prisma.patient.findFirst({
-    where: {
-      clinicId: clinic.id,
-      email: input.patient.email,
-      archivedAt: null,
-    },
-  });
+  let forcedPatientId: string | undefined;
+  if (input.rebookToken) {
+    const { verifyRebookToken } = await import("./rebook-token");
+    const payload = verifyRebookToken(input.rebookToken);
+    if (payload.clinicId !== clinic.id) {
+      throw forbidden("Rebook link is for a different clinic");
+    }
+    forcedPatientId = payload.patientId;
+  }
 
+  const { resolveOrCreatePatient } = await import("@/modules/patients/match");
   const intakeNote = input.intake?.reasonForVisit?.trim();
-  const alerts = [
-    patient?.alerts,
+
+  // Alerts for *new* creates only — reuse never overwrites clinical alerts.
+  const newAlerts = [
     intakeNote ? `Intake: ${intakeNote}` : null,
     input.intake?.recordingConsentPreferred
       ? "Prefers recording for clinical notes (confirm at visit)"
@@ -1297,28 +1303,21 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
     .filter(Boolean)
     .join(" · ");
 
-  patient = await withClinicTransaction(clinic.id, async (tx) => {
-    let row = patient;
-    if (!row) {
-      row = await tx.patient.create({
-        data: {
-          clinicId: clinic.id,
-          firstName: input.patient.firstName,
-          lastName: input.patient.lastName,
-          email: input.patient.email,
-          phone: input.patient.phone ?? null,
-          alerts: alerts || null,
-        },
-      });
-    } else if (!row.phone && input.patient.phone) {
-      // Match by email and attach the booking only — never overwrite
-      // demographics or clinical alerts from an unauthenticated form.
-      row = await tx.patient.update({
-        where: { id: row.id },
-        data: { phone: input.patient.phone },
-      });
-    }
+  const resolved = await resolveOrCreatePatient({
+    clinicId: clinic.id,
+    firstName: input.patient.firstName,
+    lastName: input.patient.lastName,
+    email: input.patient.email,
+    phone: input.patient.phone ?? null,
+    alerts: newAlerts || null,
+    forcedPatientId,
+  });
+  let patient = resolved.patient;
 
+  patient = await withClinicTransaction(clinic.id, async (tx) => {
+    const row = await tx.patient.findFirstOrThrow({
+      where: { id: patient.id, clinicId: clinic.id },
+    });
     if (input.intake?.privacyConsent) {
       await tx.patientConsent.create({
         data: {

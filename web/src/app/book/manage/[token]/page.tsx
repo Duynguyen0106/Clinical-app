@@ -19,6 +19,8 @@ type Managed = {
   status: string;
   depositStatus?: string;
   depositCents?: number;
+  /** Signed returning-patient book URL (same patient, no duplicate create). */
+  rebookUrl?: string;
   patient: { firstName: string; lastName: string; email: string | null };
   practitioner: { displayName: string };
   appointmentType: { name: string; durationMinutes: number };
@@ -313,7 +315,10 @@ export default function ManageBookingPage({ params }: Props) {
                 </p>
               ) : null}
               <Link
-                href={`/book/${appointment.clinic.slug}`}
+                href={
+                  appointment.rebookUrl ??
+                  `/book/${appointment.clinic.slug}`
+                }
                 className="btn-ghost"
               >
                 Book another visit

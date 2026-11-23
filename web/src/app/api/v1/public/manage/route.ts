@@ -9,6 +9,7 @@ import {
   manageRescheduleSchema,
   rescheduleManagedAppointment,
 } from "@/modules/scheduling/manage";
+import { createPatientRebookUrl } from "@/modules/scheduling/rebook-token";
 import { enforcePublicManageLimits } from "@/server/abuse";
 
 export const GET = withPublic(async (req) => {
@@ -49,6 +50,9 @@ export const POST = withPublic(async (req) => {
 
 function serialize(appointment: {
   id: string;
+  clinicId: string;
+  patientId: string;
+  practitionerId: string;
   startsAt: Date;
   endsAt: Date;
   status: string;
@@ -59,6 +63,7 @@ function serialize(appointment: {
   appointmentType: { name: string; durationMinutes: number };
   room: { name: string } | null;
   clinic: {
+    id: string;
     name: string;
     slug: string;
     timezone: string;
@@ -66,6 +71,12 @@ function serialize(appointment: {
     bookingPolicyText: string;
   };
 }) {
+  const rebookUrl = createPatientRebookUrl({
+    clinicSlug: appointment.clinic.slug,
+    clinicId: appointment.clinicId,
+    patientId: appointment.patientId,
+    practitionerId: appointment.practitionerId,
+  });
   return {
     id: appointment.id,
     startsAt: appointment.startsAt.toISOString(),
@@ -73,6 +84,7 @@ function serialize(appointment: {
     status: appointment.status,
     depositStatus: appointment.depositStatus ?? "NONE",
     depositCents: appointment.depositCents ?? 0,
+    rebookUrl,
     patient: {
       firstName: appointment.patient.firstName,
       lastName: appointment.patient.lastName,

@@ -474,6 +474,15 @@ export async function sendAppointmentCancelled(appointmentId: string) {
 
   const when = formatWhen(apt.startsAt, apt.clinic.timezone);
   const roomLine = apt.room ? `Room: ${apt.room.name}` : null;
+  const { createPatientRebookUrl } = await import(
+    "@/modules/scheduling/rebook-token"
+  );
+  const rebookLink = createPatientRebookUrl({
+    clinicSlug: apt.clinic.slug,
+    clinicId: apt.clinicId,
+    patientId: apt.patientId,
+    practitionerId: apt.practitionerId,
+  });
   let patientEmailSent = false;
   let patientSmsSent = false;
   let practitionerEmailSent = false;
@@ -501,7 +510,8 @@ export async function sendAppointmentCancelled(appointmentId: string) {
         "",
         "A calendar cancellation (.ics) is attached so you can remove the event.",
         "",
-        "Please contact the clinic if you need to rebook.",
+        "Need another appointment?",
+        rebookLink,
         "",
         "— Treow Clinic",
       ]
@@ -521,7 +531,7 @@ export async function sendAppointmentCancelled(appointmentId: string) {
   if (apt.patient.phone) {
     const smsResult = await sendSms({
       to: apt.patient.phone,
-      body: `${apt.clinic.name}: your appointment on ${when} with ${apt.practitioner.displayName} was cancelled. Contact the clinic to rebook.`,
+      body: `${apt.clinic.name}: your appointment on ${when} with ${apt.practitioner.displayName} was cancelled. Rebook: ${rebookLink}`,
     });
     patientSmsSent = smsResult.delivered;
   }
