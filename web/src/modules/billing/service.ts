@@ -375,7 +375,7 @@ export async function buildReceiptDocument(
   };
 }
 
-/** Email a paid receipt (or unpaid invoice summary) to the patient. */
+/** Email a paid receipt (or unpaid invoice summary) to the patient as a PDF. */
 export async function emailInvoiceReceipt(ctx: AuthContext, invoiceId: string) {
   const doc = await buildReceiptDocument(ctx, invoiceId);
   if (!doc.patient.email) {
@@ -383,22 +383,12 @@ export async function emailInvoiceReceipt(ctx: AuthContext, invoiceId: string) {
   }
 
   const pounds = (doc.amountCents / 100).toFixed(2);
-  const when = doc.appointmentStartsAt
-    ? new Date(doc.appointmentStartsAt).toLocaleString("en-GB", {
-        timeZone: "Europe/London",
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : null;
   const statusLabel =
     doc.status === "PAID" ? "Itemised receipt" : "Itemised invoice";
-  const prac = doc.practitioner;
-  const regLine =
-    prac?.registrationBody && prac.registrationNumber
-      ? `${prac.registrationBody} Reg. No. ${prac.registrationNumber}`
-      : prac?.registrationNumber
-        ? `Reg. No. ${prac.registrationNumber}`
-        : null;
+  const firstName = doc.patient.fullName.split(/\s+/)[0] || doc.patient.fullName;
+
+  const { receiptPdfAttachment } = await import("./receipt-pdf");
+  const pdf = await receiptPdfAttachment(doc);
 
   const { sendEmail } = await import("@/modules/notifications/email");
   const result = await sendEmail({
@@ -406,30 +396,36 @@ export async function emailInvoiceReceipt(ctx: AuthContext, invoiceId: string) {
     subject: `${statusLabel} ${doc.reference} — ${doc.clinic.name}`,
     replyTo: doc.clinic.email,
     text: [
-      `Hi ${doc.patient.fullName},`,
+      `Hi ${firstName},`,
       "",
-      `${statusLabel} (patient copy) from ${doc.clinic.name}.`,
+      `Please find your ${statusLabel.toLowerCase()} from ${doc.clinic.name} attached as a PDF.`,
+      "",
       `Reference: ${doc.reference}`,
-      prac?.displayName ? `Practitioner: ${prac.displayName}` : null,
-      regLine,
+      `Amount: £${pounds}`,
       doc.serviceName ? `Service: ${doc.serviceName}` : null,
-      doc.durationMinutes != null
-        ? `Duration: ${doc.durationMinutes} minutes`
-        : null,
-      when ? `Date of treatment: ${when}` : null,
-      `Amount: £${pounds} ${doc.currency}`,
-      `Status: ${doc.status}`,
-      doc.payments[0]
-        ? `Payment method: ${doc.payments[0].method.replaceAll("_", " ")}`
-        : null,
       "",
-      "For insurance or cash-plan claims, quote the practitioner name and registration number above.",
+      "Open the attached PDF for the full itemised patient copy (practitioner details, payment method, and claim wording).",
       doc.clinic.phone ? `Clinic phone: ${doc.clinic.phone}` : null,
       "",
-      "— Treow Clinic",
+      `— ${doc.clinic.name}`,
     ]
       .filter((line) => line !== null)
       .join("\n"),
+    html: [
+      `<p>Hi ${escapeHtml(firstName)},</p>`,
+      `<p>Please find your <strong>${escapeHtml(statusLabel.toLowerCase())}</strong> from ${escapeHtml(doc.clinic.name)} attached as a PDF.</p>`,
+      `<p>Reference: <strong>${escapeHtml(doc.reference)}</strong><br/>Amount: <strong>£${escapeHtml(pounds)}</strong>${
+        doc.serviceName
+          ? `<br/>Service: ${escapeHtml(doc.serviceName)}`
+          : ""
+      }</p>`,
+      `<p>Open the attached PDF for the full itemised patient copy.</p>`,
+      doc.clinic.phone
+        ? `<p>Clinic phone: ${escapeHtml(doc.clinic.phone)}</p>`
+        : "",
+      `<p>— ${escapeHtml(doc.clinic.name)}</p>`,
+    ].join("\n"),
+    attachments: [pdf],
   });
 
   return {
@@ -437,5 +433,14 @@ export async function emailInvoiceReceipt(ctx: AuthContext, invoiceId: string) {
     provider: result.provider,
     to: doc.patient.email,
     reference: doc.reference,
+    filename: pdf.filename,
   };
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
