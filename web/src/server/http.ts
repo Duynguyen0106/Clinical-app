@@ -24,6 +24,7 @@ export function jsonError(error: unknown) {
           ...(error.retryAfterSec != null
             ? { retryAfterSec: error.retryAfterSec }
             : {}),
+          ...(error.details !== undefined ? { details: error.details } : {}),
         },
       },
       { status: error.status, headers },

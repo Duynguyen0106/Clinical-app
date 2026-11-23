@@ -57,6 +57,7 @@ export function PatientLookup({
   const [recordingPref, setRecordingPref] = useState(false);
   const [dob, setDob] = useState("");
   const [nhsNumber, setNhsNumber] = useState("");
+  const [dupMatches, setDupMatches] = useState<PatientSummary[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -95,11 +96,12 @@ export function PatientLookup({
     setRecordingPref(false);
     setDob("");
     setNhsNumber("");
+    setDupMatches([]);
     setCreating(true);
     setError(null);
   }
 
-  async function createNew() {
+  async function createNew(confirmCreate = false) {
     const { firstName, lastName } = splitName(fullName);
     if (!firstName.trim() || !lastName.trim()) {
       setError("Enter the patient’s full name");
@@ -137,6 +139,7 @@ export function PatientLookup({
           dateOfBirth: dob || null,
           nhsNumber: nhsNumber.trim() || null,
           alerts: alerts || null,
+          ...(confirmCreate ? { confirmCreate: true } : {}),
         }),
       });
 
@@ -161,11 +164,29 @@ export function PatientLookup({
         });
       }
 
+      setDupMatches([]);
       setQ(`${d.patient.firstName} ${d.patient.lastName}`);
       setCreating(false);
       pick(d.patient, intakeNote);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not create patient");
+      if (
+        e instanceof ApiError &&
+        e.status === 409 &&
+        e.details &&
+        typeof e.details === "object" &&
+        Array.isArray((e.details as { matches?: unknown }).matches)
+      ) {
+        const matches = (
+          e.details as { matches: PatientSummary[] }
+        ).matches;
+        setDupMatches(matches);
+        setError(
+          "A patient with this email or phone already exists. Use an existing record or create anyway.",
+        );
+      } else {
+        setDupMatches([]);
+        setError(e instanceof ApiError ? e.message : "Could not create patient");
+      }
     } finally {
       setBusy(false);
     }
@@ -299,6 +320,29 @@ export function PatientLookup({
               />
             </label>
           </div>
+          {dupMatches.length > 0 ? (
+            <div className="patient-lookup-dup" role="group" aria-label="Possible duplicates">
+              <p className="muted">Possible existing patients:</p>
+              <ul className="patient-lookup-results" role="listbox">
+                {dupMatches.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      className="patient-lookup-option"
+                      onClick={() => pick(p, reason.trim() || null)}
+                    >
+                      <span className="apt-name">
+                        Use {p.firstName} {p.lastName}
+                      </span>
+                      <span className="muted">
+                        {[p.email, p.phone].filter(Boolean).join(" · ")}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="home-cta">
             <button
               type="button"
@@ -306,14 +350,27 @@ export function PatientLookup({
               disabled={
                 busy || !fullName.trim() || !email.trim() || !privacy
               }
-              onClick={() => void createNew()}
+              onClick={() => void createNew(false)}
             >
               {busy ? "Saving…" : "Save patient & continue"}
             </button>
+            {dupMatches.length > 0 ? (
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                disabled={busy}
+                onClick={() => void createNew(true)}
+              >
+                Create anyway
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn-ghost btn-sm"
-              onClick={() => setCreating(false)}
+              onClick={() => {
+                setDupMatches([]);
+                setCreating(false);
+              }}
             >
               Back to search
             </button>

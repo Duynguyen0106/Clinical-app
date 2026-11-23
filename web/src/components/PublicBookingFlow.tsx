@@ -58,6 +58,7 @@ type Props = {
 
 export function PublicBookingFlow({ slug, embed = false }: Props) {
   const router = useRouter();
+  const [rebookToken, setRebookToken] = useState("");
   const [clinic, setClinic] = useState<Clinic | null>(null);
   const [serviceId, setServiceId] = useState("");
   const [practitionerId, setPractitionerId] = useState("");
@@ -81,6 +82,19 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const captchaRequired = turnstileEnabledInBrowser();
   const [policyText, setPolicyText] = useState<string | null>(null);
+  /** Returning patient — identity fields locked from sealed token. */
+  const [rebookLocked, setRebookLocked] = useState(false);
+
+  useEffect(() => {
+    try {
+      const token =
+        new URLSearchParams(window.location.search).get("rebook")?.trim() ||
+        "";
+      setRebookToken(token);
+    } catch {
+      setRebookToken("");
+    }
+  }, []);
 
   useEffect(() => {
     void api<{ clinic: Clinic }>(`/public/clinics/${slug}`, { auth: false })
@@ -94,6 +108,47 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
       })
       .catch((e: Error) => setError(e.message));
   }, [slug]);
+
+  useEffect(() => {
+    if (!rebookToken) {
+      setRebookLocked(false);
+      return;
+    }
+    void api<{
+      rebook: {
+        clinicSlug: string;
+        practitionerId?: string | null;
+        patient: {
+          firstName: string;
+          lastName: string;
+          email: string | null;
+          phone: string | null;
+        };
+      };
+    }>(`/public/rebook?token=${encodeURIComponent(rebookToken)}`, {
+      auth: false,
+    })
+      .then((d) => {
+        if (d.rebook.clinicSlug !== slug) {
+          setError("This rebook link is for a different clinic");
+          return;
+        }
+        const p = d.rebook.patient;
+        setName(`${p.firstName} ${p.lastName}`.trim());
+        setEmail(p.email ?? "");
+        setPhone(p.phone ?? "");
+        setRebookLocked(true);
+        if (d.rebook.practitionerId) {
+          setAnyMode(false);
+          setPractitionerId(d.rebook.practitionerId);
+        }
+      })
+      .catch((e: Error) =>
+        setError(
+          e instanceof ApiError ? e.message : "Could not open rebook link",
+        ),
+      );
+  }, [rebookToken, slug]);
 
   useEffect(() => {
     if (!serviceId || !clinic || !anyMode) return;
@@ -220,6 +275,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
           practitionerId,
           startsAt: slot,
           patient: { firstName, lastName, email, phone },
+          ...(rebookToken ? { rebookToken } : {}),
           intake: {
             reasonForVisit: reason || undefined,
             privacyConsent: true,
@@ -427,6 +483,13 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
 
           {step === "details" && (
             <>
+              {rebookLocked ? (
+                <p className="muted book-fineprint" role="status">
+                  Welcome back — booking as {name}
+                  {email ? ` (${email})` : ""}. Your details are locked from
+                  your clinic link so we don’t create a duplicate record.
+                </p>
+              ) : null}
               <label className="field">
                 <span>Full name</span>
                 <input
@@ -434,6 +497,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                   onChange={(e) => setName(e.target.value)}
                   autoComplete="name"
                   required
+                  readOnly={rebookLocked}
                 />
               </label>
               <label className="field">
@@ -444,6 +508,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
                   required
+                  readOnly={rebookLocked}
                 />
               </label>
               <label className="field">
@@ -452,6 +517,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   autoComplete="tel"
+                  readOnly={rebookLocked}
                 />
               </label>
               <label className="field">

@@ -8,8 +8,8 @@
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { formatInTimeZone } from "date-fns-tz";
 import { prisma } from "@/server/db";
-import { getAppBaseUrl } from "@/server/env";
 import { clinicDateKey } from "@/modules/scheduling/clinic-time";
+import { createPatientRebookUrl } from "@/modules/scheduling/rebook-token";
 import { sendEmail } from "./email";
 import { sendSms } from "./sms";
 import {
@@ -37,8 +37,18 @@ function formatWhen(date: Date, timezone: string) {
   }
 }
 
-function bookUrl(slug: string) {
-  return `${getAppBaseUrl()}/book/${slug}`;
+function rebookUrlForApt(apt: {
+  clinicId: string;
+  patientId: string;
+  practitionerId: string;
+  clinic: { slug: string };
+}) {
+  return createPatientRebookUrl({
+    clinicSlug: apt.clinic.slug,
+    clinicId: apt.clinicId,
+    patientId: apt.patientId,
+    practitionerId: apt.practitionerId,
+  });
 }
 
 function prefsUrlFor(patientId: string, clinicId: string) {
@@ -212,7 +222,7 @@ async function sendClinicPatientEmails(
             practitionerName: apt.practitioner.displayName,
             serviceName: apt.appointmentType.name,
             whenLabel: formatWhen(apt.startsAt, clinic.timezone),
-            bookAgainUrl: bookUrl(clinic.slug),
+            bookAgainUrl: rebookUrlForApt(apt),
             prefsUrl: prefsUrlFor(apt.patient.id, clinic.id),
           });
           const send = await sendEmail({
@@ -328,7 +338,7 @@ async function sendClinicPatientEmails(
             patientFirstName: apt.patient.firstName,
             whenLabel: formatWhen(apt.startsAt, clinic.timezone),
             practitionerName: apt.practitioner.displayName,
-            bookAgainUrl: bookUrl(clinic.slug),
+            bookAgainUrl: rebookUrlForApt(apt),
           });
           const send = await sendEmail({
             to: apt.patient.email,

@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { prisma } from "@/server/db";
-import { badRequest, notFound } from "@/server/errors";
+import { badRequest, conflict, notFound } from "@/server/errors";
 import type { AuthContext } from "@/server/auth";
+import { findMatchingPatients, normaliseEmail, normalisePhone } from "./match";
 import {
   assertCanAccessClinicalRecord,
   canAccessClinicalRecord,
@@ -75,6 +76,8 @@ export const createPatientSchema = z.object({
   gpPractice: optionalText(200).optional(),
   gpEmail: optionalEmail.optional(),
   nhsNumber: optionalText(20).optional(),
+  /** Set after staff confirms create despite email/phone matches. */
+  confirmCreate: z.boolean().optional(),
 });
 
 export const updatePatientSchema = createPatientSchema.partial();
@@ -642,14 +645,36 @@ export async function createPatient(
   ctx: AuthContext,
   input: z.infer<typeof createPatientSchema>,
 ) {
+  const email = normaliseEmail(input.email);
+  const phone = normalisePhone(input.phone);
+  if (!input.confirmCreate && (email || phone)) {
+    const matches = await findMatchingPatients(ctx.clinicId, { email, phone });
+    if (matches.length > 0) {
+      throw conflict(
+        "A patient with this email or phone already exists. Use the existing record or confirm create.",
+        {
+          matches: matches.map((m) => ({
+            id: m.id,
+            firstName: m.firstName,
+            lastName: m.lastName,
+            email: m.email,
+            phone: m.phone,
+            dateOfBirth: m.dateOfBirth?.toISOString() ?? null,
+            match: m.match,
+          })),
+        },
+      );
+    }
+  }
+
   return withClinicTransaction(ctx.clinicId, async (tx) => {
-    return tx.patient.create({
+    const patient = await tx.patient.create({
       data: {
         clinicId: ctx.clinicId,
         firstName: input.firstName,
         lastName: input.lastName,
-        email: input.email ?? null,
-        phone: input.phone ?? null,
+        email,
+        phone,
         dateOfBirth: parseDob(input.dateOfBirth),
         alerts: input.alerts ?? null,
         gpName: input.gpName ?? null,
@@ -658,7 +683,27 @@ export async function createPatient(
         nhsNumber: input.nhsNumber ?? null,
       },
     });
+    console.info(
+      `[patient:created] clinic=${ctx.clinicId} patient=${patient.id} staff=${ctx.userId}${input.confirmCreate ? " confirmCreate=1" : ""}`,
+    );
+    return patient;
   });
+}
+
+export async function listPatientMatches(
+  ctx: AuthContext,
+  input: { email?: string | null; phone?: string | null },
+) {
+  const matches = await findMatchingPatients(ctx.clinicId, input);
+  return matches.map((m) => ({
+    id: m.id,
+    firstName: m.firstName,
+    lastName: m.lastName,
+    email: m.email,
+    phone: m.phone,
+    dateOfBirth: m.dateOfBirth?.toISOString() ?? null,
+    match: m.match,
+  }));
 }
 
 function parseDob(value: string | null | undefined) {

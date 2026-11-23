@@ -57,6 +57,7 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public code?: string,
+    public details?: unknown,
   ) {
     super(message);
   }
@@ -85,7 +86,9 @@ export async function api<T>(
     credentials: init.credentials ?? "same-origin",
   });
   const raw = await res.text();
-  let data: { error?: { message?: string; code?: string } } = {};
+  let data: {
+    error?: { message?: string; code?: string; details?: unknown };
+  } = {};
   if (raw) {
     try {
       data = JSON.parse(raw) as typeof data;
@@ -108,6 +111,7 @@ export async function api<T>(
       res.status,
       data?.error?.message || fallback,
       data?.error?.code,
+      data?.error?.details,
     );
   }
 

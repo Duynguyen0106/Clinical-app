@@ -92,6 +92,16 @@ function PatientsPageInner() {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [dupMatches, setDupMatches] = useState<
+    {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string | null;
+      phone: string | null;
+      match?: string;
+    }[]
+  >([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [intakeStatus, setIntakeStatus] = useState<{
@@ -248,6 +258,7 @@ function PatientsPageInner() {
     setForm(emptyForm);
     setError(null);
     setMessage(null);
+    setDupMatches([]);
   }
 
   function startEdit(p: Patient) {
@@ -276,7 +287,7 @@ function PatientsPageInner() {
     }, 50);
   }
 
-  async function save() {
+  async function save(confirmCreate = false) {
     if (!form.firstName.trim() || !form.lastName.trim()) {
       setError("First and last name are required");
       return;
@@ -295,6 +306,7 @@ function PatientsPageInner() {
       gpName: form.gpName.trim() || null,
       gpPractice: form.gpPractice.trim() || null,
       gpEmail: form.gpEmail.trim() || null,
+      ...(creating && confirmCreate ? { confirmCreate: true } : {}),
     };
     try {
       if (creating) {
@@ -302,6 +314,7 @@ function PatientsPageInner() {
           method: "POST",
           body: JSON.stringify(body),
         });
+        setDupMatches([]);
         setMessage("Patient created.");
         setCreating(false);
         setSelectedId(d.patient.id);
@@ -321,7 +334,24 @@ function PatientsPageInner() {
         setEditing(false);
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Save failed");
+      if (
+        creating &&
+        e instanceof ApiError &&
+        e.status === 409 &&
+        e.details &&
+        typeof e.details === "object" &&
+        Array.isArray((e.details as { matches?: unknown }).matches)
+      ) {
+        setDupMatches(
+          (e.details as { matches: typeof dupMatches }).matches,
+        );
+        setError(
+          "A patient with this email or phone already exists. Open them or create anyway.",
+        );
+      } else {
+        setDupMatches([]);
+        setError(e instanceof ApiError ? e.message : "Save failed");
+      }
     } finally {
       setBusy(false);
     }
@@ -623,14 +653,59 @@ function PatientsPageInner() {
                 }
               />
             </label>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={busy}
-              onClick={() => void save()}
-            >
-              {busy ? "Saving…" : creating ? "Create patient" : "Save details"}
-            </button>
+            {creating && dupMatches.length > 0 ? (
+              <div className="patient-lookup-dup" role="group">
+                <p className="muted">Possible existing patients:</p>
+                <ul className="patient-lookup-results">
+                  {dupMatches.map((p) => (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        className="patient-lookup-option"
+                        onClick={() => {
+                          setDupMatches([]);
+                          setCreating(false);
+                          setSelectedId(p.id);
+                          setQ(`${p.firstName} ${p.lastName}`);
+                          load();
+                        }}
+                      >
+                        <span className="apt-name">
+                          Open {p.firstName} {p.lastName}
+                        </span>
+                        <span className="muted">
+                          {[p.email, p.phone].filter(Boolean).join(" · ")}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <div className="home-cta">
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy}
+                onClick={() => void save(false)}
+              >
+                {busy
+                  ? "Saving…"
+                  : creating
+                    ? "Create patient"
+                    : "Save details"}
+              </button>
+              {creating && dupMatches.length > 0 ? (
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  disabled={busy}
+                  onClick={() => void save(true)}
+                >
+                  Create anyway
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : selected ? (
           <div className="panel">
