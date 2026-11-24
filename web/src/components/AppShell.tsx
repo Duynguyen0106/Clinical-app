@@ -210,29 +210,42 @@ export function AppShell({
       return;
     }
     let cancelled = false;
-    const taskJob = !isPractitioner
-      ? api<{ tasks: unknown[] }>("/ops/tasks")
-          .then((d) => d.tasks.length)
-          .catch(() => 0)
-      : Promise.resolve(0);
-    const leaveJob = canReviewLeave
-      ? api<{ requests: unknown[] }>("/leave-requests?pending=1")
-          .then((d) => d.requests.length)
-          .catch(() => 0)
-      : isPractitioner && me.practitionerProfileId
-        ? api<{ requests: Array<{ status: string }> }>(
+    // Sequential badge fetches — avoid stacking with Today/Calendar Neon WS.
+    void (async () => {
+      let tasks = 0;
+      let leave = 0;
+      if (!isPractitioner) {
+        try {
+          const d = await api<{ tasks: unknown[] }>("/ops/tasks");
+          tasks = d.tasks.length;
+        } catch {
+          tasks = 0;
+        }
+      }
+      if (cancelled) return;
+      if (canReviewLeave) {
+        try {
+          const d = await api<{ requests: unknown[] }>(
+            "/leave-requests?pending=1",
+          );
+          leave = d.requests.length;
+        } catch {
+          leave = 0;
+        }
+      } else if (isPractitioner && me.practitionerProfileId) {
+        try {
+          const d = await api<{ requests: Array<{ status: string }> }>(
             `/leave-requests?practitionerId=${me.practitionerProfileId}`,
-          )
-            .then(
-              (d) => d.requests.filter((r) => r.status === "PENDING").length,
-            )
-            .catch(() => 0)
-        : Promise.resolve(0);
-    void Promise.all([taskJob, leaveJob]).then(([tasks, leave]) => {
+          );
+          leave = d.requests.filter((r) => r.status === "PENDING").length;
+        } catch {
+          leave = 0;
+        }
+      }
       if (cancelled) return;
       setLeavePending(leave);
       setMoreBadge(tasks + leave);
-    });
+    })();
     return () => {
       cancelled = true;
     };

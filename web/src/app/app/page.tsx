@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, mapPool } from "@/lib/api";
 import { pulseHrefForRole } from "@/modules/ops/pulse-links";
 import { humanStatusLabel } from "@/modules/scheduling/calendar-ui";
 import { patientDiaryLabel } from "@/modules/scheduling/diary-privacy";
@@ -121,71 +121,72 @@ export default function TodayPage() {
       notesQs.set("practitionerId", myPractitionerId);
     }
 
-    const jobs: Promise<unknown>[] = [
-      api<{ appointments: Appointment[] }>(`/appointments?${aptQs}`).then(
-        async (a) => {
-          setAppointments(a.appointments);
-          if (a.appointments.length > 0) {
-            setUpcoming([]);
-            return;
-          }
-          // Empty day board — surface the next booked visits so staff don't
-          // think the diary is broken when today simply has no patients.
-          const soonFrom = new Date();
-          const soonTo = new Date();
-          soonTo.setDate(soonTo.getDate() + 14);
-          soonTo.setHours(23, 59, 59, 999);
-          const soonQs = new URLSearchParams({
-            from: soonFrom.toISOString(),
-            to: soonTo.toISOString(),
-          });
-          if (!isPractitioner && isPractitionerHome && myPractitionerId) {
-            soonQs.set("practitionerId", myPractitionerId);
-          }
-          try {
-            const soon = await api<{ appointments: Appointment[] }>(
-              `/appointments?${soonQs}`,
-            );
-            const active = soon.appointments.filter(
-              (x) =>
-                !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(x.status) &&
-                new Date(x.endsAt).getTime() >= Date.now(),
-            );
-            setUpcoming(active.slice(0, 5));
-          } catch {
-            setUpcoming([]);
-          }
-        },
-      ),
+    const jobs: Array<() => Promise<void>> = [
+      async () => {
+        const a = await api<{ appointments: Appointment[] }>(
+          `/appointments?${aptQs}`,
+        );
+        setAppointments(a.appointments);
+        if (a.appointments.length > 0) {
+          setUpcoming([]);
+          return;
+        }
+        // Empty day board — surface the next booked visits so staff don't
+        // think the diary is broken when today simply has no patients.
+        const soonFrom = new Date();
+        const soonTo = new Date();
+        soonTo.setDate(soonTo.getDate() + 14);
+        soonTo.setHours(23, 59, 59, 999);
+        const soonQs = new URLSearchParams({
+          from: soonFrom.toISOString(),
+          to: soonTo.toISOString(),
+        });
+        if (!isPractitioner && isPractitionerHome && myPractitionerId) {
+          soonQs.set("practitionerId", myPractitionerId);
+        }
+        try {
+          const soon = await api<{ appointments: Appointment[] }>(
+            `/appointments?${soonQs}`,
+          );
+          const active = soon.appointments.filter(
+            (x) =>
+              !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(x.status) &&
+              new Date(x.endsAt).getTime() >= Date.now(),
+          );
+          setUpcoming(active.slice(0, 5));
+        } catch {
+          setUpcoming([]);
+        }
+      },
     ];
 
     if (showOpsInbox) {
-      jobs.push(
-        api<{ tasks: OpsTask[] }>("/ops/tasks").then((t) =>
-          setTasks(t.tasks.slice(0, 5)),
-        ),
-      );
+      jobs.push(async () => {
+        const t = await api<{ tasks: OpsTask[] }>("/ops/tasks");
+        setTasks(t.tasks.slice(0, 5));
+      });
     } else {
       setTasks([]);
     }
 
     if (isClinician) {
-      jobs.push(
-        api<{ notes: DraftNote[] }>(`/notes?${notesQs}`).then((n) =>
-          setDrafts(n.notes.slice(0, 6)),
-        ),
-      );
+      jobs.push(async () => {
+        const n = await api<{ notes: DraftNote[] }>(`/notes?${notesQs}`);
+        setDrafts(n.notes.slice(0, 6));
+      });
     }
 
     if (showPracticePulse) {
-      jobs.push(
-        api<{ pulse: Pulse }>("/ops/pulse").then((p) => setPulse(p.pulse)),
-      );
+      jobs.push(async () => {
+        const p = await api<{ pulse: Pulse }>("/ops/pulse");
+        setPulse(p.pulse);
+      });
     } else {
       setPulse(null);
     }
 
-    return Promise.all(jobs);
+    // Cap concurrency — parallel Neon WS fan-out trips Cloudflare 1101.
+    return mapPool(jobs, 2, (job) => job());
   }, [
     me,
     isPractitionerHome,

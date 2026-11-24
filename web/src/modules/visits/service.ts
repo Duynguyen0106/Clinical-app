@@ -66,25 +66,24 @@ export async function startVisit(ctx: AuthContext, appointmentId: string) {
 }
 
 export async function getVisit(ctx: AuthContext, visitId: string) {
-  const visit = await withClinicTransaction(ctx.clinicId, async (tx) => {
-    return tx.visit.findFirst({
-      where: {
-        id: visitId,
-        appointment: { clinicId: ctx.clinicId },
+  // Read-only — no interactive Neon tx (Workers 1101 under concurrent desk load).
+  const visit = await prisma.visit.findFirst({
+    where: {
+      id: visitId,
+      appointment: { clinicId: ctx.clinicId },
+    },
+    include: {
+      appointment: {
+        include: { patient: true, appointmentType: true, practitioner: true },
       },
-      include: {
-        appointment: {
-          include: { patient: true, appointmentType: true, practitioner: true },
-        },
-        recording: { include: { transcript: true } },
-        notes: {
-          orderBy: { createdAt: "desc" },
-          include: {
-            template: { select: { id: true, name: true, schema: true } },
-          },
+      recording: { include: { transcript: true } },
+      notes: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          template: { select: { id: true, name: true, schema: true } },
         },
       },
-    });
+    },
   });
   if (!visit) throw notFound("Visit not found");
   assertOwnsDiaryOrOwner(ctx, visit.appointment.practitionerId);

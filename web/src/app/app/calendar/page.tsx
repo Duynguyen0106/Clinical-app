@@ -268,48 +268,28 @@ export default function CalendarPage() {
       timeZone,
     )}${pracQs}`;
 
-    // Workers isolate 1101 on Neon WS is intermittent — retry with backoff.
-    const withRetry = async <T,>(fn: () => Promise<T>, attempts = 5): Promise<T> => {
-      let last: unknown;
-      for (let i = 0; i < attempts; i++) {
-        try {
-          return await fn();
-        } catch (err) {
-          last = err;
-          if (!(err instanceof ApiError) || err.status < 500 || i === attempts - 1) {
-            throw err;
-          }
-          await new Promise((r) => setTimeout(r, 300 * Math.pow(2, i)));
-        }
-      }
-      throw last;
-    };
-
     const gen = ++loadGen.current;
     void (async () => {
-      // Load independently so a flaky /blocks or /catalog 1101 does not blank the diary.
-      const aptJob = withRetry(() =>
-        api<{ appointments: Appointment[] }>(aptPath),
-      );
-      const blockJob = withRetry(() => api<{ blocks: Block[] }>(blocksPath)).catch(
-        () => ({ blocks: [] as Block[] }),
-      );
-      const catalogJob = withRetry(() => api<Catalog>("/clinic/catalog")).catch(
-        () => null,
-      );
-
       try {
-        const [a, b, c] = await Promise.all([aptJob, blockJob, catalogJob]);
+        // Sequential loads — parallel Neon WS fan-out causes Cloudflare 1101.
+        // `api()` retries GETs on 5xx; keep blocks/catalog soft-fail.
+        const a = await api<{ appointments: Appointment[] }>(aptPath);
         if (gen !== loadGen.current) return;
         setAppointments(a.appointments);
-        setBlocks(b.blocks);
-        if (c) setCatalog(c);
-        setError(null);
         setSelected((prev) => {
           if (!prev) return null;
           const fresh = a.appointments.find((x) => x.id === prev.id);
           return fresh ?? prev;
         });
+        const b = await api<{ blocks: Block[] }>(blocksPath).catch(() => ({
+          blocks: [] as Block[],
+        }));
+        if (gen !== loadGen.current) return;
+        setBlocks(b.blocks);
+        const c = await api<Catalog>("/clinic/catalog").catch(() => null);
+        if (gen !== loadGen.current) return;
+        if (c) setCatalog(c);
+        setError(null);
       } catch (e) {
         if (gen !== loadGen.current) return;
         // Keep the last good diary on screen; only surface the error.

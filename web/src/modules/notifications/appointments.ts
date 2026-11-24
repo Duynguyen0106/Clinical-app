@@ -604,29 +604,26 @@ export async function sendUpcomingReminders(
       take: 100,
     });
 
-    const { withClinicTransaction } = await import("@/server/clinic-rls");
-
+    // Bare updateMany — same pattern as patient-emails claimMarker.
+    // Per-row interactive txs burn Neon WS slots on cron and trip Workers 1101.
     const claim = async (
       appointmentId: string,
       field: "reminderSentAt" | "smsReminderSentAt",
-    ) =>
-      withClinicTransaction(clinic.id, async (tx) => {
-        const result = await tx.appointment.updateMany({
-          where: { id: appointmentId, [field]: null },
-          data: { [field]: new Date() },
-        });
-        return result.count === 1;
+    ) => {
+      const result = await prisma.appointment.updateMany({
+        where: { id: appointmentId, clinicId: clinic.id, [field]: null },
+        data: { [field]: new Date() },
       });
+      return result.count === 1;
+    };
 
     const unclaim = async (
       appointmentId: string,
       field: "reminderSentAt" | "smsReminderSentAt",
     ) => {
-      await withClinicTransaction(clinic.id, async (tx) => {
-        await tx.appointment.update({
-          where: { id: appointmentId },
-          data: { [field]: null },
-        });
+      await prisma.appointment.updateMany({
+        where: { id: appointmentId, clinicId: clinic.id },
+        data: { [field]: null },
       });
     };
 

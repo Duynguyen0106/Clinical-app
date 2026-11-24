@@ -63,7 +63,60 @@ export class ApiError extends Error {
   }
 }
 
+function isTransientHttpStatus(status: number) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Run async jobs with a small concurrency cap so Cloudflare Workers + Neon
+ * WebSocket (`maxUses: 1`) are not saturated on desk/calendar boot.
+ */
+export async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const limit = Math.max(1, Math.min(concurrency, items.length || 1));
+  const results = new Array<R>(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: limit }, () => worker()));
+  return results;
+}
+
 export async function api<T>(
+  path: string,
+  init: RequestInit & { auth?: boolean; retries?: number } = {},
+): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const idempotent = method === "GET" || method === "HEAD";
+  const attempts = init.retries ?? (idempotent ? 3 : 1);
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await apiOnce<T>(path, init);
+    } catch (err) {
+      lastErr = err;
+      const retryable =
+        err instanceof ApiError && isTransientHttpStatus(err.status);
+      if (!retryable || attempt === attempts - 1) throw err;
+      await sleep(250 * Math.pow(2, attempt));
+    }
+  }
+  throw lastErr;
+}
+
+async function apiOnce<T>(
   path: string,
   init: RequestInit & { auth?: boolean } = {},
 ): Promise<T> {
@@ -103,7 +156,7 @@ export async function api<T>(
       /worker threw an exception/i.test(raw);
     const fallback =
       res.status >= 500
-        ? cfEdge
+        ? cfEdge || res.status === 502 || res.status === 503 || res.status === 504
           ? "Server overloaded — wait a moment and try again"
           : "Server temporarily unavailable — try again"
         : res.statusText;
