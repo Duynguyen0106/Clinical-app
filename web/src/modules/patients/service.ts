@@ -499,6 +499,8 @@ export async function getPatientPrep(
     mode,
   );
 
+  // Appointment.notes is free-text and often clinical — clinicians only.
+  const includeBookingNotes = canViewNotes;
   const payload = {
     id: patient.id,
     firstName: identity.firstName,
@@ -513,7 +515,7 @@ export async function getPatientPrep(
       startsAt: a.startsAt,
       endsAt: a.endsAt,
       status: a.status,
-      notes: a.notes,
+      notes: includeBookingNotes ? a.notes : null,
       serviceName: a.appointmentType.name,
       practitionerName: a.practitioner.displayName,
       visitId: a.visit?.id ?? null,

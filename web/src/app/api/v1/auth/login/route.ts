@@ -26,10 +26,13 @@ export const POST = withPublic(async (req) => {
     }
     throw err;
   }
-  const res = jsonOk(result);
+  // Cookie is the session capability — do not echo the raw token in JSON
+  // (XSS / browser extensions would otherwise read it from the response body).
+  const { accessToken, ...safe } = result;
+  const res = jsonOk(safe);
   appendSessionCookie(
     res,
-    result.accessToken,
+    accessToken,
     result.expiresAt instanceof Date
       ? result.expiresAt
       : new Date(result.expiresAt),
