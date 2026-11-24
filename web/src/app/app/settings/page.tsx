@@ -61,6 +61,8 @@ type PatientEmailSettings = {
   reviewUrl: string | null;
   noShowFollowUpEnabled: boolean;
   noShowFollowUpDelayHours: number;
+  checkupReminderEnabled: boolean;
+  checkupReminderDelayDays: number;
 };
 
 export default function SettingsPage() {
@@ -311,11 +313,12 @@ export default function SettingsPage() {
         thankYou: number;
         reviewRequest: number;
         noShowFollowUp: number;
+        checkupReminder: number;
         sameDayReminder: number;
         errors?: number;
       }>("/jobs/patient-emails", { method: "POST" });
       setMessage(
-        `Patient emails sent: ${d.sent} (thank-you ${d.thankYou}, review ${d.reviewRequest}, no-show ${d.noShowFollowUp}, same-day ${d.sameDayReminder}${d.errors ? `, errors ${d.errors}` : ""}).`,
+        `Patient emails sent: ${d.sent} (thank-you ${d.thankYou}, review ${d.reviewRequest}, no-show ${d.noShowFollowUp}, check-up ${d.checkupReminder}, same-day ${d.sameDayReminder}${d.errors ? `, errors ${d.errors}` : ""}).`,
       );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Patient emails job failed");
@@ -1254,6 +1257,41 @@ export default function SettingsPage() {
                   hours)
                 </span>
               </label>
+              <label className="field checkbox-row">
+                <input
+                  type="checkbox"
+                  disabled={!isOwner}
+                  checked={patientEmails.checkupReminderEnabled}
+                  onChange={(e) =>
+                    setPatientEmails({
+                      ...patientEmails,
+                      checkupReminderEnabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>
+                  Check-up rebook reminder (after{" "}
+                  <input
+                    type="number"
+                    min={14}
+                    max={90}
+                    disabled={!isOwner || !patientEmails.checkupReminderEnabled}
+                    style={{ width: "4rem" }}
+                    value={patientEmails.checkupReminderDelayDays}
+                    onChange={(e) =>
+                      setPatientEmails({
+                        ...patientEmails,
+                        checkupReminderDelayDays: Number(e.target.value),
+                      })
+                    }
+                  />{" "}
+                  days without booking again)
+                </span>
+              </label>
+              <p className="muted" style={{ marginTop: "-0.25rem" }}>
+                Emails patients who haven’t booked again after a completed visit.
+                Needs marketing email consent.
+              </p>
               {isOwner ? (
                 <div className="home-cta">
                   <button
