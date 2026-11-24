@@ -3,36 +3,14 @@ import { jsonOk } from "@/server/http";
 
 export const dynamic = "force-dynamic";
 
-function emailProvider() {
-  return (process.env.EMAIL_PROVIDER ?? "console").toLowerCase();
-}
-
-function smsProvider() {
-  return (process.env.SMS_PROVIDER ?? "console").toLowerCase();
-}
-
-function paymentProvider() {
-  return (process.env.PAYMENT_PROVIDER ?? "console").toLowerCase();
-}
-
 function cronConfigured() {
   const cron = process.env.CRON_SECRET?.trim() ?? "";
   return cron.length >= 24;
 }
 
-function rateLimitBackend() {
-  if (
-    process.env.UPSTASH_REDIS_REST_URL?.trim() &&
-    process.env.UPSTASH_REDIS_REST_TOKEN?.trim()
-  ) {
-    return "upstash";
-  }
-  return "memory";
-}
-
 /**
- * Unauthenticated liveness for uptime monitors + launch checklist.
- * Reports provider *names* only — never keys or secrets.
+ * Unauthenticated liveness for uptime monitors.
+ * Does not disclose provider backends (email/sms/payment/rate-limit).
  */
 export async function GET() {
   const started = Date.now();
@@ -51,11 +29,7 @@ export async function GET() {
       time: new Date().toISOString(),
       database,
       latencyMs: Date.now() - started,
-      emailProvider: emailProvider(),
-      smsProvider: smsProvider(),
-      paymentProvider: paymentProvider(),
       cronConfigured: cronConfigured(),
-      rateLimitBackend: rateLimitBackend(),
     },
     { status: ok ? 200 : 503 },
   );

@@ -11,6 +11,21 @@ const frameDeny = [
   },
 ] as const;
 
+const apiSecurity = [
+  {
+    key: "X-Content-Type-Options",
+    value: "nosniff",
+  },
+  {
+    key: "Referrer-Policy",
+    value: "no-referrer",
+  },
+  {
+    key: "X-Frame-Options",
+    value: "DENY",
+  },
+] as const;
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
@@ -22,6 +37,8 @@ const nextConfig: NextConfig = {
       { source: "/privacy", headers: [...frameDeny] },
       { source: "/book/:path*", headers: [...frameDeny] },
       { source: "/", headers: [...frameDeny] },
+      // API JSON — reduce MIME sniffing and referrer leakage of tokens in URLs
+      { source: "/api/:path*", headers: [...apiSecurity] },
       {
         // Clinic websites iframe the embed booking UI
         source: "/embed/:path*",
