@@ -26,9 +26,27 @@ export async function setRlsBypassLocal(tx: Tx) {
 const DEFAULT_TX = { maxWait: 10_000, timeout: 25_000 } as const;
 
 /**
+ * Neon interactive `$transaction` on Cloudflare Workers reliably trips
+ * error 1101/1102 ("Server temporarily unavailable"). Production Worker
+ * uses `neondb_owner` (BYPASSRLS), so app-layer `clinicId` filters are
+ * enough — skip interactive txs and run against the root client.
+ *
+ * Real interactive txs remain for `withScheduleLocks` (advisory locks).
+ */
+function skipInteractiveRlsTx() {
+  return (
+    process.env.CLOUDFLARE_WORKERS === "1" ||
+    process.env.USE_NEON_ADAPTER === "1" ||
+    process.env.SKIP_INTERACTIVE_RLS_TX === "1"
+  );
+}
+
+/**
  * One interactive transaction for the whole request/job. Bare `prisma.*`
  * RLS-model queries reuse this tx via ALS (see db.ts extension) so we do not
  * open a Neon interactive transaction per query (Worker 5xx / timeouts).
+ *
+ * On Workers/Neon adapter this is a no-op wrapper (see skipInteractiveRlsTx).
  */
 export async function withClinicRequest<T>(
   clinicId: string,
@@ -49,6 +67,10 @@ export async function withClinicRequest<T>(
     return runWithClinicRls(clinicId, () =>
       enterRlsTransaction(fn, existing),
     );
+  }
+
+  if (skipInteractiveRlsTx()) {
+    return runWithClinicRls(clinicId, fn);
   }
 
   return runWithClinicRls(clinicId, () =>
@@ -76,6 +98,10 @@ export async function withRlsBypassRequest<T>(
     return enterRlsTransaction(fn, existing);
   }
 
+  if (skipInteractiveRlsTx()) {
+    return runWithRlsBypass(fn);
+  }
+
   return runWithRlsBypass(() =>
     client.$transaction(async (tx) => {
       await setRlsBypassLocal(tx);
@@ -88,8 +114,8 @@ export async function withRlsBypassRequest<T>(
 }
 
 /**
- * Run work in a transaction with clinic RLS context set.
- * Reuses the request-scoped tx when already inside withClinicRequest.
+ * Run work with clinic RLS context. On Workers, skips interactive Neon txs
+ * (1102); reuses a parent tx when already inside withScheduleLocks / request.
  */
 export async function withClinicTransaction<T>(
   clinicId: string,
@@ -110,6 +136,12 @@ export async function withClinicTransaction<T>(
     return fn(existing);
   }
 
+  if (skipInteractiveRlsTx()) {
+    return runWithClinicRls(clinicId, () =>
+      fn(client as unknown as Tx),
+    );
+  }
+
   return runWithClinicRls(clinicId, () =>
     client.$transaction(async (tx) => {
       await setClinicRlsLocal(tx, clinicId);
@@ -126,6 +158,10 @@ export async function withRlsBypassTransaction<T>(
   const store = rlsAls.getStore();
   if (existing && store?.kind === "bypass" && store.depth > 0) {
     return fn(existing);
+  }
+
+  if (skipInteractiveRlsTx()) {
+    return runWithRlsBypass(() => fn(client as unknown as Tx));
   }
 
   return runWithRlsBypass(() =>
