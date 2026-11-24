@@ -29,7 +29,9 @@ const DEFAULT_TX = { maxWait: 10_000, timeout: 25_000 } as const;
  * Neon interactive `$transaction` on Cloudflare Workers reliably trips
  * error 1101/1102 ("Server temporarily unavailable"). Production Worker
  * uses `neondb_owner` (BYPASSRLS), so app-layer `clinicId` filters are
- * enough — skip interactive txs and run against the root client.
+ * the only tenant boundary — skip interactive txs and run against the
+ * root client. SQL policies in prisma/sql still matter for non-owner
+ * roles / staging; migrating the Worker off neondb_owner is the real fix.
  *
  * Real interactive txs remain for `withScheduleLocks` (advisory locks).
  */
