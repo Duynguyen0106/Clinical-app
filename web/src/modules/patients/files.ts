@@ -8,6 +8,11 @@ import {
   savePatientFileBytes,
 } from "@/server/storage";
 import { requirePatient } from "@/modules/patients/service";
+import { assertCanAccessClinicalRecord } from "@/server/rbac";
+import {
+  assertMagicMatchesClaim,
+  contentDispositionFilename,
+} from "@/modules/patients/file-bytes";
 
 export const PATIENT_FILE_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -23,22 +28,28 @@ const MIME_EXT: Record<string, string> = {
   "image/png": "png",
 };
 
+export { contentDispositionFilename };
+
 export function assertAllowedPatientFile(opts: {
   mimeType: string;
   sizeBytes: number;
+  bytes?: Buffer;
   filename?: string;
 }) {
-  const mime = opts.mimeType.trim().toLowerCase();
-  if (!PATIENT_FILE_ALLOWED_MIME.has(mime)) {
-    throw badRequest("Only PDF, JPEG, and PNG files are allowed");
-  }
   if (!opts.sizeBytes || opts.sizeBytes <= 0) {
     throw badRequest("Empty file");
   }
   if (opts.sizeBytes > PATIENT_FILE_MAX_BYTES) {
     throw badRequest("File must be 10 MB or smaller");
   }
-  return mime;
+  const claimed = opts.mimeType.trim().toLowerCase();
+  if (opts.bytes) {
+    return assertMagicMatchesClaim(opts.bytes, claimed);
+  }
+  if (!PATIENT_FILE_ALLOWED_MIME.has(claimed)) {
+    throw badRequest("Only PDF, JPEG, and PNG files are allowed");
+  }
+  return claimed;
 }
 
 function sanitizeFilename(raw: string, mime: string) {
@@ -112,6 +123,7 @@ export async function uploadPatientFile(
   const mime = assertAllowedPatientFile({
     mimeType: opts.mimeType,
     sizeBytes: opts.bytes.length,
+    bytes: opts.bytes,
     filename: opts.filename,
   });
   const filename = sanitizeFilename(opts.filename || "attachment", mime);
@@ -176,6 +188,18 @@ export async function getPatientFileDownload(
   });
   if (!row) throw notFound("File not found");
 
+  // Medical attachments are clinical PHI — clinicians always; reception only
+  // their own uploads (desk scanned a letter and needs to re-open it).
+  if (ctx.role === "RECEPTION") {
+    if (!row.uploadedById || row.uploadedById !== ctx.userId) {
+      throw forbidden(
+        "Reception can only download files they uploaded — ask a clinician for other records",
+      );
+    }
+  } else {
+    assertCanAccessClinicalRecord(ctx);
+  }
+
   const bytes = await readPatientFileBytes(row.storageKey);
   void prisma.patientAccessEvent
     .create({
@@ -190,7 +214,7 @@ export async function getPatientFileDownload(
     .catch(() => undefined);
 
   return {
-    filename: row.filename,
+    filename: contentDispositionFilename(row.filename),
     mimeType: row.mimeType,
     bytes,
   };
@@ -209,13 +233,12 @@ export async function deletePatientFile(
   });
   if (!row) throw notFound("File not found");
 
-  // Reception / owners can delete any; practitioners only their own uploads
-  if (
-    ctx.role === "PRACTITIONER" &&
-    row.uploadedById &&
-    row.uploadedById !== ctx.userId
-  ) {
-    throw forbidden("You can only delete files you uploaded");
+  // Owners can delete any; practitioners / reception only their own uploads.
+  // Null uploadedById is treated as not owned by the current user.
+  if (ctx.role !== "OWNER") {
+    if (!row.uploadedById || row.uploadedById !== ctx.userId) {
+      throw forbidden("You can only delete files you uploaded");
+    }
   }
 
   await prisma.patientFile.delete({ where: { id: row.id } });

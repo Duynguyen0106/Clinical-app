@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
+import { useAuth } from "@/components/AuthProvider";
 import { ApiError, api, getClinicId, getToken } from "@/lib/api";
 
 type PatientFileRow = {
@@ -30,12 +31,25 @@ export function PatientFilesPanel({
   compact = false,
   className,
 }: Props) {
+  const { me } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<PatientFileRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const canDownload = (f: PatientFileRow) => {
+    if (!me) return false;
+    if (me.role === "OWNER" || me.role === "PRACTITIONER") return true;
+    // Reception: own uploads only
+    return Boolean(f.uploadedBy && f.uploadedBy.id === me.user.id);
+  };
+  const canDelete = (f: PatientFileRow) => {
+    if (!me) return false;
+    if (me.role === "OWNER") return true;
+    return Boolean(f.uploadedBy && f.uploadedBy.id === me.user.id);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -192,22 +206,26 @@ export function PatientFilesPanel({
                 </div>
               </div>
               <div className="home-cta" style={{ margin: 0 }}>
-                <button
-                  type="button"
-                  className="btn-ghost btn-sm"
-                  disabled={busy}
-                  onClick={() => void onDownload(f)}
-                >
-                  Download
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost btn-sm"
-                  disabled={busy}
-                  onClick={() => void onDelete(f)}
-                >
-                  Delete
-                </button>
+                {canDownload(f) ? (
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    disabled={busy}
+                    onClick={() => void onDownload(f)}
+                  >
+                    Download
+                  </button>
+                ) : null}
+                {canDelete(f) ? (
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    disabled={busy}
+                    onClick={() => void onDelete(f)}
+                  >
+                    Delete
+                  </button>
+                ) : null}
               </div>
             </li>
           ))}

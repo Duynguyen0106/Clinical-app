@@ -10,7 +10,7 @@ import {
 export const GET = withAuth(async (_req, ctx, params) => {
   requireStaff(ctx);
   const file = await getPatientFileDownload(ctx, params.id, params.fileId);
-  const disposition = `attachment; filename="${file.filename.replace(/"/g, "")}"`;
+  const disposition = `attachment; filename="${file.filename}"`;
   return new NextResponse(new Uint8Array(file.bytes), {
     status: 200,
     headers: {
