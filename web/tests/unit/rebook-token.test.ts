@@ -41,6 +41,19 @@ describe("rebook tokens", () => {
     assert.equal(payload.percentOff, 15);
   });
 
+  it("clamps sealed percentOff to the max public promo", () => {
+    const token = createRebookToken(
+      {
+        clinicId: "c1",
+        patientId: "p1",
+        percentOff: 90,
+      },
+      Date.now() + 60_000,
+    );
+    const payload = verifyRebookToken(token);
+    assert.equal(payload.percentOff, WINBACK_PERCENT_OFF);
+  });
+
   it("rejects expired tokens", () => {
     const token = createRebookToken(
       { clinicId: "c1", patientId: "p1" },

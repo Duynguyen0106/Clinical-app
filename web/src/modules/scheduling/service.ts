@@ -1289,9 +1289,8 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
       throw forbidden("Rebook link is for a different clinic");
     }
     forcedPatientId = payload.patientId;
-    if (payload.percentOff && payload.percentOff > 0) {
-      promoPercentOff = Math.min(100, Math.floor(payload.percentOff));
-    }
+    const { clampPromoPercentOff } = await import("@/modules/billing/promo");
+    promoPercentOff = clampPromoPercentOff(payload.percentOff);
   }
 
   const { resolveOrCreatePatient } = await import("@/modules/patients/match");

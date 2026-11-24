@@ -9,6 +9,10 @@ import {
 import { prisma } from "@/server/db";
 import { forbidden, notFound } from "@/server/errors";
 import { getAppBaseUrl, getAuthSecret } from "@/server/env";
+import {
+  MAX_PROMO_PERCENT_OFF,
+  clampPromoPercentOff,
+} from "@/modules/billing/promo";
 
 /** Returning-patient rebook links stay valid for a month. */
 const REBOOK_TTL_MS = 30 * 24 * 60 * 60_000;
@@ -16,7 +20,8 @@ const REBOOK_TTL_MS = 30 * 24 * 60 * 60_000;
 const WINBACK_TTL_MS = 45 * 24 * 60 * 60_000;
 
 /** Fixed win-back offer — applied when booking via sealed promo rebook link. */
-export const WINBACK_PERCENT_OFF = 15;
+export const WINBACK_PERCENT_OFF = MAX_PROMO_PERCENT_OFF;
+export { MAX_PROMO_PERCENT_OFF, clampPromoPercentOff };
 
 function rebookSecret() {
   return getAuthSecret();
@@ -45,10 +50,8 @@ export function createRebookToken(
 ) {
   const exp = String(expiresAt);
   const prac = payload.practitionerId?.trim() || "";
-  const pct =
-    payload.percentOff && payload.percentOff > 0
-      ? String(Math.min(100, Math.floor(payload.percentOff)))
-      : "";
+  const clamped = clampPromoPercentOff(payload.percentOff);
+  const pct = clamped ? String(clamped) : "";
   const body = `${payload.clinicId}\0${payload.patientId}\0${prac}\0${pct}\0${exp}`;
   const mac = createHmac("sha256", rebookSecret()).update(body).digest();
   const plaintext = Buffer.concat([
@@ -137,8 +140,7 @@ function verifySealedRebookToken(
       clinicId,
       patientId,
       practitionerId: prac || null,
-      percentOff:
-        percentOff && percentOff > 0 && percentOff <= 100 ? percentOff : null,
+      percentOff: clampPromoPercentOff(percentOff),
       exp: Number(expStr),
     };
   }
