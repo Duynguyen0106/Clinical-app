@@ -19,6 +19,8 @@ const patientEmailSelect = {
   noShowFollowUpDelayHours: true,
   checkupReminderEnabled: true,
   checkupReminderDelayDays: true,
+  winBackReminderEnabled: true,
+  winBackReminderDelayDays: true,
 } as const;
 
 export const GET = withAuth(async (_req, ctx) => {
@@ -46,6 +48,8 @@ const patchSchema = z.object({
   noShowFollowUpDelayHours: z.number().int().min(1).max(168).optional(),
   checkupReminderEnabled: z.boolean().optional(),
   checkupReminderDelayDays: z.number().int().min(14).max(90).optional(),
+  winBackReminderEnabled: z.boolean().optional(),
+  winBackReminderDelayDays: z.number().int().min(60).max(180).optional(),
 });
 
 export const PATCH = withAuth(async (req, ctx) => {

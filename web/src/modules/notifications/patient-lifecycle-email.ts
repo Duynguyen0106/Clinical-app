@@ -210,3 +210,47 @@ export function buildCheckupReminderEmail(input: CheckupReminderEmailInput) {
 
   return { subject, text: lines.join("\n"), html };
 }
+
+export type WinBackReminderEmailInput = {
+  clinicName: string;
+  clinicPhone?: string | null;
+  patientFirstName: string;
+  practitionerName: string;
+  whenLabel: string;
+  percentOff: number;
+  bookAgainUrl?: string | null;
+  prefsUrl?: string | null;
+};
+
+export function buildWinBackReminderEmail(input: WinBackReminderEmailInput) {
+  const pct = Math.floor(input.percentOff);
+  const subject = `We'd love to see you again — ${pct}% off — ${input.clinicName}`;
+  const lines = [
+    `Hi ${input.patientFirstName},`,
+    "",
+    `It's been a few months since your visit with ${input.practitionerName} on ${input.whenLabel}.`,
+    `As a welcome-back, book your next appointment with this link and we'll apply ${pct}% off your visit fee automatically.`,
+    "",
+    input.bookAgainUrl ? `Book with ${pct}% off:\n${input.bookAgainUrl}` : null,
+    input.clinicPhone ? `Or call us on ${input.clinicPhone}.` : null,
+    "",
+    prefsFooterText(input.prefsUrl),
+    `— ${input.clinicName}`,
+  ].filter((line): line is string => line !== null);
+
+  const bookHtml = input.bookAgainUrl
+    ? `<p style="margin:18px 0 0;"><a href="${escapeHtml(input.bookAgainUrl)}" style="display:inline-block;background:#1E3F37;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-family:system-ui,-apple-system,sans-serif;font-size:14px;font-weight:600;">Book with ${pct}% off</a></p>`
+    : "";
+
+  const html = wrapHtml(
+    input.clinicName,
+    `Welcome back — ${pct}% off`,
+    `<p style="margin:0;">Hi ${escapeHtml(input.patientFirstName)},</p>
+     <p style="margin:12px 0 0;">It's been a few months since your visit with ${escapeHtml(input.practitionerName)} on ${escapeHtml(input.whenLabel)}. As a welcome-back, book with the button below and we'll apply <strong>${pct}% off</strong> your visit fee automatically.</p>
+     ${bookHtml}
+     <p style="margin:18px 0 0;color:#5b6b66;font-size:14px;">— ${escapeHtml(input.clinicName)}${input.clinicPhone ? ` · ${escapeHtml(input.clinicPhone)}` : ""}</p>
+     ${prefsFooterHtml(input.prefsUrl)}`,
+  );
+
+  return { subject, text: lines.join("\n"), html };
+}

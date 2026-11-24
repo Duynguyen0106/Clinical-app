@@ -5,6 +5,7 @@ import {
   buildNoShowFollowUpEmail,
   buildReviewRequestEmail,
   buildThankYouEmail,
+  buildWinBackReminderEmail,
 } from "@/modules/notifications/patient-lifecycle-email";
 
 describe("patient lifecycle emails", () => {
@@ -73,5 +74,24 @@ describe("patient lifecycle emails", () => {
     assert.match(mail.text, /Manage preferences/);
     assert.match(mail.html, /Book a check-up/);
     assert.match(mail.html, /rebook=tok/);
+  });
+
+  it("builds win-back reminder with percent off CTA", () => {
+    const mail = buildWinBackReminderEmail({
+      clinicName: "Nguyen's Osteopathy",
+      clinicPhone: "01234 567890",
+      patientFirstName: "Sam",
+      practitionerName: "Alex",
+      whenLabel: "Monday 20 July 2026 at 10:00",
+      percentOff: 15,
+      bookAgainUrl: "https://app.example/book/nguyen?rebook=wb",
+      prefsUrl: "https://app.example/book/email-prefs/tok",
+    });
+    assert.match(mail.subject, /15% off/);
+    assert.match(mail.text, /Sam/);
+    assert.match(mail.text, /15% off/);
+    assert.match(mail.text, /rebook=wb/);
+    assert.match(mail.html, /Book with 15% off/);
+    assert.match(mail.html, /rebook=wb/);
   });
 });

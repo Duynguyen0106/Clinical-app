@@ -1,15 +1,20 @@
 /**
  * Patient lifecycle emails — thank-you, review request, no-show follow-up,
- * check-up rebook, optional same-day reminder. Driven by Clinic settings + cron.
+ * check-up rebook, 90-day win-back (15% off), optional same-day reminder.
+ * Driven by Clinic settings + cron.
  *
  * Hardenings: lookback windows, claim-before-send, per-send try/catch,
- * MARKETING consent for thank-you / review / no-show / check-up (rebook CTAs).
+ * MARKETING consent for thank-you / review / no-show / check-up / win-back.
  */
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { formatInTimeZone } from "date-fns-tz";
 import { prisma } from "@/server/db";
 import { clinicDateKey } from "@/modules/scheduling/clinic-time";
-import { createPatientRebookUrl } from "@/modules/scheduling/rebook-token";
+import {
+  WINBACK_PERCENT_OFF,
+  createPatientRebookUrl,
+  createPatientWinBackUrl,
+} from "@/modules/scheduling/rebook-token";
 import { sendEmail } from "./email";
 import { sendSms } from "./sms";
 import {
@@ -17,6 +22,7 @@ import {
   buildNoShowFollowUpEmail,
   buildReviewRequestEmail,
   buildThankYouEmail,
+  buildWinBackReminderEmail,
 } from "./patient-lifecycle-email";
 import {
   createEmailPrefsToken,
@@ -28,6 +34,7 @@ import {
   REVIEW_LOOKBACK_MS,
   SAME_DAY_REMINDER_COOLDOWN_MS,
   THANK_YOU_LOOKBACK_MS,
+  WINBACK_LOOKBACK_MS,
   shouldSendSameDayReminder,
 } from "./patient-email-eligibility";
 
@@ -78,6 +85,7 @@ export type PatientEmailJobResult = {
   reviewRequest: number;
   noShowFollowUp: number;
   checkupReminder: number;
+  winBackReminder: number;
   sameDayReminder: number;
   sent: number;
   errors: number;
@@ -88,7 +96,8 @@ type ClaimField =
   | "reviewRequestSentAt"
   | "noShowFollowUpSentAt"
   | "sameDayReminderSentAt"
-  | "checkupReminderSentAt";
+  | "checkupReminderSentAt"
+  | "winBackReminderSentAt";
 
 /**
  * Claim/unclaim without per-row $transaction + RLS GUCs.
@@ -141,6 +150,8 @@ export async function sendDuePatientEmails(opts: {
       noShowFollowUpDelayHours: true,
       checkupReminderEnabled: true,
       checkupReminderDelayDays: true,
+      winBackReminderEnabled: true,
+      winBackReminderDelayDays: true,
     },
   });
 
@@ -149,6 +160,7 @@ export async function sendDuePatientEmails(opts: {
     reviewRequest: 0,
     noShowFollowUp: 0,
     checkupReminder: 0,
+    winBackReminder: 0,
     sameDayReminder: 0,
     sent: 0,
     errors: 0,
@@ -168,6 +180,7 @@ export async function sendDuePatientEmails(opts: {
     result.reviewRequest +
     result.noShowFollowUp +
     result.checkupReminder +
+    result.winBackReminder +
     result.sameDayReminder;
   return result;
 }
@@ -191,6 +204,8 @@ async function sendClinicPatientEmails(
     noShowFollowUpDelayHours: number;
     checkupReminderEnabled: boolean;
     checkupReminderDelayDays: number;
+    winBackReminderEnabled: boolean;
+    winBackReminderDelayDays: number;
   },
   result: PatientEmailJobResult,
 ) {
@@ -441,6 +456,88 @@ async function sendClinicPatientEmails(
           result.errors += 1;
           console.error("Check-up reminder email failed", apt.id, err);
           await unclaimMarker(clinic.id, apt.id, "checkupReminderSentAt");
+        }
+      }
+    }
+
+    if (clinic.winBackReminderEnabled) {
+      const delayDays = Math.max(1, clinic.winBackReminderDelayDays || 90);
+      const cutoff = new Date(now.getTime() - delayDays * 24 * 60 * 60_000);
+      const oldest = new Date(now.getTime() - WINBACK_LOOKBACK_MS);
+      const due = await prisma.appointment.findMany({
+        where: {
+          clinicId: clinic.id,
+          status: AppointmentStatus.COMPLETED,
+          winBackReminderSentAt: null,
+          endsAt: { lte: cutoff, gte: oldest },
+          patient: {
+            email: { not: null },
+            consents: { some: { type: "MARKETING", granted: true } },
+          },
+        },
+        include: aptInclude,
+        take: BATCH * 3,
+        orderBy: { endsAt: "desc" },
+      });
+      const seenPatients = new Set<string>();
+      let sentInBatch = 0;
+      for (const apt of due) {
+        if (sentInBatch >= BATCH) break;
+        if (!apt.patient.email) continue;
+        if (apt.patient.consents.length === 0) continue;
+        if (seenPatients.has(apt.patientId)) continue;
+        seenPatients.add(apt.patientId);
+
+        const later = await prisma.appointment.findFirst({
+          where: {
+            clinicId: clinic.id,
+            patientId: apt.patientId,
+            startsAt: { gt: apt.endsAt },
+            status: { not: AppointmentStatus.CANCELLED },
+          },
+          select: { id: true },
+        });
+        if (later) continue;
+
+        const claimed = await claimMarker(
+          clinic.id,
+          apt.id,
+          "winBackReminderSentAt",
+        );
+        if (!claimed) continue;
+        try {
+          const content = buildWinBackReminderEmail({
+            clinicName: clinic.name,
+            clinicPhone: clinic.phone,
+            patientFirstName: apt.patient.firstName,
+            practitionerName: apt.practitioner.displayName,
+            whenLabel: formatWhen(apt.startsAt, clinic.timezone),
+            percentOff: WINBACK_PERCENT_OFF,
+            bookAgainUrl: createPatientWinBackUrl({
+              clinicSlug: apt.clinic.slug,
+              clinicId: apt.clinicId,
+              patientId: apt.patientId,
+              practitionerId: apt.practitionerId,
+            }),
+            prefsUrl: prefsUrlFor(apt.patient.id, clinic.id),
+          });
+          const send = await sendEmail({
+            to: apt.patient.email,
+            subject: content.subject,
+            text: content.text,
+            html: content.html,
+            replyTo: clinic.email,
+          });
+          if (send.delivered) {
+            result.winBackReminder += 1;
+            sentInBatch += 1;
+          } else {
+            await unclaimMarker(clinic.id, apt.id, "winBackReminderSentAt");
+          }
+        } catch (err) {
+          result.errors += 1;
+          console.error("Win-back reminder email failed", apt.id, err);
+          await unclaimMarker(clinic.id, apt.id, "winBackReminderSentAt");
         }
       }
     }

@@ -119,12 +119,17 @@ export async function ensureInvoiceForAppointment(
   });
   if (existing) return existing;
 
-  const amountCents = appointment.appointmentType.defaultPriceCents;
-  if (!amountCents || amountCents <= 0) {
+  const listPrice = appointment.appointmentType.defaultPriceCents;
+  if (!listPrice || listPrice <= 0) {
     throw badRequest(
       "No fee on this appointment type — set a default price or create an invoice on Money",
     );
   }
+  const { applyPercentOff } = await import("./promo");
+  const amountCents = applyPercentOff(
+    listPrice,
+    appointment.promoPercentOff,
+  );
 
   return withClinicTransaction(ctx.clinicId, async (tx) => {
     return tx.invoice.create({

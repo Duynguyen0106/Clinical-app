@@ -84,6 +84,8 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
   const [policyText, setPolicyText] = useState<string | null>(null);
   /** Returning patient — identity fields locked from sealed token. */
   const [rebookLocked, setRebookLocked] = useState(false);
+  /** Promo from win-back / sealed rebook link (e.g. 15). */
+  const [promoPercentOff, setPromoPercentOff] = useState<number | null>(null);
 
   useEffect(() => {
     try {
@@ -118,6 +120,7 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
       rebook: {
         clinicSlug: string;
         practitionerId?: string | null;
+        percentOff?: number | null;
         patient: {
           firstName: string;
           lastName: string;
@@ -138,6 +141,11 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
         setEmail(p.email ?? "");
         setPhone(p.phone ?? "");
         setRebookLocked(true);
+        setPromoPercentOff(
+          d.rebook.percentOff && d.rebook.percentOff > 0
+            ? d.rebook.percentOff
+            : null,
+        );
         if (d.rebook.practitionerId) {
           setAnyMode(false);
           setPractitionerId(d.rebook.practitionerId);
@@ -393,7 +401,14 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                     <option key={s.id} value={s.id}>
                       {s.name} · {s.durationMinutes} min
                       {s.defaultPriceCents != null && s.defaultPriceCents > 0
-                        ? ` · £${(s.defaultPriceCents / 100).toFixed(2)}`
+                        ? promoPercentOff
+                          ? ` · £${(
+                              (s.defaultPriceCents *
+                                (100 - promoPercentOff)) /
+                              100 /
+                              100
+                            ).toFixed(2)} (${promoPercentOff}% off)`
+                          : ` · £${(s.defaultPriceCents / 100).toFixed(2)}`
                         : ""}
                     </option>
                   ))}
@@ -488,6 +503,9 @@ export function PublicBookingFlow({ slug, embed = false }: Props) {
                   Welcome back — booking as {name}
                   {email ? ` (${email})` : ""}. Your details are locked from
                   your clinic link so we don’t create a duplicate record.
+                  {promoPercentOff
+                    ? ` ${promoPercentOff}% off your visit fee will apply automatically.`
+                    : ""}
                 </p>
               ) : null}
               <label className="field">

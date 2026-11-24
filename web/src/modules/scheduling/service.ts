@@ -1281,6 +1281,7 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
   });
 
   let forcedPatientId: string | undefined;
+  let promoPercentOff: number | null = null;
   if (input.rebookToken) {
     const { verifyRebookToken } = await import("./rebook-token");
     const payload = verifyRebookToken(input.rebookToken);
@@ -1288,6 +1289,9 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
       throw forbidden("Rebook link is for a different clinic");
     }
     forcedPatientId = payload.patientId;
+    if (payload.percentOff && payload.percentOff > 0) {
+      promoPercentOff = Math.min(100, Math.floor(payload.percentOff));
+    }
   }
 
   const { resolveOrCreatePatient } = await import("@/modules/patients/match");
@@ -1420,6 +1424,7 @@ export async function publicBook(slug: string, input: z.infer<typeof publicBookS
           depositStatus: deposit.required
             ? DepositStatus.REQUIRED
             : DepositStatus.NONE,
+          ...(promoPercentOff ? { promoPercentOff } : {}),
         },
         include: {
           patient: true,

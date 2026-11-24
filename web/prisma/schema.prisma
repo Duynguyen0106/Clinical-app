@@ -221,6 +221,10 @@ model Clinic {
   checkupReminderEnabled Boolean @default(false)
   /// Days after completed visit end before check-up rebook email is due
   checkupReminderDelayDays Int @default(30)
+  /// Opt-in 90-day win-back email with fixed 15% off next visit
+  winBackReminderEnabled Boolean @default(false)
+  /// Days after completed visit end before win-back email is due
+  winBackReminderDelayDays Int @default(90)
   /// Treow SaaS billing (clinic → Treow monthly)
   saasPlan SaasPlan @default(PILOT)
   saasStatus SaasSubscriptionStatus @default(TRIALING)
@@ -560,6 +564,9 @@ model Appointment {
   reviewRequestSentAt DateTime?
   noShowFollowUpSentAt DateTime?
   checkupReminderSentAt DateTime?
+  winBackReminderSentAt DateTime?
+  /// Percent off next visit fee when booked via win-back / promo rebook link (e.g. 15)
+  promoPercentOff   Int?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -582,6 +589,7 @@ model Appointment {
   @@index([clinicId, thankYouSentAt, endsAt])
   @@index([clinicId, reviewRequestSentAt, endsAt])
   @@index([clinicId, checkupReminderSentAt, endsAt])
+  @@index([clinicId, winBackReminderSentAt, endsAt])
   @@index([recurrenceGroupId])
 }
 
