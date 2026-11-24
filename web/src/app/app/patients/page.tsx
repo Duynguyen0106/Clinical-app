@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { api, ApiError } from "@/lib/api";
 import { PatientPrepPanel } from "@/components/PatientPrepPanel";
+import { PatientFilesPanel } from "@/components/PatientFilesPanel";
 import { humanStatusLabel } from "@/modules/scheduling/calendar-ui";
 
 type TodayAppointment = {
@@ -815,6 +816,7 @@ function PatientsPageInner() {
                 </div>
               ) : null}
             </div>
+            <PatientFilesPanel patientId={selected.id} />
             <PatientPrepPanel
               patientId={selected.id}
               source="patients"

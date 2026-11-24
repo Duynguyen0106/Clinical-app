@@ -306,3 +306,16 @@ CREATE POLICY payment_clinic_isolation ON "Payment"
         AND i."clinicId" = nullif(current_setting('app.clinic_id', true), '')
     )
   );
+
+-- Patient files (referral letters / imaging)
+ALTER TABLE "PatientFile" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS patient_file_clinic_isolation ON "PatientFile";
+CREATE POLICY patient_file_clinic_isolation ON "PatientFile"
+  USING (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR "clinicId" = nullif(current_setting('app.clinic_id', true), '')
+  )
+  WITH CHECK (
+    current_setting('app.rls_bypass', true) = 'on'
+    OR "clinicId" = nullif(current_setting('app.clinic_id', true), '')
+  );

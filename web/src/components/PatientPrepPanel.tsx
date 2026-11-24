@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { api } from "@/lib/api";
 import { NotePrintActions } from "@/components/NotePrintActions";
+import { PatientFilesPanel } from "@/components/PatientFilesPanel";
 import {
   PatientTimeline,
   type TimelineItem,
@@ -301,6 +302,10 @@ export function PatientPrepPanel({
             </p>
           ) : null}
         </div>
+      ) : null}
+
+      {!collapsed ? (
+        <PatientFilesPanel patientId={patientId} compact className="prep-files" />
       ) : null}
 
       {collapsed ? (
