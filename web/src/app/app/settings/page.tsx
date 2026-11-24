@@ -63,6 +63,8 @@ type PatientEmailSettings = {
   noShowFollowUpDelayHours: number;
   checkupReminderEnabled: boolean;
   checkupReminderDelayDays: number;
+  winBackReminderEnabled: boolean;
+  winBackReminderDelayDays: number;
 };
 
 export default function SettingsPage() {
@@ -314,11 +316,12 @@ export default function SettingsPage() {
         reviewRequest: number;
         noShowFollowUp: number;
         checkupReminder: number;
+        winBackReminder: number;
         sameDayReminder: number;
         errors?: number;
       }>("/jobs/patient-emails", { method: "POST" });
       setMessage(
-        `Patient emails sent: ${d.sent} (thank-you ${d.thankYou}, review ${d.reviewRequest}, no-show ${d.noShowFollowUp}, check-up ${d.checkupReminder}, same-day ${d.sameDayReminder}${d.errors ? `, errors ${d.errors}` : ""}).`,
+        `Patient emails sent: ${d.sent} (thank-you ${d.thankYou}, review ${d.reviewRequest}, no-show ${d.noShowFollowUp}, check-up ${d.checkupReminder}, win-back ${d.winBackReminder}, same-day ${d.sameDayReminder}${d.errors ? `, errors ${d.errors}` : ""}).`,
       );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Patient emails job failed");
@@ -1291,6 +1294,42 @@ export default function SettingsPage() {
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
                 Emails patients who haven’t booked again after a completed visit.
                 Needs marketing email consent.
+              </p>
+              <label className="field checkbox-row">
+                <input
+                  type="checkbox"
+                  disabled={!isOwner}
+                  checked={patientEmails.winBackReminderEnabled}
+                  onChange={(e) =>
+                    setPatientEmails({
+                      ...patientEmails,
+                      winBackReminderEnabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>
+                  Win-back email with 15% off (after{" "}
+                  <input
+                    type="number"
+                    min={60}
+                    max={180}
+                    disabled={!isOwner || !patientEmails.winBackReminderEnabled}
+                    style={{ width: "4rem" }}
+                    value={patientEmails.winBackReminderDelayDays}
+                    onChange={(e) =>
+                      setPatientEmails({
+                        ...patientEmails,
+                        winBackReminderDelayDays: Number(e.target.value),
+                      })
+                    }
+                  />{" "}
+                  days without booking again)
+                </span>
+              </label>
+              <p className="muted" style={{ marginTop: "-0.25rem" }}>
+                Separate from the check-up nudge. Booking via the email link
+                applies 15% off the visit fee automatically. Needs marketing
+                consent.
               </p>
               {isOwner ? (
                 <div className="home-cta">

@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   CHECKUP_LOOKBACK_MS,
+  WINBACK_LOOKBACK_MS,
   isCheckupReminderDue,
   isNoShowFollowUpDue,
   isReviewDue,
   isThankYouDue,
+  isWinBackReminderDue,
   shouldSendSameDayReminder,
   THANK_YOU_LOOKBACK_MS,
 } from "@/modules/notifications/patient-email-eligibility";
@@ -177,6 +179,63 @@ describe("patient email eligibility", () => {
         now,
         endsAt: new Date(now.getTime() - CHECKUP_LOOKBACK_MS - 60_000),
         delayDays: 30,
+        hasMarketingConsent: true,
+        hasLaterNonCancelledAppointment: false,
+      }),
+      false,
+    );
+  });
+
+  it("win-back reminder is due after ~90 days with consent and no later booking", () => {
+    const endsAt = new Date("2026-07-15T12:00:00.000Z"); // ~95 days before now
+    assert.equal(
+      isWinBackReminderDue({
+        now,
+        endsAt,
+        delayDays: 90,
+        hasMarketingConsent: true,
+        hasLaterNonCancelledAppointment: false,
+      }),
+      true,
+    );
+  });
+
+  it("win-back reminder skips when too soon, no consent, later booking, or outside lookback", () => {
+    assert.equal(
+      isWinBackReminderDue({
+        now,
+        endsAt: new Date("2026-09-10T12:00:00.000Z"), // ~38 days ago
+        delayDays: 90,
+        hasMarketingConsent: true,
+        hasLaterNonCancelledAppointment: false,
+      }),
+      false,
+    );
+    assert.equal(
+      isWinBackReminderDue({
+        now,
+        endsAt: new Date("2026-07-15T12:00:00.000Z"),
+        delayDays: 90,
+        hasMarketingConsent: false,
+        hasLaterNonCancelledAppointment: false,
+      }),
+      false,
+    );
+    assert.equal(
+      isWinBackReminderDue({
+        now,
+        endsAt: new Date("2026-07-15T12:00:00.000Z"),
+        delayDays: 90,
+        hasMarketingConsent: true,
+        hasLaterNonCancelledAppointment: true,
+      }),
+      false,
+    );
+    assert.equal(
+      isWinBackReminderDue({
+        now,
+        endsAt: new Date(now.getTime() - WINBACK_LOOKBACK_MS - 60_000),
+        delayDays: 90,
         hasMarketingConsent: true,
         hasLaterNonCancelledAppointment: false,
       }),
