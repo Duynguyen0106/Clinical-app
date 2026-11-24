@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  CHECKUP_LOOKBACK_MS,
+  isCheckupReminderDue,
   isNoShowFollowUpDue,
   isReviewDue,
   isThankYouDue,
@@ -120,6 +122,63 @@ describe("patient email eligibility", () => {
         appointmentDateKey: "2026-10-18",
         reminderSentAt: new Date("2026-10-18T11:00:00.000Z"),
         hasContact: true,
+      }),
+      false,
+    );
+  });
+
+  it("check-up reminder is due after delay with consent and no later booking", () => {
+    const endsAt = new Date("2026-09-10T12:00:00.000Z"); // ~38 days before now
+    assert.equal(
+      isCheckupReminderDue({
+        now,
+        endsAt,
+        delayDays: 30,
+        hasMarketingConsent: true,
+        hasLaterNonCancelledAppointment: false,
+      }),
+      true,
+    );
+  });
+
+  it("check-up reminder skips when too soon, no consent, later booking, or outside lookback", () => {
+    assert.equal(
+      isCheckupReminderDue({
+        now,
+        endsAt: new Date("2026-10-10T12:00:00.000Z"), // 8 days ago
+        delayDays: 30,
+        hasMarketingConsent: true,
+        hasLaterNonCancelledAppointment: false,
+      }),
+      false,
+    );
+    assert.equal(
+      isCheckupReminderDue({
+        now,
+        endsAt: new Date("2026-09-10T12:00:00.000Z"),
+        delayDays: 30,
+        hasMarketingConsent: false,
+        hasLaterNonCancelledAppointment: false,
+      }),
+      false,
+    );
+    assert.equal(
+      isCheckupReminderDue({
+        now,
+        endsAt: new Date("2026-09-10T12:00:00.000Z"),
+        delayDays: 30,
+        hasMarketingConsent: true,
+        hasLaterNonCancelledAppointment: true,
+      }),
+      false,
+    );
+    assert.equal(
+      isCheckupReminderDue({
+        now,
+        endsAt: new Date(now.getTime() - CHECKUP_LOOKBACK_MS - 60_000),
+        delayDays: 30,
+        hasMarketingConsent: true,
+        hasLaterNonCancelledAppointment: false,
       }),
       false,
     );

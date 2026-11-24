@@ -1,9 +1,9 @@
 /**
  * Patient lifecycle emails — thank-you, review request, no-show follow-up,
- * optional same-day reminder. Driven by Clinic settings + cron.
+ * check-up rebook, optional same-day reminder. Driven by Clinic settings + cron.
  *
  * Hardenings: lookback windows, claim-before-send, per-send try/catch,
- * MARKETING consent for thank-you / review / no-show (they include rebook CTAs).
+ * MARKETING consent for thank-you / review / no-show / check-up (rebook CTAs).
  */
 import { AppointmentStatus } from "@/generated/prisma/client";
 import { formatInTimeZone } from "date-fns-tz";
@@ -13,6 +13,7 @@ import { createPatientRebookUrl } from "@/modules/scheduling/rebook-token";
 import { sendEmail } from "./email";
 import { sendSms } from "./sms";
 import {
+  buildCheckupReminderEmail,
   buildNoShowFollowUpEmail,
   buildReviewRequestEmail,
   buildThankYouEmail,
@@ -22,6 +23,7 @@ import {
   emailPrefsUrlForToken,
 } from "./email-prefs-token";
 import {
+  CHECKUP_LOOKBACK_MS,
   NO_SHOW_LOOKBACK_MS,
   REVIEW_LOOKBACK_MS,
   SAME_DAY_REMINDER_COOLDOWN_MS,
@@ -75,10 +77,18 @@ export type PatientEmailJobResult = {
   thankYou: number;
   reviewRequest: number;
   noShowFollowUp: number;
+  checkupReminder: number;
   sameDayReminder: number;
   sent: number;
   errors: number;
 };
+
+type ClaimField =
+  | "thankYouSentAt"
+  | "reviewRequestSentAt"
+  | "noShowFollowUpSentAt"
+  | "sameDayReminderSentAt"
+  | "checkupReminderSentAt";
 
 /**
  * Claim/unclaim without per-row $transaction + RLS GUCs.
@@ -88,11 +98,7 @@ export type PatientEmailJobResult = {
 async function claimMarker(
   clinicId: string,
   appointmentId: string,
-  field:
-    | "thankYouSentAt"
-    | "reviewRequestSentAt"
-    | "noShowFollowUpSentAt"
-    | "sameDayReminderSentAt",
+  field: ClaimField,
 ) {
   const result = await prisma.appointment.updateMany({
     where: { id: appointmentId, clinicId, [field]: null },
@@ -104,11 +110,7 @@ async function claimMarker(
 async function unclaimMarker(
   clinicId: string,
   appointmentId: string,
-  field:
-    | "thankYouSentAt"
-    | "reviewRequestSentAt"
-    | "noShowFollowUpSentAt"
-    | "sameDayReminderSentAt",
+  field: ClaimField,
 ) {
   await prisma.appointment.updateMany({
     where: { id: appointmentId, clinicId },
@@ -137,6 +139,8 @@ export async function sendDuePatientEmails(opts: {
       reviewUrl: true,
       noShowFollowUpEnabled: true,
       noShowFollowUpDelayHours: true,
+      checkupReminderEnabled: true,
+      checkupReminderDelayDays: true,
     },
   });
 
@@ -144,6 +148,7 @@ export async function sendDuePatientEmails(opts: {
     thankYou: 0,
     reviewRequest: 0,
     noShowFollowUp: 0,
+    checkupReminder: 0,
     sameDayReminder: 0,
     sent: 0,
     errors: 0,
@@ -162,6 +167,7 @@ export async function sendDuePatientEmails(opts: {
     result.thankYou +
     result.reviewRequest +
     result.noShowFollowUp +
+    result.checkupReminder +
     result.sameDayReminder;
   return result;
 }
@@ -183,6 +189,8 @@ async function sendClinicPatientEmails(
     reviewUrl: string | null;
     noShowFollowUpEnabled: boolean;
     noShowFollowUpDelayHours: number;
+    checkupReminderEnabled: boolean;
+    checkupReminderDelayDays: number;
   },
   result: PatientEmailJobResult,
 ) {
@@ -356,6 +364,83 @@ async function sendClinicPatientEmails(
           result.errors += 1;
           console.error("No-show follow-up email failed", apt.id, err);
           await unclaimMarker(clinic.id, apt.id, "noShowFollowUpSentAt");
+        }
+      }
+    }
+
+    if (clinic.checkupReminderEnabled) {
+      const delayDays = Math.max(1, clinic.checkupReminderDelayDays || 30);
+      const cutoff = new Date(now.getTime() - delayDays * 24 * 60 * 60_000);
+      const oldest = new Date(now.getTime() - CHECKUP_LOOKBACK_MS);
+      const due = await prisma.appointment.findMany({
+        where: {
+          clinicId: clinic.id,
+          status: AppointmentStatus.COMPLETED,
+          checkupReminderSentAt: null,
+          endsAt: { lte: cutoff, gte: oldest },
+          patient: {
+            email: { not: null },
+            consents: { some: { type: "MARKETING", granted: true } },
+          },
+        },
+        include: aptInclude,
+        take: BATCH * 3,
+        // Newest first so we prefer the latest completed visit per patient.
+        orderBy: { endsAt: "desc" },
+      });
+      const seenPatients = new Set<string>();
+      let sentInBatch = 0;
+      for (const apt of due) {
+        if (sentInBatch >= BATCH) break;
+        if (!apt.patient.email) continue;
+        if (apt.patient.consents.length === 0) continue;
+        if (seenPatients.has(apt.patientId)) continue;
+        seenPatients.add(apt.patientId);
+
+        const later = await prisma.appointment.findFirst({
+          where: {
+            clinicId: clinic.id,
+            patientId: apt.patientId,
+            startsAt: { gt: apt.endsAt },
+            status: { not: AppointmentStatus.CANCELLED },
+          },
+          select: { id: true },
+        });
+        if (later) continue;
+
+        const claimed = await claimMarker(
+          clinic.id,
+          apt.id,
+          "checkupReminderSentAt",
+        );
+        if (!claimed) continue;
+        try {
+          const content = buildCheckupReminderEmail({
+            clinicName: clinic.name,
+            clinicPhone: clinic.phone,
+            patientFirstName: apt.patient.firstName,
+            practitionerName: apt.practitioner.displayName,
+            whenLabel: formatWhen(apt.startsAt, clinic.timezone),
+            bookAgainUrl: rebookUrlForApt(apt),
+            prefsUrl: prefsUrlFor(apt.patient.id, clinic.id),
+          });
+          const send = await sendEmail({
+            to: apt.patient.email,
+            subject: content.subject,
+            text: content.text,
+            html: content.html,
+            replyTo: clinic.email,
+          });
+          if (send.delivered) {
+            result.checkupReminder += 1;
+            sentInBatch += 1;
+          } else {
+            await unclaimMarker(clinic.id, apt.id, "checkupReminderSentAt");
+          }
+        } catch (err) {
+          result.errors += 1;
+          console.error("Check-up reminder email failed", apt.id, err);
+          await unclaimMarker(clinic.id, apt.id, "checkupReminderSentAt");
         }
       }
     }

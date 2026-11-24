@@ -168,3 +168,45 @@ export function buildNoShowFollowUpEmail(input: NoShowFollowUpEmailInput) {
 
   return { subject, text: lines.join("\n"), html };
 }
+
+export type CheckupReminderEmailInput = {
+  clinicName: string;
+  clinicPhone?: string | null;
+  patientFirstName: string;
+  practitionerName: string;
+  whenLabel: string;
+  bookAgainUrl?: string | null;
+  prefsUrl?: string | null;
+};
+
+export function buildCheckupReminderEmail(input: CheckupReminderEmailInput) {
+  const subject = `Time for a check-up? — ${input.clinicName}`;
+  const lines = [
+    `Hi ${input.patientFirstName},`,
+    "",
+    `It's been a while since your visit with ${input.practitionerName} on ${input.whenLabel}.`,
+    "A check-up can help keep you on track — book online when you're ready.",
+    "",
+    input.bookAgainUrl ? `Book online:\n${input.bookAgainUrl}` : null,
+    input.clinicPhone ? `Or call us on ${input.clinicPhone}.` : null,
+    "",
+    prefsFooterText(input.prefsUrl),
+    `— ${input.clinicName}`,
+  ].filter((line): line is string => line !== null);
+
+  const bookHtml = input.bookAgainUrl
+    ? `<p style="margin:18px 0 0;"><a href="${escapeHtml(input.bookAgainUrl)}" style="display:inline-block;background:#1E3F37;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-family:system-ui,-apple-system,sans-serif;font-size:14px;font-weight:600;">Book a check-up</a></p>`
+    : "";
+
+  const html = wrapHtml(
+    input.clinicName,
+    "Time for a check-up?",
+    `<p style="margin:0;">Hi ${escapeHtml(input.patientFirstName)},</p>
+     <p style="margin:12px 0 0;">It's been a while since your visit with ${escapeHtml(input.practitionerName)} on ${escapeHtml(input.whenLabel)}. A check-up can help keep you on track — book online when you're ready.</p>
+     ${bookHtml}
+     <p style="margin:18px 0 0;color:#5b6b66;font-size:14px;">— ${escapeHtml(input.clinicName)}${input.clinicPhone ? ` · ${escapeHtml(input.clinicPhone)}` : ""}</p>
+     ${prefsFooterHtml(input.prefsUrl)}`,
+  );
+
+  return { subject, text: lines.join("\n"), html };
+}

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildCheckupReminderEmail,
   buildNoShowFollowUpEmail,
   buildReviewRequestEmail,
   buildThankYouEmail,
@@ -53,5 +54,24 @@ describe("patient lifecycle emails", () => {
     assert.match(mail.subject, /missed you/i);
     assert.match(mail.text, /rebook/i);
     assert.match(mail.html, /Rebook/);
+  });
+
+  it("builds check-up rebook reminder with book URL", () => {
+    const mail = buildCheckupReminderEmail({
+      clinicName: "Nguyen's Osteopathy",
+      clinicPhone: "01234 567890",
+      patientFirstName: "Sam",
+      practitionerName: "Alex",
+      whenLabel: "Monday 20 October 2026 at 10:00",
+      bookAgainUrl: "https://app.example/book/nguyen?rebook=tok",
+      prefsUrl: "https://app.example/book/email-prefs/tok",
+    });
+    assert.match(mail.subject, /check-up/i);
+    assert.match(mail.text, /Sam/);
+    assert.match(mail.text, /Book online/);
+    assert.match(mail.text, /rebook=tok/);
+    assert.match(mail.text, /Manage preferences/);
+    assert.match(mail.html, /Book a check-up/);
+    assert.match(mail.html, /rebook=tok/);
   });
 });

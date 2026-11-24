@@ -3,6 +3,8 @@
 export const THANK_YOU_LOOKBACK_MS = 14 * 24 * 60 * 60_000;
 export const REVIEW_LOOKBACK_MS = 30 * 24 * 60 * 60_000;
 export const NO_SHOW_LOOKBACK_MS = 7 * 24 * 60 * 60_000;
+/** Window for check-up rebook after a completed visit (~2× default 30d delay). */
+export const CHECKUP_LOOKBACK_MS = 60 * 24 * 60 * 60_000;
 /** Skip same-day nudge if a longer-horizon reminder was sent this recently. */
 export const SAME_DAY_REMINDER_COOLDOWN_MS = 6 * 60 * 60_000;
 
@@ -56,6 +58,26 @@ export function isNoShowFollowUpDue(opts: {
   const dueAt = opts.startsAt.getTime() + opts.delayHours * 60 * 60_000;
   const oldest = opts.now.getTime() - lookback;
   return opts.startsAt.getTime() >= oldest && dueAt <= opts.now.getTime();
+}
+
+/**
+ * Check-up rebook: completed visit past delayDays, within lookback, marketing
+ * consent, and no later non-cancelled appointment for that patient.
+ */
+export function isCheckupReminderDue(opts: {
+  now: Date;
+  endsAt: Date;
+  delayDays: number;
+  lookbackMs?: number;
+  hasMarketingConsent: boolean;
+  hasLaterNonCancelledAppointment: boolean;
+}) {
+  if (!opts.hasMarketingConsent) return false;
+  if (opts.hasLaterNonCancelledAppointment) return false;
+  const lookback = opts.lookbackMs ?? CHECKUP_LOOKBACK_MS;
+  const dueAt = opts.endsAt.getTime() + opts.delayDays * 24 * 60 * 60_000;
+  const oldest = opts.now.getTime() - lookback;
+  return opts.endsAt.getTime() >= oldest && dueAt <= opts.now.getTime();
 }
 
 export function shouldSendSameDayReminder(opts: {
