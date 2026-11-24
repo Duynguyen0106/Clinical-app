@@ -11,32 +11,30 @@ export const emailPrefsActionSchema = z.object({
 
 export async function loadEmailPrefs(token: string) {
   const { patientId, clinicId } = verifyEmailPrefsToken(token);
-  // Clinic + PatientConsent under FORCE: short explicit tx (not request-long).
-  return withClinicTransaction(clinicId, async (tx) => {
-    const patient = await tx.patient.findFirst({
-      where: { id: patientId, clinicId },
-      select: {
-        id: true,
-        firstName: true,
-        email: true,
-        clinic: { select: { id: true, name: true, slug: true } },
-        consents: {
-          where: { type: "MARKETING" },
-          orderBy: { capturedAt: "desc" },
-          take: 1,
-        },
+  // Bare read — Worker DB role bypasses RLS; avoid interactive Neon WS txs.
+  const patient = await prisma.patient.findFirst({
+    where: { id: patientId, clinicId },
+    select: {
+      id: true,
+      firstName: true,
+      email: true,
+      clinic: { select: { id: true, name: true, slug: true } },
+      consents: {
+        where: { type: "MARKETING" },
+        orderBy: { capturedAt: "desc" },
+        take: 1,
       },
-    });
-    if (!patient) throw notFound("Patient not found");
-    const marketing = patient.consents[0];
-    return {
-      clinicName: patient.clinic.name,
-      clinicSlug: patient.clinic.slug,
-      patientFirstName: patient.firstName,
-      email: patient.email,
-      marketingOptedIn: Boolean(marketing?.granted),
-    };
+    },
   });
+  if (!patient) throw notFound("Patient not found");
+  const marketing = patient.consents[0];
+  return {
+    clinicName: patient.clinic.name,
+    clinicSlug: patient.clinic.slug,
+    patientFirstName: patient.firstName,
+    email: patient.email,
+    marketingOptedIn: Boolean(marketing?.granted),
+  };
 }
 
 /** Revoke MARKETING consent (insert a granted=false row; senders require granted:true). */
