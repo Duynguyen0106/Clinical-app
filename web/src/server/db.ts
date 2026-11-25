@@ -25,6 +25,7 @@ const RLS_MODELS = new Set([
   "LeaveRequest",
   "Room",
   "Payment",
+  "PatientFile",
 ]);
 
 function modelDelegateKey(model: string) {
@@ -82,7 +83,9 @@ export async function withNeonRetry<T>(
     } catch (err) {
       last = err;
       if (!isTransientDbError(err) || i === attempts - 1) throw err;
-      await new Promise((r) => setTimeout(r, 40 * Math.pow(2, i)));
+      await new Promise((r) =>
+        setTimeout(r, 80 * Math.pow(2, i) + Math.floor(Math.random() * 40)),
+      );
     }
   }
   throw last;

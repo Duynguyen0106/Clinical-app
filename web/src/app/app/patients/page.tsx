@@ -816,12 +816,13 @@ function PatientsPageInner() {
                 </div>
               ) : null}
             </div>
-            <PatientFilesPanel patientId={selected.id} />
+            <PatientFilesPanel patientId={selected.id} lazy={false} />
             <PatientPrepPanel
               patientId={selected.id}
               source="patients"
               autoExpandLatest
               excludeAppointmentId={nextApt?.id}
+              showFiles={false}
             />
           </div>
         ) : (

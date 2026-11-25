@@ -18,6 +18,11 @@ type Props = {
   patientId: string;
   compact?: boolean;
   className?: string;
+  /**
+   * When true (default for compact/prep), do not hit the API until the user
+   * expands Files — avoids Neon WS fan-out / Cloudflare 1101 on diary open.
+   */
+  lazy?: boolean;
 };
 
 function formatSize(bytes: number) {
@@ -30,19 +35,22 @@ export function PatientFilesPanel({
   patientId,
   compact = false,
   className,
+  lazy,
 }: Props) {
   const { me } = useAuth();
+  const lazyLoad = lazy ?? compact;
   const inputRef = useRef<HTMLInputElement>(null);
+  const [expanded, setExpanded] = useState(!lazyLoad);
   const [files, setFiles] = useState<PatientFileRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
   const canDownload = (f: PatientFileRow) => {
     if (!me) return false;
     if (me.role === "OWNER" || me.role === "PRACTITIONER") return true;
-    // Reception: own uploads only
     return Boolean(f.uploadedBy && f.uploadedBy.id === me.user.id);
   };
   const canDelete = (f: PatientFileRow) => {
@@ -59,17 +67,32 @@ export function PatientFilesPanel({
         `/patients/${patientId}/files`,
       );
       setFiles(d.files);
+      setLoadedFor(patientId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load files");
+      // Soft-fail — do not bubble "Server overloaded" into the whole prep sheet
+      setError(
+        e instanceof Error ? e.message : "Could not load files — try again",
+      );
       setFiles([]);
+      setLoadedFor(patientId);
     } finally {
       setLoading(false);
     }
   }, [patientId]);
 
   useEffect(() => {
+    setExpanded(!lazyLoad);
+    setFiles([]);
+    setLoadedFor(null);
+    setError(null);
+    setMessage(null);
+  }, [patientId, lazyLoad]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    if (loadedFor === patientId) return;
     void load();
-  }, [load]);
+  }, [expanded, loadedFor, patientId, load]);
 
   async function onUpload(fileList: FileList | null) {
     const file = fileList?.[0];
@@ -86,9 +109,13 @@ export function PatientFilesPanel({
       );
       setFiles((prev) => [d.file, ...prev.filter((f) => f.id !== d.file.id)]);
       setMessage(`Uploaded ${d.file.filename}`);
+      setExpanded(true);
+      setLoadedFor(patientId);
     } catch (e) {
       setError(
-        e instanceof ApiError ? e.message : "Upload failed — PDF, JPEG or PNG up to 10 MB",
+        e instanceof ApiError
+          ? e.message
+          : "Upload failed — PDF, JPEG or PNG up to 10 MB",
       );
     } finally {
       setBusy(false);
@@ -154,14 +181,25 @@ export function PatientFilesPanel({
         <h3 style={{ margin: 0, fontSize: compact ? "1rem" : undefined }}>
           Files
         </h3>
-        <button
-          type="button"
-          className="btn-secondary btn-sm"
-          disabled={busy}
-          onClick={() => inputRef.current?.click()}
-        >
-          {busy ? "Working…" : "Upload"}
-        </button>
+        <div className="home-cta" style={{ margin: 0 }}>
+          {lazyLoad && !expanded ? (
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => setExpanded(true)}
+            >
+              Show files
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={busy}
+            onClick={() => inputRef.current?.click()}
+          >
+            {busy ? "Working…" : "Upload"}
+          </button>
+        </div>
         <input
           ref={inputRef}
           type="file"
@@ -174,63 +212,73 @@ export function PatientFilesPanel({
         Referral letters, imaging, or other attachments (PDF, JPEG, PNG · max
         10 MB).
       </p>
-      {error ? <p className="alert-line">{error}</p> : null}
-      {message ? <p className="muted">{message}</p> : null}
-      {loading ? (
-        <p className="muted">Loading files…</p>
-      ) : files.length === 0 ? (
-        <p className="muted">No files yet.</p>
-      ) : (
-        <ul className="patient-files-list" style={{ listStyle: "none", padding: 0, margin: 0 }}>
-          {files.map((f) => (
-            <li
-              key={f.id}
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "0.5rem",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "0.5rem 0",
-                borderTop: "1px solid var(--border, #e5e7eb)",
-              }}
+      {!expanded ? (
+        <p className="muted">Expand to load attachments for this patient.</p>
+      ) : null}
+      {expanded ? (
+        <>
+          {error ? <p className="alert-line">{error}</p> : null}
+          {message ? <p className="muted">{message}</p> : null}
+          {loading ? (
+            <p className="muted">Loading files…</p>
+          ) : files.length === 0 && !error ? (
+            <p className="muted">No files yet.</p>
+          ) : (
+            <ul
+              className="patient-files-list"
+              style={{ listStyle: "none", padding: 0, margin: 0 }}
             >
-              <div style={{ minWidth: 0, flex: "1 1 12rem" }}>
-                <div style={{ fontWeight: 600, wordBreak: "break-word" }}>
-                  {f.filename}
-                </div>
-                <div className="muted" style={{ fontSize: "0.85rem" }}>
-                  {formatSize(f.sizeBytes)} ·{" "}
-                  {format(new Date(f.createdAt), "d MMM yyyy HH:mm")}
-                  {f.uploadedBy ? ` · ${f.uploadedBy.name}` : ""}
-                </div>
-              </div>
-              <div className="home-cta" style={{ margin: 0 }}>
-                {canDownload(f) ? (
-                  <button
-                    type="button"
-                    className="btn-ghost btn-sm"
-                    disabled={busy}
-                    onClick={() => void onDownload(f)}
-                  >
-                    Download
-                  </button>
-                ) : null}
-                {canDelete(f) ? (
-                  <button
-                    type="button"
-                    className="btn-ghost btn-sm"
-                    disabled={busy}
-                    onClick={() => void onDelete(f)}
-                  >
-                    Delete
-                  </button>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+              {files.map((f) => (
+                <li
+                  key={f.id}
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "0.5rem",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "0.5rem 0",
+                    borderTop: "1px solid var(--border, #e5e7eb)",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: "1 1 12rem" }}>
+                    <div style={{ fontWeight: 600, wordBreak: "break-word" }}>
+                      {f.filename}
+                    </div>
+                    <div className="muted" style={{ fontSize: "0.85rem" }}>
+                      {formatSize(f.sizeBytes)} ·{" "}
+                      {format(new Date(f.createdAt), "d MMM yyyy HH:mm")}
+                      {f.uploadedBy ? ` · ${f.uploadedBy.name}` : ""}
+                    </div>
+                  </div>
+                  <div className="home-cta" style={{ margin: 0 }}>
+                    {canDownload(f) ? (
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        disabled={busy}
+                        onClick={() => void onDownload(f)}
+                      >
+                        Download
+                      </button>
+                    ) : null}
+                    {canDelete(f) ? (
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        disabled={busy}
+                        onClick={() => void onDelete(f)}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : null}
     </div>
   );
 }

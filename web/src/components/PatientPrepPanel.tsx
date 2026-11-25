@@ -70,6 +70,8 @@ type Props = {
   privacyMode?: CalendarPrivacyMode;
   /** Calendar sheet: start collapsed to alerts + last visit only */
   defaultCollapsed?: boolean;
+  /** When false, skip embedded Files (parent page already shows them). */
+  showFiles?: boolean;
 };
 
 function titleCase(key: string) {
@@ -89,6 +91,7 @@ export function PatientPrepPanel({
   autoExpandLatest = false,
   privacyMode = "FULL_NAME",
   defaultCollapsed = false,
+  showFiles = true,
 }: Props) {
   const router = useRouter();
   const [prep, setPrep] = useState<PatientPrep | null>(null);
@@ -149,6 +152,7 @@ export function PatientPrepPanel({
   }
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError(null);
     setExpandedNoteId(null);
@@ -156,10 +160,13 @@ export function PatientPrepPanel({
     setIntake(null);
     loadedBodies.current = new Set();
     autoExpandedFor.current = null;
-    void api<{ prep: PatientPrep }>(
-      `/patients/${patientId}?prep=1&source=${encodeURIComponent(source)}`,
-    )
-      .then((d) => {
+    // Sequential prep → intake: parallel Neon WS fan-out trips Cloudflare 1101.
+    void (async () => {
+      try {
+        const d = await api<{ prep: PatientPrep }>(
+          `/patients/${patientId}?prep=1&source=${encodeURIComponent(source)}`,
+        );
+        if (cancelled) return;
         setPrep(d.prep);
         if (autoExpandLatest) {
           const latest =
@@ -172,20 +179,32 @@ export function PatientPrepPanel({
             void loadNoteBody(latest.id);
           }
         }
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-    void api<{
-      status: string;
-      submission: {
-        signatureName: string | null;
-        signedAt: string | null;
-        completedAt: string | null;
-        answers: { safetyNote?: string | null };
-      } | null;
-    }>(`/patients/${patientId}/intake`)
-      .then((d) => setIntake(d))
-      .catch(() => setIntake(null));
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Could not load prep");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+      if (cancelled) return;
+      try {
+        const d = await api<{
+          status: string;
+          submission: {
+            signatureName: string | null;
+            signedAt: string | null;
+            completedAt: string | null;
+            answers: { safetyNote?: string | null };
+          } | null;
+        }>(`/patients/${patientId}/intake`);
+        if (!cancelled) setIntake(d);
+      } catch {
+        if (!cancelled) setIntake(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
     // loadNoteBody closes over patientId/source; re-run when those change
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
   }, [patientId, source, autoExpandLatest]);
@@ -304,8 +323,13 @@ export function PatientPrepPanel({
         </div>
       ) : null}
 
-      {!collapsed ? (
-        <PatientFilesPanel patientId={patientId} compact className="prep-files" />
+      {showFiles && !collapsed ? (
+        <PatientFilesPanel
+          patientId={patientId}
+          compact
+          lazy
+          className="prep-files"
+        />
       ) : null}
 
       {collapsed ? (

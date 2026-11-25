@@ -833,9 +833,10 @@ export default function CalendarPage() {
     setBusy(true);
     setError(null);
     try {
-      await Promise.all(
-        blocks.map((b) => api(`/blocks/${b.id}`, { method: "DELETE" })),
-      );
+      // Sequential deletes — parallel Neon WS fan-out trips Cloudflare 1101.
+      for (const b of blocks) {
+        await api(`/blocks/${b.id}`, { method: "DELETE" });
+      }
       setMessage(
         `Removed ${blocks.length} block${blocks.length === 1 ? "" : "s"}`,
       );
