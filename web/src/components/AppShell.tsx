@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  BarChart3,
   CalendarDays,
   ClipboardList,
   CreditCard,
@@ -102,6 +103,12 @@ const navGroups: NavGroup[] = [
         hideForPractitioner: true,
       },
       { href: "/app/money", label: "Money", icon: Wallet, staffOps: true },
+      {
+        href: "/app/finance",
+        label: "Finance",
+        icon: BarChart3,
+        ownerOnly: true,
+      },
     ],
   },
   {

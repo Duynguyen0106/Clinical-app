@@ -2259,6 +2259,58 @@ h3 {
   font-size: 0.9rem;
 }
 
+.finance-period-nav {
+  margin: 0.75rem 0 1rem;
+  flex-wrap: wrap;
+}
+
+.finance-custom-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.finance-custom-range label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.88rem;
+}
+
+.finance-custom-range input {
+  min-width: 10.5rem;
+}
+
+.finance-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.finance-total-card p {
+  margin: 0;
+}
+
+.finance-total-value {
+  margin: 0.25rem 0 !important;
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  font-weight: 650;
+  color: var(--accent-deep);
+}
+
+.finance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1rem;
+}
+
+.finance-breakdown-list {
+  margin-top: 0.35rem;
+}
+
 .pay-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
