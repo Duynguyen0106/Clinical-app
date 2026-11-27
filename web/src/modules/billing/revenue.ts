@@ -3,8 +3,7 @@ import {
   DepositStatus,
   InvoiceStatus,
 } from "@/generated/prisma/client";
-import type { AuthContext } from "@/server/auth";
-import { requireRole } from "@/server/auth";
+import { requireRole, type AuthContext } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { badRequest } from "@/server/errors";
 import {
@@ -14,33 +13,46 @@ import {
 } from "@/modules/scheduling/clinic-time";
 import { formatInTimeZone } from "date-fns-tz";
 
-export const revenueQuerySchema = z.object({
-  preset: z.enum(["day", "month", "year", "custom"]).default("day"),
-  /** YYYY-MM-DD — used by day preset */
-  date: z
+/** Search-param empty strings → undefined so optional fields stay optional. */
+const optionalYmd = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  /** YYYY-MM — used by month preset */
-  month: z
+);
+
+const optionalYm = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  z
     .string()
     .regex(/^\d{4}-\d{2}$/)
     .optional(),
-  /** YYYY — used by year preset */
-  year: z
+);
+
+const optionalYear = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  z
     .string()
     .regex(/^\d{4}$/)
     .optional(),
+);
+
+export const revenueQuerySchema = z.object({
+  preset: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.enum(["day", "month", "year", "custom"]).default("day"),
+  ),
+  /** YYYY-MM-DD — used by day preset */
+  date: optionalYmd,
+  /** YYYY-MM — used by month preset */
+  month: optionalYm,
+  /** YYYY — used by year preset */
+  year: optionalYear,
   /** YYYY-MM-DD inclusive — custom */
-  from: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  from: optionalYmd,
   /** YYYY-MM-DD inclusive — custom */
-  to: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  to: optionalYmd,
 });
 
 export type RevenueQuery = z.infer<typeof revenueQuerySchema>;

@@ -1,19 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  addDays,
-  addMonths,
-  addYears,
-  format,
-  parse,
-  parseISO,
-} from "date-fns";
+import { addMonths, addYears, format, parse } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { api } from "@/lib/api";
 import { LAUNCH } from "@/modules/config/brand";
+import {
+  addClinicCalendarDays,
+  clinicDateKey,
+  clinicLocalDateTime,
+} from "@/modules/scheduling/clinic-time";
 
 type Preset = "day" | "month" | "year" | "custom";
 
@@ -62,35 +60,89 @@ function formatGbp(pence: number) {
   }).format(pence / 100);
 }
 
-function todayKey() {
-  return format(new Date(), "yyyy-MM-dd");
+function keysForTimezone(timeZone: string, now = new Date()) {
+  const today = clinicDateKey(now, timeZone);
+  const from = clinicDateKey(
+    addClinicCalendarDays(clinicLocalDateTime(today, 0, timeZone), -29, timeZone),
+    timeZone,
+  );
+  return {
+    date: today,
+    month: today.slice(0, 7),
+    year: today.slice(0, 4),
+    from,
+    to: today,
+  };
 }
 
-function monthKey() {
-  return format(new Date(), "yyyy-MM");
+function isYmd(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-function yearKey() {
-  return format(new Date(), "yyyy");
+function isYm(value: string) {
+  return /^\d{4}-\d{2}$/.test(value);
+}
+
+function isYear(value: string) {
+  return /^\d{4}$/.test(value);
 }
 
 export default function FinancePage() {
   const { me, loading: authLoading } = useAuth();
   const isOwner = me?.role === "OWNER";
+  const timeZone = me?.clinic.timezone || LAUNCH.timezone;
+  const syncedTz = useRef<string | null>(null);
 
+  const initial = keysForTimezone(LAUNCH.timezone);
   const [preset, setPreset] = useState<Preset>("day");
-  const [date, setDate] = useState(todayKey);
-  const [month, setMonth] = useState(monthKey);
-  const [year, setYear] = useState(yearKey);
-  const [from, setFrom] = useState(() => format(addDays(new Date(), -29), "yyyy-MM-dd"));
-  const [to, setTo] = useState(todayKey);
+  const [date, setDate] = useState(initial.date);
+  const [month, setMonth] = useState(initial.month);
+  const [year, setYear] = useState(initial.year);
+  const [from, setFrom] = useState(initial.from);
+  const [to, setTo] = useState(initial.to);
 
   const [report, setReport] = useState<RevenueReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Align pickers to clinic timezone once auth resolves (UK clinics vs browser TZ).
+  useEffect(() => {
+    if (authLoading || !me?.clinic.timezone) return;
+    if (syncedTz.current === me.clinic.timezone) return;
+    syncedTz.current = me.clinic.timezone;
+    const next = keysForTimezone(me.clinic.timezone);
+    setDate(next.date);
+    setMonth(next.month);
+    setYear(next.year);
+    setFrom(next.from);
+    setTo(next.to);
+  }, [authLoading, me?.clinic.timezone]);
+
   const load = useCallback(() => {
     if (!isOwner) return;
+    if (preset === "day" && !isYmd(date)) {
+      setError("Choose a valid day");
+      return;
+    }
+    if (preset === "month" && !isYm(month)) {
+      setError("Choose a valid month");
+      return;
+    }
+    if (preset === "year" && !isYear(year)) {
+      setError("Enter a four-digit year");
+      return;
+    }
+    if (preset === "custom") {
+      if (!isYmd(from) || !isYmd(to)) {
+        setError("Choose a valid from and to date");
+        return;
+      }
+      if (from > to) {
+        setError("From must be on or before to");
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
     const params = new URLSearchParams({ preset });
@@ -111,21 +163,30 @@ export default function FinancePage() {
   }, [isOwner, preset, date, month, year, from, to]);
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !isOwner) return;
+    // Wait until clinic TZ sync has run once so the first fetch matches the clinic day.
+    if (me?.clinic.timezone && syncedTz.current !== me.clinic.timezone) return;
     load();
-  }, [authLoading, load]);
+  }, [authLoading, isOwner, me?.clinic.timezone, load]);
 
   function shiftDay(delta: number) {
-    const next = addDays(parseISO(date), delta);
-    setDate(format(next, "yyyy-MM-dd"));
+    if (!isYmd(date)) return;
+    const next = addClinicCalendarDays(
+      clinicLocalDateTime(date, 0, timeZone),
+      delta,
+      timeZone,
+    );
+    setDate(clinicDateKey(next, timeZone));
   }
 
   function shiftMonth(delta: number) {
+    if (!isYm(month)) return;
     const next = addMonths(parse(`${month}-01`, "yyyy-MM-dd", new Date()), delta);
     setMonth(format(next, "yyyy-MM"));
   }
 
   function shiftYear(delta: number) {
+    if (!isYear(year)) return;
     const next = addYears(parse(`${year}-01-01`, "yyyy-MM-dd", new Date()), delta);
     setYear(format(next, "yyyy"));
   }

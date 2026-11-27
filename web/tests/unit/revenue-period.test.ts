@@ -13,6 +13,20 @@ describe("revenueQuerySchema", () => {
     assert.equal(q.preset, "day");
   });
 
+  it("treats empty search-param strings as omitted", () => {
+    const q = revenueQuerySchema.parse({
+      preset: "",
+      date: "",
+      month: "",
+      year: "",
+      from: "",
+      to: "",
+    });
+    assert.equal(q.preset, "day");
+    assert.equal(q.date, undefined);
+    assert.equal(q.year, undefined);
+  });
+
   it("accepts custom from/to", () => {
     const q = revenueQuerySchema.parse({
       preset: "custom",
