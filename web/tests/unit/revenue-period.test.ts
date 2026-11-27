@@ -104,4 +104,22 @@ describe("resolveRevenuePeriod", () => {
     assert.equal(p.toKey, "2026-01-31");
     assert.match(p.label, /1 Jan 2026/);
   });
+
+  it("rejects non-existent calendar days with a 400-style error", () => {
+    assert.throws(
+      () =>
+        resolveRevenuePeriod({ preset: "day", date: "2026-02-31" }, TZ),
+      (err: unknown) =>
+        err instanceof Error &&
+        /Invalid date/i.test(err.message) &&
+        (err as { status?: number }).status === 400,
+    );
+    assert.throws(
+      () =>
+        resolveRevenuePeriod({ preset: "month", month: "2026-13" }, TZ),
+      (err: unknown) =>
+        err instanceof Error &&
+        (err as { status?: number }).status === 400,
+    );
+  });
 });

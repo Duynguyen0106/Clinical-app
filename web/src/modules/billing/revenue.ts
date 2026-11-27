@@ -5,7 +5,7 @@ import {
 } from "@/generated/prisma/client";
 import { requireRole, type AuthContext } from "@/server/auth";
 import { prisma } from "@/server/db";
-import { badRequest } from "@/server/errors";
+import { AppError, badRequest } from "@/server/errors";
 import {
   addClinicCalendarDays,
   clinicDateKey,
@@ -90,6 +90,40 @@ function daysBetweenKeys(fromKey: string, toKey: string) {
   return Math.round((toUtc - fromUtc) / 86_400_000) + 1;
 }
 
+/** Clinic-local midnight, or 400 if the civil date does not exist. */
+function clinicDayStart(dateKey: string, timeZone: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    throw badRequest("Date must be YYYY-MM-DD");
+  }
+  const { y, m, d } = parseYmd(dateKey);
+  if (m < 1 || m > 12 || d < 1 || d > 31) {
+    throw badRequest("Invalid date");
+  }
+  try {
+    const from = clinicLocalDateTime(dateKey, 0, timeZone);
+    if (Number.isNaN(from.getTime())) {
+      throw badRequest("Invalid date");
+    }
+    // Reject overflows like 2026-02-31 → rolled calendar day
+    if (clinicDateKey(from, timeZone) !== dateKey) {
+      throw badRequest("Invalid date");
+    }
+    return from;
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    throw badRequest("Invalid date");
+  }
+}
+
+function clinicMonthStart(month: string, timeZone: string) {
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    throw badRequest("month must be YYYY-MM");
+  }
+  const m = Number(month.slice(5, 7));
+  if (m < 1 || m > 12) throw badRequest("month must be YYYY-MM");
+  return clinicDayStart(`${month}-01`, timeZone);
+}
+
 /**
  * Resolve inclusive clinic-local civil dates into a half-open UTC range
  * `[from, to)` for Prisma filters.
@@ -103,7 +137,7 @@ export function resolveRevenuePeriod(
 
   if (preset === "day") {
     const fromKey = input.date ?? clinicDateKey(now, timeZone);
-    const from = clinicLocalDateTime(fromKey, 0, timeZone);
+    const from = clinicDayStart(fromKey, timeZone);
     const to = addClinicCalendarDays(from, 1, timeZone);
     const label = formatInTimeZone(from, timeZone, "d MMMM yyyy");
     return {
@@ -119,12 +153,9 @@ export function resolveRevenuePeriod(
 
   if (preset === "month") {
     const month = input.month ?? clinicDateKey(now, timeZone).slice(0, 7);
-    if (!/^\d{4}-\d{2}$/.test(month)) {
-      throw badRequest("month must be YYYY-MM");
-    }
+    const from = clinicMonthStart(month, timeZone);
     const fromKey = `${month}-01`;
-    const from = clinicLocalDateTime(fromKey, 0, timeZone);
-    const to = clinicLocalDateTime(`${nextMonthKey(month)}-01`, 0, timeZone);
+    const to = clinicMonthStart(nextMonthKey(month), timeZone);
     const toKey = clinicDateKey(
       addClinicCalendarDays(to, -1, timeZone),
       timeZone,
@@ -136,9 +167,13 @@ export function resolveRevenuePeriod(
   if (preset === "year") {
     const year = input.year ?? clinicDateKey(now, timeZone).slice(0, 4);
     if (!/^\d{4}$/.test(year)) throw badRequest("year must be YYYY");
+    const yNum = Number(year);
+    if (yNum < 2000 || yNum > 2100) {
+      throw badRequest("year must be between 2000 and 2100");
+    }
     const fromKey = `${year}-01-01`;
-    const from = clinicLocalDateTime(fromKey, 0, timeZone);
-    const to = clinicLocalDateTime(`${Number(year) + 1}-01-01`, 0, timeZone);
+    const from = clinicDayStart(fromKey, timeZone);
+    const to = clinicDayStart(`${yNum + 1}-01-01`, timeZone);
     const toKey = `${year}-12-31`;
     return {
       preset,
@@ -164,9 +199,9 @@ export function resolveRevenuePeriod(
   if (span > MAX_CUSTOM_DAYS) {
     throw badRequest(`Custom period cannot exceed ${MAX_CUSTOM_DAYS} days`);
   }
-  const from = clinicLocalDateTime(fromKey, 0, timeZone);
-  const to = addClinicCalendarDays(
-    clinicLocalDateTime(toKey, 0, timeZone),
+  const from = clinicDayStart(fromKey, timeZone);
+  const toExclusive = addClinicCalendarDays(
+    clinicDayStart(toKey, timeZone),
     1,
     timeZone,
   );
@@ -174,11 +209,19 @@ export function resolveRevenuePeriod(
     fromKey === toKey
       ? formatInTimeZone(from, timeZone, "d MMMM yyyy")
       : `${formatInTimeZone(from, timeZone, "d MMM yyyy")} – ${formatInTimeZone(
-          clinicLocalDateTime(toKey, 0, timeZone),
+          clinicDayStart(toKey, timeZone),
           timeZone,
           "d MMM yyyy",
         )}`;
-  return { preset, from, to, fromKey, toKey, label, timeZone };
+  return {
+    preset,
+    from,
+    to: toExclusive,
+    fromKey,
+    toKey,
+    label,
+    timeZone,
+  };
 }
 
 type Bucket = { amountCents: number; count: number };
@@ -222,7 +265,7 @@ export async function getRevenueReport(
   const timeZone = clinic?.timezone || "Europe/London";
   const period = resolveRevenuePeriod(raw, timeZone);
 
-  const [payments, deposits, unpaidInvoices] = await Promise.all([
+  const [payments, depositAgg, unpaidAgg] = await Promise.all([
     prisma.payment.findMany({
       where: {
         paidAt: { gte: period.from, lt: period.to },
@@ -247,20 +290,22 @@ export async function getRevenueReport(
       },
       orderBy: { paidAt: "asc" },
     }),
-    prisma.appointment.findMany({
+    prisma.appointment.aggregate({
       where: {
         clinicId: ctx.clinicId,
         depositStatus: DepositStatus.PAID,
         depositPaidAt: { gte: period.from, lt: period.to },
       },
-      select: { depositCents: true },
+      _sum: { depositCents: true },
+      _count: { _all: true },
     }),
-    prisma.invoice.findMany({
+    prisma.invoice.aggregate({
       where: {
         clinicId: ctx.clinicId,
         status: { in: [InvoiceStatus.DRAFT, InvoiceStatus.SENT] },
       },
-      select: { amountCents: true },
+      _sum: { amountCents: true },
+      _count: { _all: true },
     }),
   ]);
 
@@ -324,11 +369,8 @@ export async function getRevenueReport(
     }
   }
 
-  const depositsCents = deposits.reduce((s, d) => s + d.depositCents, 0);
-  const outstandingCents = unpaidInvoices.reduce(
-    (s, inv) => s + inv.amountCents,
-    0,
-  );
+  const depositsCents = depositAgg._sum.depositCents ?? 0;
+  const outstandingCents = unpaidAgg._sum.amountCents ?? 0;
 
   const byMethod = [...byMethodMap.entries()]
     .map(([method, b]) => ({
@@ -386,9 +428,9 @@ export async function getRevenueReport(
       collectedCents,
       paymentCount: payments.length,
       depositsCents,
-      depositCount: deposits.length,
+      depositCount: depositAgg._count._all,
       outstandingCents,
-      unpaidInvoiceCount: unpaidInvoices.length,
+      unpaidInvoiceCount: unpaidAgg._count._all,
     },
     byMethod,
     byDay: period.preset === "year" ? [] : byDay,

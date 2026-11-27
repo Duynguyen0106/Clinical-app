@@ -87,6 +87,14 @@ function isYear(value: string) {
   return /^\d{4}$/.test(value);
 }
 
+function formatMonthLabel(month: string) {
+  try {
+    return format(parse(`${month}-01`, "yyyy-MM-dd", new Date()), "MMMM yyyy");
+  } catch {
+    return month;
+  }
+}
+
 export default function FinancePage() {
   const { me, loading: authLoading } = useAuth();
   const isOwner = me?.role === "OWNER";
@@ -100,23 +108,34 @@ export default function FinancePage() {
   const [year, setYear] = useState(initial.year);
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
+  /** False until clinic TZ pickers are applied so the first fetch is not stale. */
+  const [periodReady, setPeriodReady] = useState(false);
 
   const [report, setReport] = useState<RevenueReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Align pickers to clinic timezone once auth resolves (UK clinics vs browser TZ).
+  // Align pickers to clinic timezone once, then mark period ready for fetch.
   useEffect(() => {
-    if (authLoading || !me?.clinic.timezone) return;
-    if (syncedTz.current === me.clinic.timezone) return;
-    syncedTz.current = me.clinic.timezone;
-    const next = keysForTimezone(me.clinic.timezone);
+    if (authLoading) return;
+    if (!me) {
+      setPeriodReady(false);
+      return;
+    }
+    const tz = me.clinic.timezone || LAUNCH.timezone;
+    if (syncedTz.current === tz) {
+      setPeriodReady(true);
+      return;
+    }
+    syncedTz.current = tz;
+    const next = keysForTimezone(tz);
     setDate(next.date);
     setMonth(next.month);
     setYear(next.year);
     setFrom(next.from);
     setTo(next.to);
-  }, [authLoading, me?.clinic.timezone]);
+    setPeriodReady(true);
+  }, [authLoading, me]);
 
   const load = useCallback(() => {
     if (!isOwner) return;
@@ -163,11 +182,9 @@ export default function FinancePage() {
   }, [isOwner, preset, date, month, year, from, to]);
 
   useEffect(() => {
-    if (authLoading || !isOwner) return;
-    // Wait until clinic TZ sync has run once so the first fetch matches the clinic day.
-    if (me?.clinic.timezone && syncedTz.current !== me.clinic.timezone) return;
+    if (!periodReady || authLoading || !isOwner) return;
     load();
-  }, [authLoading, isOwner, me?.clinic.timezone, load]);
+  }, [periodReady, authLoading, isOwner, load]);
 
   function shiftDay(delta: number) {
     if (!isYmd(date)) return;
@@ -445,7 +462,7 @@ export default function FinancePage() {
             empty="No payments in this year."
             rows={(report?.byMonth ?? []).map((r) => ({
               key: r.month,
-              label: r.month,
+              label: formatMonthLabel(r.month),
               meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
               amountCents: r.amountCents,
             }))}
