@@ -31,6 +31,8 @@ type RevenueReport = {
     outstandingCents: number;
     unpaidInvoiceCount: number;
   };
+  truncated?: boolean;
+  breakdownPaymentCount?: number;
   byMethod: Array<{
     method: string;
     label: string;
@@ -52,6 +54,8 @@ type RevenueReport = {
     count: number;
   }>;
 };
+
+const MAX_CUSTOM_DAYS = 366;
 
 function formatGbp(pence: number) {
   return new Intl.NumberFormat(LAUNCH.locale, {
@@ -95,11 +99,89 @@ function formatMonthLabel(month: string) {
   }
 }
 
+function daysBetweenKeys(fromKey: string, toKey: string) {
+  const [fy, fm, fd] = fromKey.split("-").map(Number);
+  const [ty, tm, td] = toKey.split("-").map(Number);
+  const fromUtc = Date.UTC(fy, fm - 1, fd);
+  const toUtc = Date.UTC(ty, tm - 1, td);
+  return Math.round((toUtc - fromUtc) / 86_400_000) + 1;
+}
+
+function localPeriodLabel(
+  preset: Preset,
+  date: string,
+  month: string,
+  year: string,
+  from: string,
+  to: string,
+) {
+  try {
+    if (preset === "day" && isYmd(date)) {
+      return format(parse(date, "yyyy-MM-dd", new Date()), "d MMMM yyyy");
+    }
+    if (preset === "month" && isYm(month)) {
+      return formatMonthLabel(month);
+    }
+    if (preset === "year" && isYear(year)) {
+      return year;
+    }
+    if (preset === "custom" && isYmd(from) && isYmd(to)) {
+      if (from === to) {
+        return format(parse(from, "yyyy-MM-dd", new Date()), "d MMMM yyyy");
+      }
+      return `${format(parse(from, "yyyy-MM-dd", new Date()), "d MMM yyyy")} – ${format(
+        parse(to, "yyyy-MM-dd", new Date()),
+        "d MMM yyyy",
+      )}`;
+    }
+  } catch {
+    /* fall through */
+  }
+  return "Selected period";
+}
+
+function periodParamsValid(
+  preset: Preset,
+  date: string,
+  month: string,
+  year: string,
+  from: string,
+  to: string,
+): { ok: true } | { ok: false; message?: string; soft?: boolean } {
+  if (preset === "day") {
+    if (!isYmd(date)) return { ok: false, soft: true };
+    return { ok: true };
+  }
+  if (preset === "month") {
+    if (!isYm(month)) return { ok: false, soft: true };
+    return { ok: true };
+  }
+  if (preset === "year") {
+    // Mid-edit years (2, 20, 202) — skip fetch quietly until complete.
+    if (!isYear(year)) return { ok: false, soft: true };
+    const y = Number(year);
+    if (y < 2000 || y > 2100) {
+      return { ok: false, message: "Year must be between 2000 and 2100" };
+    }
+    return { ok: true };
+  }
+  if (!isYmd(from) || !isYmd(to)) return { ok: false, soft: true };
+  if (from > to) return { ok: false, message: "From must be on or before to" };
+  if (daysBetweenKeys(from, to) > MAX_CUSTOM_DAYS) {
+    return {
+      ok: false,
+      message: `Custom period cannot exceed ${MAX_CUSTOM_DAYS} days`,
+    };
+  }
+  return { ok: true };
+}
+
 export default function FinancePage() {
   const { me, loading: authLoading } = useAuth();
   const isOwner = me?.role === "OWNER";
   const timeZone = me?.clinic.timezone || LAUNCH.timezone;
   const syncedTz = useRef<string | null>(null);
+  const fetchGen = useRef(0);
 
   const initial = keysForTimezone(LAUNCH.timezone);
   const [preset, setPreset] = useState<Preset>("day");
@@ -108,14 +190,12 @@ export default function FinancePage() {
   const [year, setYear] = useState(initial.year);
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
-  /** False until clinic TZ pickers are applied so the first fetch is not stale. */
   const [periodReady, setPeriodReady] = useState(false);
 
   const [report, setReport] = useState<RevenueReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Align pickers to clinic timezone once, then mark period ready for fetch.
   useEffect(() => {
     if (authLoading) return;
     if (!me) {
@@ -137,49 +217,48 @@ export default function FinancePage() {
     setPeriodReady(true);
   }, [authLoading, me]);
 
-  const load = useCallback(() => {
-    if (!isOwner) return;
-    if (preset === "day" && !isYmd(date)) {
-      setError("Choose a valid day");
-      return;
-    }
-    if (preset === "month" && !isYm(month)) {
-      setError("Choose a valid month");
-      return;
-    }
-    if (preset === "year" && !isYear(year)) {
-      setError("Enter a four-digit year");
-      return;
-    }
-    if (preset === "custom") {
-      if (!isYmd(from) || !isYmd(to)) {
-        setError("Choose a valid from and to date");
+  const load = useCallback(
+    (opts?: { showValidationErrors?: boolean }) => {
+      if (!isOwner) return;
+      const validity = periodParamsValid(preset, date, month, year, from, to);
+      if (!validity.ok) {
+        if (!validity.soft || opts?.showValidationErrors) {
+          setError(validity.message ?? "Choose a valid period");
+        }
         return;
       }
-      if (from > to) {
-        setError("From must be on or before to");
-        return;
-      }
-    }
 
-    setLoading(true);
-    setError(null);
-    const params = new URLSearchParams({ preset });
-    if (preset === "day") params.set("date", date);
-    if (preset === "month") params.set("month", month);
-    if (preset === "year") params.set("year", year);
-    if (preset === "custom") {
-      params.set("from", from);
-      params.set("to", to);
-    }
-    void api<RevenueReport>(`/finance/revenue?${params}`)
-      .then((d) => setReport(d))
-      .catch((e: Error) => {
-        setReport(null);
-        setError(e.message);
-      })
-      .finally(() => setLoading(false));
-  }, [isOwner, preset, date, month, year, from, to]);
+      const gen = ++fetchGen.current;
+      setLoading(true);
+      setError(null);
+      setReport(null);
+
+      const params = new URLSearchParams({ preset });
+      if (preset === "day") params.set("date", date);
+      if (preset === "month") params.set("month", month);
+      if (preset === "year") params.set("year", year);
+      if (preset === "custom") {
+        params.set("from", from);
+        params.set("to", to);
+      }
+
+      void api<RevenueReport>(`/finance/revenue?${params}`)
+        .then((d) => {
+          if (gen !== fetchGen.current) return;
+          setReport(d);
+        })
+        .catch((e: Error) => {
+          if (gen !== fetchGen.current) return;
+          setReport(null);
+          setError(e.message);
+        })
+        .finally(() => {
+          if (gen !== fetchGen.current) return;
+          setLoading(false);
+        });
+    },
+    [isOwner, preset, date, month, year, from, to],
+  );
 
   useEffect(() => {
     if (!periodReady || authLoading || !isOwner) return;
@@ -222,6 +301,12 @@ export default function FinancePage() {
   }
 
   const totals = report?.totals;
+  const showLoading =
+    authLoading ||
+    !periodReady ||
+    loading ||
+    (isOwner && !report && !error);
+  const periodLabel = localPeriodLabel(preset, date, month, year, from, to);
 
   return (
     <AppShell
@@ -260,7 +345,7 @@ export default function FinancePage() {
           <button
             type="button"
             className="btn-ghost btn-sm"
-            onClick={() => load()}
+            onClick={() => load({ showValidationErrors: true })}
             disabled={loading}
           >
             {loading ? "Refreshing…" : "Refresh"}
@@ -344,6 +429,7 @@ export default function FinancePage() {
                   max={2100}
                   value={year}
                   onChange={(e) => setYear(e.target.value.slice(0, 4))}
+                  onBlur={() => load({ showValidationErrors: true })}
                 />
               </label>
               <button
@@ -379,14 +465,12 @@ export default function FinancePage() {
           ) : null}
         </div>
 
-        <p className="pay-hero-label">
-          {report?.period.label ?? "Selected period"}
-        </p>
+        <p className="pay-hero-label">{periodLabel}</p>
         <p className="pay-hero-amount">
-          {loading && !report ? "…" : formatGbp(totals?.collectedCents ?? 0)}
+          {showLoading ? "…" : formatGbp(totals?.collectedCents ?? 0)}
         </p>
         <p className="pay-hero-meta muted">
-          {loading && !report
+          {showLoading
             ? "Loading…"
             : `${totals?.paymentCount ?? 0} payment${
                 (totals?.paymentCount ?? 0) === 1 ? "" : "s"
@@ -401,26 +485,39 @@ export default function FinancePage() {
       </section>
 
       {error ? <p className="form-error">{error}</p> : null}
+      {report?.truncated ? (
+        <p className="alert-line">
+          Totals include all {report.totals.paymentCount} payments. Breakdowns
+          use the first {report.breakdownPaymentCount ?? 0} payments in the
+          period — narrow the range for a full split.
+        </p>
+      ) : null}
 
       <div className="finance-totals">
         <div className="panel finance-total-card">
           <p className="muted">Deposits collected</p>
           <p className="finance-total-value">
-            {formatGbp(totals?.depositsCents ?? 0)}
+            {showLoading ? "…" : formatGbp(totals?.depositsCents ?? 0)}
           </p>
           <p className="muted">
-            {totals?.depositCount ?? 0} deposit
-            {(totals?.depositCount ?? 0) === 1 ? "" : "s"}
+            {showLoading
+              ? "…"
+              : `${totals?.depositCount ?? 0} deposit${
+                  (totals?.depositCount ?? 0) === 1 ? "" : "s"
+                }`}
           </p>
         </div>
         <div className="panel finance-total-card">
           <p className="muted">Outstanding (all unpaid)</p>
           <p className="finance-total-value">
-            {formatGbp(totals?.outstandingCents ?? 0)}
+            {showLoading ? "…" : formatGbp(totals?.outstandingCents ?? 0)}
           </p>
           <p className="muted">
-            {totals?.unpaidInvoiceCount ?? 0} invoice
-            {(totals?.unpaidInvoiceCount ?? 0) === 1 ? "" : "s"}
+            {showLoading
+              ? "…"
+              : `${totals?.unpaidInvoiceCount ?? 0} invoice${
+                  (totals?.unpaidInvoiceCount ?? 0) === 1 ? "" : "s"
+                }`}
           </p>
         </div>
       </div>
@@ -428,55 +525,79 @@ export default function FinancePage() {
       <div className="finance-grid">
         <BreakdownPanel
           title="By payment method"
-          empty="No payments in this period."
-          rows={(report?.byMethod ?? []).map((r) => ({
-            key: r.method,
-            label: r.label,
-            meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
-            amountCents: r.amountCents,
-          }))}
+          empty={
+            showLoading ? "Loading…" : "No payments in this period."
+          }
+          rows={
+            showLoading
+              ? []
+              : (report?.byMethod ?? []).map((r) => ({
+                  key: r.method,
+                  label: r.label,
+                  meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
+                  amountCents: r.amountCents,
+                }))
+          }
         />
         <BreakdownPanel
           title="By practitioner"
-          empty="No payments linked to practitioners."
-          rows={(report?.byPractitioner ?? []).map((r) => ({
-            key: r.practitionerId ?? "none",
-            label: r.displayName,
-            meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
-            amountCents: r.amountCents,
-          }))}
+          empty={
+            showLoading ? "Loading…" : "No payments linked to practitioners."
+          }
+          rows={
+            showLoading
+              ? []
+              : (report?.byPractitioner ?? []).map((r) => ({
+                  key: r.practitionerId ?? "none",
+                  label: r.displayName,
+                  meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
+                  amountCents: r.amountCents,
+                }))
+          }
         />
         <BreakdownPanel
           title="By service"
-          empty="No payments linked to services."
-          rows={(report?.byService ?? []).map((r) => ({
-            key: r.appointmentTypeId ?? "none",
-            label: r.name,
-            meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
-            amountCents: r.amountCents,
-          }))}
+          empty={showLoading ? "Loading…" : "No payments linked to services."}
+          rows={
+            showLoading
+              ? []
+              : (report?.byService ?? []).map((r) => ({
+                  key: r.appointmentTypeId ?? "none",
+                  label: r.name,
+                  meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
+                  amountCents: r.amountCents,
+                }))
+          }
         />
         {preset === "year" ? (
           <BreakdownPanel
             title="By month"
-            empty="No payments in this year."
-            rows={(report?.byMonth ?? []).map((r) => ({
-              key: r.month,
-              label: formatMonthLabel(r.month),
-              meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
-              amountCents: r.amountCents,
-            }))}
+            empty={showLoading ? "Loading…" : "No payments in this year."}
+            rows={
+              showLoading
+                ? []
+                : (report?.byMonth ?? []).map((r) => ({
+                    key: r.month,
+                    label: formatMonthLabel(r.month),
+                    meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
+                    amountCents: r.amountCents,
+                  }))
+            }
           />
         ) : (
           <BreakdownPanel
             title="By day"
-            empty="No payments in this period."
-            rows={(report?.byDay ?? []).map((r) => ({
-              key: r.date,
-              label: r.date,
-              meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
-              amountCents: r.amountCents,
-            }))}
+            empty={showLoading ? "Loading…" : "No payments in this period."}
+            rows={
+              showLoading
+                ? []
+                : (report?.byDay ?? []).map((r) => ({
+                    key: r.date,
+                    label: r.date,
+                    meta: `${r.count} payment${r.count === 1 ? "" : "s"}`,
+                    amountCents: r.amountCents,
+                  }))
+            }
           />
         )}
       </div>

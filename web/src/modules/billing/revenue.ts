@@ -68,6 +68,8 @@ export type RevenuePeriodBounds = {
 };
 
 const MAX_CUSTOM_DAYS = 366;
+/** Cap breakdown row scan (totals still use SQL aggregate). */
+const MAX_PAYMENT_ROWS = 5000;
 
 function parseYmd(key: string) {
   const [y, m, d] = key.split("-").map(Number);
@@ -265,12 +267,19 @@ export async function getRevenueReport(
   const timeZone = clinic?.timezone || "Europe/London";
   const period = resolveRevenuePeriod(raw, timeZone);
 
-  const [payments, depositAgg, unpaidAgg] = await Promise.all([
+  const paymentWhere = {
+    paidAt: { gte: period.from, lt: period.to },
+    invoice: { clinicId: ctx.clinicId },
+  };
+
+  const [paymentAgg, payments, depositAgg, unpaidAgg] = await Promise.all([
+    prisma.payment.aggregate({
+      where: paymentWhere,
+      _sum: { amountCents: true },
+      _count: { _all: true },
+    }),
     prisma.payment.findMany({
-      where: {
-        paidAt: { gte: period.from, lt: period.to },
-        invoice: { clinicId: ctx.clinicId },
-      },
+      where: paymentWhere,
       select: {
         amountCents: true,
         method: true,
@@ -289,6 +298,7 @@ export async function getRevenueReport(
         },
       },
       orderBy: { paidAt: "asc" },
+      take: MAX_PAYMENT_ROWS,
     }),
     prisma.appointment.aggregate({
       where: {
@@ -309,7 +319,10 @@ export async function getRevenueReport(
     }),
   ]);
 
-  let collectedCents = 0;
+  const paymentCount = paymentAgg._count._all;
+  const collectedCents = paymentAgg._sum.amountCents ?? 0;
+  const truncated = paymentCount > payments.length;
+
   const byMethodMap = new Map<string, Bucket>();
   const byDayMap = new Map<string, Bucket>();
   const byMonthMap = new Map<string, Bucket>();
@@ -320,7 +333,6 @@ export async function getRevenueReport(
   const byServiceMap = new Map<string, Bucket & { name: string }>();
 
   for (const p of payments) {
-    collectedCents += p.amountCents;
     bump(byMethodMap, p.method || "other", p.amountCents);
 
     const dayKey = clinicDateKey(p.paidAt, timeZone);
@@ -426,12 +438,14 @@ export async function getRevenueReport(
     },
     totals: {
       collectedCents,
-      paymentCount: payments.length,
+      paymentCount,
       depositsCents,
       depositCount: depositAgg._count._all,
       outstandingCents,
       unpaidInvoiceCount: unpaidAgg._count._all,
     },
+    truncated,
+    breakdownPaymentCount: payments.length,
     byMethod,
     byDay: period.preset === "year" ? [] : byDay,
     byMonth: period.preset === "year" ? byMonth : [],
