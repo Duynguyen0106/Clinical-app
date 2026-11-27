@@ -87,6 +87,7 @@ model User {
 
   memberships Membership[]
   sessions    Session[]
+  uploadedFiles PatientFile[]
 }
 
 model Session {
@@ -238,6 +239,7 @@ model Clinic {
   memberships      Membership[]
   locations        Location[]
   patients         Patient[]
+  patientFiles     PatientFile[]
   appointmentTypes AppointmentType[]
   appointments     Appointment[]
   noteTemplates    NoteTemplate[]
@@ -389,10 +391,32 @@ model Patient {
   waitlistEntries WaitlistEntry[]
   accessEvents    PatientAccessEvent[]
   intakeSubmissions PatientIntakeSubmission[]
+  files           PatientFile[]
 
   @@index([clinicId, lastName, firstName])
   @@index([clinicId, archivedAt])
   @@index([clinicId, email])
+}
+
+/// Referral letters / imaging / attachments on the patient record
+model PatientFile {
+  id           String   @id @default(cuid())
+  clinicId     String
+  patientId    String
+  /// Original filename shown to staff
+  filename     String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  clinic     Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  uploadedBy User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, patientId, createdAt])
+  @@index([patientId, createdAt])
 }
 
 /// Consent-first osteopathic pre-visit pack (emailed public link)

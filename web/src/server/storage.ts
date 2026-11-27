@@ -10,6 +10,7 @@ import {
 
 const ROOT = path.join(process.cwd(), "storage", "audio");
 const BRAND_ROOT = path.join(process.cwd(), "storage", "brand");
+const FILES_ROOT = path.join(process.cwd(), "storage", "patient-files");
 const ENC_SUFFIX = ".enc";
 
 /** Workers have no durable local disk — require S3/R2-compatible object storage. */
@@ -276,5 +277,95 @@ export async function deleteClinicLogoFile(storageKey: string) {
   } catch {
     return false;
   }
+}
+
+/** Patient attachments — encrypted at rest (same envelope as visit audio). */
+export function patientFilePath(
+  clinicId: string,
+  patientId: string,
+  filename: string,
+) {
+  return path.join(FILES_ROOT, clinicId, patientId, filename);
+}
+
+export async function savePatientFileBytes(
+  clinicId: string,
+  patientId: string,
+  fileId: string,
+  bytes: Buffer,
+) {
+  const filename = `${fileId}${ENC_SUFFIX}`;
+  const storageKey = `clinics/${clinicId}/patients/${patientId}/files/${filename}`;
+  const encrypted = encryptBytes(bytes);
+
+  if (s3Configured()) {
+    await s3PutObject(storageKey, encrypted);
+    return storageKey;
+  }
+
+  requireObjectStorageForLocalFallback();
+  const dir = path.join(FILES_ROOT, clinicId, patientId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, filename), encrypted);
+  return storageKey;
+}
+
+export async function readPatientFileBytes(storageKey: string) {
+  const parts = storageKey.split("/");
+  if (
+    parts.length < 6 ||
+    parts[0] !== "clinics" ||
+    parts[2] !== "patients" ||
+    parts[4] !== "files"
+  ) {
+    throw new Error("Invalid patient file storage key");
+  }
+  const clinicId = parts[1];
+  const patientId = parts[3];
+  const filename = parts.slice(5).join("/");
+
+  if (s3Configured()) {
+    try {
+      const raw = await s3GetObject(storageKey);
+      return filename.endsWith(ENC_SUFFIX) ? decryptBytes(raw) : raw;
+    } catch {
+      /* fall through to local */
+    }
+  }
+
+  const full = patientFilePath(clinicId, patientId, filename);
+  await access(full);
+  const raw = await readFile(full);
+  return filename.endsWith(ENC_SUFFIX) ? decryptBytes(raw) : raw;
+}
+
+export async function deletePatientFileBytes(storageKey: string) {
+  const parts = storageKey.split("/");
+  if (
+    parts.length < 6 ||
+    parts[0] !== "clinics" ||
+    parts[2] !== "patients" ||
+    parts[4] !== "files"
+  ) {
+    return false;
+  }
+
+  if (s3Configured()) {
+    try {
+      await s3DeleteObject(storageKey);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const clinicId = parts[1];
+  const patientId = parts[3];
+  const filename = parts.slice(5).join("/");
+  try {
+    await unlink(patientFilePath(clinicId, patientId, filename));
+  } catch {
+    /* ignore */
+  }
+  return true;
 }
 

@@ -99,7 +99,8 @@ export async function api<T>(
 ): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const idempotent = method === "GET" || method === "HEAD";
-  const attempts = init.retries ?? (idempotent ? 3 : 1);
+  // Extra attempts for GETs — Cloudflare 1101 / Neon WS blips often clear on retry.
+  const attempts = init.retries ?? (idempotent ? 4 : 1);
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -110,7 +111,10 @@ export async function api<T>(
       const retryable =
         err instanceof ApiError && isTransientHttpStatus(err.status);
       if (!retryable || attempt === attempts - 1) throw err;
-      await sleep(250 * Math.pow(2, attempt));
+      // Jittered backoff so parallel desk tabs do not stampede the Worker.
+      const base = 300 * Math.pow(2, attempt);
+      const jitter = Math.floor(Math.random() * 200);
+      await sleep(base + jitter);
     }
   }
   throw lastErr;
